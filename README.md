@@ -2,14 +2,17 @@
 
 基于 **[OneBot v11 标准协议](https://github.com/botuniverse/onebot-11)** 的 MaaXXX 日志分析 Bot。纯 Python 实现，不依赖任何 Bot 框架。
 
-监听群内上传的日志压缩包（默认文件名匹配 `MaaXXX-logs*.zip`），自动下载并提取错误片段、配置摘要与 `on_error` 截图列表，再用专用的日志诊断提示词调用 AI 分析，把结论与相关图片发回群内。
+监听群内上传的日志压缩包，自动下载并提取错误片段、配置摘要与错误截图列表，再用专用的日志诊断提示词调用 AI 分析，把结论与相关图片发回群内。
+
+支持 **MXU**（`*-logs-<版本>-<时间戳>.zip`）、**MFAAvalonia**（`log_<时间戳>.zip`）、**MaaFwApp**（`maafw_logs_<时间戳>.zip`）等 UI 的日志包，并自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版本；分卷包 `*-partNN.zip` 会自动合并分析。
 
 分析完成后，群内可**引用分析结果继续追问**，也可用 **`/maa` 指令**查看与修改配置。
 
 ## 功能特性
 
 - **自动分析** — 匹配到日志包立即下载分析，无需任何人操作
-- **智能摘要** — 提取错误/警告/失败/异常/OCR 识别失败片段与 `config/mxu-*.json` 配置摘要；大日志流式扫描，按签名去重只保留关键片段
+- **多 UI 适配** — 自动识别 MXU / MFAAvalonia / MaaFwApp 日志包布局与命名，解析 UI 类型、软件版本、资源版本、MaaFramework 版本；**无需配置文件名前缀**，下载后校验布局避免误判；自动合并分卷包
+- **智能摘要** — 按 UI 布局选择框架日志 / UI 日志 / 运行记录，提取错误/警告/失败/异常/OCR 识别失败片段与配置摘要；大日志流式扫描，按签名去重只保留关键片段
 - **AI 可读原始文件** — 摘要之外，AI 可用工具自主检索**日志压缩包**与**项目代码仓库**内的原始内容（只读、不落盘）
 - **模型自主附图/附件** — AI 可在报告任意位置声明 `[附图@日志: xxx.png]` / `[附件@项目: yyy.json]`，Bot 按来源与相对路径取出内容；图片支持**图文混排**（插在文字中间）
 - **引用式追问答疑** — **引用 Bot 的分析结果消息**即可继续提问，普通发言不会触发；分析历史归档使追问可**跨越数天**
@@ -51,7 +54,26 @@ python main.py               # 首次运行生成 config.json
 }
 ```
 
-再运行 `python main.py` 即可。之后在监听群上传 `MaaXXX-logs*.zip`，Bot 会自动分析并把结论发回群内：
+项目相关内容（项目名 / 各 UI 的日志包命名 / 代码仓库）统一写在 `project` 段：
+
+```jsonc
+"configs": {
+  "MAK": {
+    "listen_groups": ["你的群号"],
+    "project": {
+      "name": "MAK",
+      // 不需要前缀：文件名特征初筛 + 下载后内容特征识别
+      "archive_match_mode": "auto",
+      // 按 UI 开关：键名 mxu / mfaa / maafwapp / auto
+      "ui": { "mfaa": { "enabled": true } },
+      "repo": { "enabled": true, "mode": "agent", "url": "https://github.com/..." }
+    },
+    "settings": { "max_log_files": 6 }
+  }
+}
+```
+
+再运行 `python main.py` 即可。之后在监听群上传日志压缩包（MXU / MFAAvalonia / MaaFwApp 命名均可，**无需配置前缀**），Bot 会自动分析并把结论发回群内：
 
 ```text
 [群员] 上传 MaaXXX-logs-20260907-033044.zip
@@ -59,7 +81,8 @@ python main.py               # 首次运行生成 config.json
        正在下载并分析，请稍等。
 [Bot]  摘要完成，提取到 5 个日志文件、2 张错误截图，正在调用 AI。
 [Bot]  MaaXXX 日志分析结果
-       文件：MaaXXX-logs-20260907-033044.zip
+       运行环境：MFAAvalonia · 软件版本：v2.16.2 · 资源版本：v1.4.7 · MaaFramework：v5.13.0
+       文件：log_20260907_033044.zip
        大小：3.44 MB
        日志文件：5 个
        错误截图：2 张
@@ -80,10 +103,23 @@ Bot 只在**同时满足**以下条件时才会分析：
 | 群被监听 | 群号在某个配置的 `listen_groups` 中 |
 | 群唯一归属 | 该群只属于**一个**配置（多归属时忽略，避免设置歧义） |
 | 配置启用 | 该配置的 `settings.enabled` 为 `true` |
-| 文件名匹配 | 以 `file_prefix` 开头且以 `.zip` 结尾 |
+| 文件名初筛 | `project.archive_match_mode`：`auto`（已知 UI 命名 / 名字含 log·logs·日志）、`known`、`prefix`（用 `project.file_prefix`）、`any` |
+| 内容特征识别 | 下载后检查包内是否有日志或已知 UI 布局，非日志包直接跳过、不调用 AI（`prefix` 模式可用 `project.require_log_layout: false` 关闭） |
+| UI 开关 | `project.ui.<名称>.enabled` 为 `false` 时跳过该 UI 的日志包 |
 | 大小合规 | 不超过 `max_zip_size_mb`（超限会提示并记录跳过原因） |
 
 非 `/maa` 开头的聊天文本不会触发指令；只有**引用了 Bot 分析结果消息**的发言才会被当作追问。
+
+## 支持的日志包
+
+| UI | 文件名示例 | 主要布局 |
+| --- | --- | --- |
+| MXU | `MaaAssistantKedrgame-logs-1.0.0-alpha.4-20260814-135755.zip` | 根目录 `maafw.log`、`on_error/`、`config/mxu-*.json` |
+| MFAAvalonia | `log_20261019_110324.zip`、`log_20261019_141709-part01.zip` | `debug/maafw.log`、`logs/log-*.log`、`debug/on_error/` |
+| MaaFwApp | `maafw_logs_20261022_195657.zip` | `log/maafw.log`、`log/app.log`、`device_info.txt`、`pi/debug/maafw.log`、`log/run/*.jsonl` |
+
+版本来源：MXU 取文件名中的 `-logs-<版本>-<时间戳>`；MFAAvalonia 取 `程序版本` / `资源版本` / `MaaFramework 版本`；
+MaaFwApp 取 `device_info.txt` 的 `Version` / `MaaFwApp` / `Framework`。未知布局会回退到通用日志选择。
 
 ## 文档
 

@@ -6,9 +6,14 @@
     "mock_repo": {
       "assets/resource/image/Start2.png": "fake-png-bytes",
       "assets/resource/pipeline/PVP.json": {
-        "PVP_Click:StartBattle": {"threshold": 0.7}
+        "PVP_Click:StartBattle": {
+          "threshold": 0.7
+        }
       },
-      "config/app.json": {"name": "可见配置", "ok": true},
+      "config/app.json": {
+        "name": "可见配置",
+        "ok": true
+      },
       ".env": "API_KEY=super-secret-token\n",
       "sub/.env": "DB_PASSWORD=hunter2\n",
       "server.pem": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n",
@@ -19,19 +24,30 @@
     },
     "configs": {
       "安全组": {
-        "listen_groups": ["555001"],
+        "listen_groups": [
+          "555001"
+        ],
         "notify_group": "555001",
         "settings": {
           "send_progress_message": false,
-          "file_prefix": "MaaXXX-logs",
-          "max_report_files": 6,
-          "repo": {"enabled": true}
+          "max_report_files": 6
+        },
+        "project": {
+          "repo": {
+            "enabled": true
+          },
+          "name": "MaaXXX"
         }
       }
     },
     "files": {
       "555001": [
-        {"file_name": "MaaXXX-logs-sec.zip", "file_id": "fid_sec", "size": 2048, "modify_time": 1767225600}
+        {
+          "file_name": "MaaXXX-logs-sec.zip",
+          "file_id": "fid_sec",
+          "size": 2048,
+          "modify_time": 1767225600
+        }
       ]
     }
   },
@@ -43,16 +59,24 @@
         "notice_type": "group_upload",
         "group_id": 555001,
         "user_id": 10001,
-        "file": {"id": "fid_sec", "name": "MaaXXX-logs-sec.zip", "size": 2048}
+        "file": {
+          "id": "fid_sec",
+          "name": "MaaXXX-logs-sec.zip",
+          "size": 2048
+        }
       },
       "assert": {
         "no_error": true,
         "reply_contains": "MaaXXX 日志分析结果",
         "reply_not_contains": [
-          "[附件", "[附图",
-          "super-secret-token", "hunter2",
-          "BEGIN PRIVATE KEY", "BEGIN RSA PRIVATE KEY",
-          "ghp_TOKEN", "aws_secret_access_key"
+          "[附件",
+          "[附图",
+          "super-secret-token",
+          "hunter2",
+          "BEGIN PRIVATE KEY",
+          "BEGIN RSA PRIVATE KEY",
+          "ghp_TOKEN",
+          "aws_secret_access_key"
         ],
         "api_segments_include": "image"
       }
@@ -64,7 +88,11 @@
         "notice_type": "group_upload",
         "group_id": 555001,
         "user_id": 10001,
-        "file": {"id": "fid_sec", "name": "MaaXXX-logs-sec.zip", "size": 2048}
+        "file": {
+          "id": "fid_sec",
+          "name": "MaaXXX-logs-sec.zip",
+          "size": 2048
+        }
       },
       "assert": {
         "no_error": true,

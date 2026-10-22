@@ -14,8 +14,10 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
+from core.archive_names import ui_key_from_file_name
 from core.models import ConfigState, LogFileItem
 from features.maa.analyzer import MaaAnalyzer
+from features.maa.archive_profile import parse_archive_part
 from features.maa.text_utils import format_bytes, split_text
 
 if TYPE_CHECKING:
@@ -54,6 +56,13 @@ class LogWatcher:
 
         now = time.monotonic()
         key = (str(group_id), str(file_name), int(file_size or 0))
+        keys = [key]
+
+        # 分卷包（*-part01.zip / *-part02.zip）属于同一次上传：
+        # 只分析一次，避免每个分卷各触发一轮重复报告。
+        part = parse_archive_part(file_name)
+        if part is not None and settings.merge_archive_parts:
+            keys.append((str(group_id), f"part:{part.base.lower()}", 0))
 
         # 顺手清理过期条目，避免长期运行后无限增长
         if len(self._recent) > 256:
@@ -62,11 +71,13 @@ class LogWatcher:
                 k: t for k, t in self._recent.items() if t >= cutoff
             }
 
-        last = self._recent.get(key)
-        if last is not None and (now - last) < window:
-            return True
+        for item in keys:
+            last = self._recent.get(item)
+            if last is not None and (now - last) < window:
+                return True
 
-        self._recent[key] = now
+        for item in keys:
+            self._recent[item] = now
         return False
 
     # ════════════════════════════════════════════════════════════
@@ -128,7 +139,13 @@ class LogWatcher:
         settings = cfg.settings
         if not settings.enabled:
             return
-        if not settings.matches(file_name):
+        if not cfg.project.matches(file_name):
+            return
+
+        # 文件名能确定 UI 且该 UI 已被关闭时，连下载都省掉
+        ui_key = ui_key_from_file_name(file_name)
+        if ui_key and not cfg.project.ui_enabled(ui_key):
+            logger.info(f"[监听] 跳过 {file_name}：UI {ui_key} 已在 project.ui 中禁用")
             return
 
         file_size = self._pick_int(file_info, "size", "file_size", "fileSize")
@@ -189,6 +206,7 @@ class LogWatcher:
         outcome = await self.analyzer.analyze(
             config_name=cfg.name,
             settings=settings,
+            project=cfg.project,
             group_id=group_int,
             file_name=file_info.file_name,
             file_id=file_info.file_id,

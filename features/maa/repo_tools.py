@@ -214,7 +214,10 @@ LOG_TOOL_DEFINITIONS: list[dict] = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "包内相对路径，如 config/mxu-MaaXXX.json 或 maafw.log",
+                        "description": (
+                            "包内相对路径，如 maafw.log、debug/maafw.log、"
+                            "log/app.log、config/mxu-MaaXXX.json 或 device_info.txt"
+                        ),
                     },
                     "start_line": {
                         "type": "integer",

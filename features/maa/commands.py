@@ -17,7 +17,15 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from core.models import AnalysisSettings, CommandConfig, ConfigState, RepoConfig
+from core.models import (
+    AnalysisSettings,
+    CommandConfig,
+    ConfigState,
+    ProjectConfig,
+    ProjectUISettings,
+    RepoConfig,
+    normalize_ui_key,
+)
 
 logger = logging.getLogger("Maa.Commands")
 
@@ -27,7 +35,10 @@ _PROTECTED_FIELDS = {"system_prompt"}
 # 设置项中文说明（未列出的直接显示字段名）
 _FIELD_LABELS: dict[str, str] = {
     "enabled": "是否启用该配置",
-    "file_prefix": "日志包文件名前缀",
+    "merge_archive_parts": "自动合并分卷日志包",
+    "archive_part_settle_seconds": "分卷合并前等待秒数",
+    "max_maafw_bak_files": "最多处理几个 maafw.bak",
+    "max_maafw_bak_mb": "单个 maafw.bak 大小上限 MB（0=不限）",
     "send_progress_message": "是否发送进度提示",
     "send_summary": "是否发送分析结果",
     "reply_chunk_chars": "回复分段字符数",
@@ -53,6 +64,17 @@ _FIELD_LABELS: dict[str, str] = {
     "temperature": "覆盖温度（空=用全局）",
 }
 
+_PROJECT_LABELS: dict[str, str] = {
+    "name": "项目名（同时作为报告显示名）",
+    "archive_match_mode": "识别方式 auto/known/prefix/any",
+    "file_prefix": "前缀（仅 prefix 模式）",
+    "require_log_layout": "prefix 模式是否额外校验内容",
+}
+
+_UI_LABELS: dict[str, str] = {
+    "enabled": "是否分析该 UI 的日志",
+}
+
 _REPO_LABELS: dict[str, str] = {
     "enabled": "是否启用项目代码参考",
     "mode": "检索模式：inject / agent",
@@ -71,6 +93,16 @@ _REPO_LABELS: dict[str, str] = {
 # 布尔值的可接受写法
 _TRUE_WORDS = {"1", "on", "true", "yes", "y", "开", "开启", "是", "启用"}
 _FALSE_WORDS = {"0", "off", "false", "no", "n", "关", "关闭", "否", "禁用"}
+
+
+def _format_ui_switches(project: ProjectConfig) -> str:
+    """把 project.ui 渲染成 `mxu=开, mfaa=关` 形式。"""
+    if not project.ui:
+        return "（未配置，全部开启）"
+    return ", ".join(
+        f"{key}={'开' if item.enabled else '关'}"
+        for key, item in sorted(project.ui.items())
+    )
 
 
 @dataclass
@@ -158,6 +190,7 @@ class CommandHandler:
             "help": (0, self._cmd_help),
             "status": (commands.read_level, self._cmd_status),
             "get": (commands.read_level, self._cmd_get),
+            "project": (commands.read_level, self._cmd_project),
             "repo": (commands.read_level, self._cmd_repo),
             "jobs": (commands.read_level, self._cmd_jobs),
             "history": (commands.read_level, self._cmd_history),
@@ -188,6 +221,9 @@ class CommandHandler:
             "clean", "clear", "清理", "purge", "清空",
         }:
             required = commands.write_level
+        # project set 需写权限
+        if action == "project" and rest and rest[0].lower() in {"set", "设置"}:
+            required = commands.write_level
 
         if level < required:
             return CommandResult(
@@ -213,6 +249,7 @@ class CommandHandler:
             "查看类：",
             f"  {prefix} status            查看当前配置与运行状态",
             f"  {prefix} get               查看当前分析设置",
+            f"  {prefix} project           查看项目配置（名称 / 各 UI / 仓库）",
             f"  {prefix} repo              查看项目代码仓库设置",
             f"  {prefix} jobs              查看最近分析记录",
             f"  {prefix} history           查看分析历史归档（可跨天追问）",
@@ -220,6 +257,7 @@ class CommandHandler:
             "",
             "修改类（需权限）：",
             f"  {prefix} set <项> <值>      修改分析设置",
+            f"  {prefix} project set <项> <值>  修改项目配置",
             f"  {prefix} repo mode <模式>   切换 inject / agent",
             f"  {prefix} repo url <地址>    设置仓库地址（支持镜像）",
             f"  {prefix} repo path <目录>   设置本地仓库目录",
@@ -244,9 +282,16 @@ class CommandHandler:
             f"监听群：{listen}",
             f"通知群：{cfg.info.notify_group or '（无）'}",
             f"状态：{'启用' if settings.enabled else '停用'}",
-            f"日志前缀：{settings.file_prefix}",
-            f"项目代码参考：{'开启' if settings.repo.enabled else '关闭'}"
-            f"（模式 {settings.repo.mode}）",
+            f"项目：{cfg.project.name or '（未设置）'}（配置名 {cfg.name}）",
+            f"识别方式：{cfg.project.archive_match_mode}"
+            + (
+                f"（前缀 {cfg.project.file_prefix or '（未配置）'}，"
+                f"内容校验 {'开' if cfg.project.require_log_layout else '关'}）"
+                if str(cfg.project.archive_match_mode).lower() == "prefix" else ""
+            ),
+            f"UI 开关：{_format_ui_switches(cfg.project)}",
+            f"项目代码参考：{'开启' if cfg.project.repo.enabled else '关闭'}"
+            f"（模式 {cfg.project.repo.mode}）",
             f"附带图片：{'开启' if settings.send_images else '关闭'}",
             f"追问答疑：{'开启' if settings.followup_enabled else '关闭'}",
             f"任务记录：{len(cfg.jobs)} 条",
@@ -271,8 +316,116 @@ class CommandHandler:
         lines.append(f"修改：{cfg.commands.prefix} set <项> <值>")
         return CommandResult(text="\n".join(lines))
 
+    async def _cmd_project(self, cfg: ConfigState, args: list[str]) -> CommandResult:
+        """
+        查看 / 修改项目配置（config.json 的 project 段）。
+
+        支持：
+          /maa project
+          /maa project set name MAK
+          /maa project set archive_match_mode prefix
+          /maa project set file_prefix MaaXXX-logs
+          /maa project set ui.mfaa.enabled false
+          /maa project set repo.mode agent
+        """
+        sub = args[0].lower() if args else "get"
+        if sub in ("set", "设置"):
+            return await self._set_project_field(cfg, args[1:])
+        if sub not in ("get", "查看", ""):
+            return CommandResult(
+                text=f"用法：{cfg.commands.prefix} project [get] 或 "
+                     f"{cfg.commands.prefix} project set <项> <值>",
+                ok=False,
+            )
+
+        project = cfg.project
+        lines = [
+            f"项目配置（{cfg.name}）：",
+            f"  name = {project.name or '（未设置）'}",
+            "",
+            "识别：",
+        ]
+        for name in _PROJECT_LABELS:
+            if name == "name":
+                continue
+            value = getattr(project, name, None)
+            lines.append(f"  {name} = {value}  # {_PROJECT_LABELS[name]}")
+
+        lines.extend(["", "各 UI 开关："])
+        if project.ui:
+            for key, item in sorted(project.ui.items()):
+                lines.append(f"  {key} = {'开' if item.enabled else '关'}")
+        else:
+            lines.append("  （未配置，全部开启）")
+
+        lines.extend([
+            "",
+            f"repo：{'开启' if project.repo.enabled else '关闭'}（{project.repo.mode}）"
+            f"  # 用 `{cfg.commands.prefix} repo` 查看详情",
+            "",
+            f"修改：{cfg.commands.prefix} project set <项> <值>",
+            f"      {cfg.commands.prefix} project set ui.mfaa.enabled false",
+        ])
+        return CommandResult(text="\n".join(lines))
+
+    async def _set_project_field(self, cfg: ConfigState,
+                                 args: list[str]) -> CommandResult:
+        if len(args) < 2:
+            return CommandResult(
+                text=f"用法：{cfg.commands.prefix} project set <项> <值>",
+                ok=False,
+            )
+        name, raw_value = args[0], " ".join(args[1:])
+        parts = name.split(".")
+
+        # ui.<名称>.<字段>
+        if len(parts) == 3 and parts[0].lower() == "ui":
+            ui_key = normalize_ui_key(parts[1])
+            field_name = parts[2]
+            field = ProjectUISettings.model_fields.get(field_name)
+            if field is None or not _is_simple_type(field.annotation):
+                return CommandResult(text=f"ui 设置项无效：{field_name}", ok=False)
+            value, error = _coerce_value(field.annotation, raw_value)
+            if error:
+                return CommandResult(text=f"值无效：{error}", ok=False)
+            self.s.set_project_override(cfg.name, field_name, value, nested=f"ui.{ui_key}")
+            self.s.save_config(cfg.name)
+            return CommandResult(
+                text=f"已设置 project.ui.{ui_key}.{field_name} = {value}"
+                     f"（{_UI_LABELS.get(field_name, field_name)}）"
+            )
+
+        # repo.<字段>
+        if len(parts) == 2 and parts[0].lower() == "repo":
+            field_name = parts[1]
+            field = RepoConfig.model_fields.get(field_name)
+            if field is None or not _is_simple_type(field.annotation):
+                return CommandResult(text=f"repo 设置项无效：{field_name}", ok=False)
+            value, error = _coerce_value(field.annotation, raw_value)
+            if error:
+                return CommandResult(text=f"值无效：{error}", ok=False)
+            self.s.set_project_override(cfg.name, field_name, value, nested="repo")
+            self.s.save_config(cfg.name)
+            return CommandResult(
+                text=f"已设置 project.repo.{field_name} = {value}"
+                     f"（{_REPO_LABELS.get(field_name, field_name)}）"
+            )
+
+        field = ProjectConfig.model_fields.get(name)
+        if field is None or not _is_simple_type(field.annotation):
+            return CommandResult(text=f"project 设置项无效：{name}", ok=False)
+        value, error = _coerce_value(field.annotation, raw_value)
+        if error:
+            return CommandResult(text=f"值无效：{error}", ok=False)
+        self.s.set_project_override(cfg.name, name, value)
+        self.s.save_config(cfg.name)
+        return CommandResult(
+            text=f"已设置 project.{name} = {value}"
+                 f"（{_PROJECT_LABELS.get(name, name)}）"
+        )
+
     async def _cmd_repo_get(self, cfg: ConfigState, args: list[str]) -> CommandResult:
-        repo: RepoConfig = cfg.settings.repo
+        repo: RepoConfig = cfg.project.repo
         lines = [f"项目代码仓库设置：", ""]
         for name, info in RepoConfig.model_fields.items():
             if not _is_simple_type(info.annotation):
@@ -406,7 +559,7 @@ class CommandHandler:
     async def _cmd_mode(self, cfg: ConfigState, args: list[str]) -> CommandResult:
         if not args:
             return CommandResult(
-                text=f"当前模式：{cfg.settings.repo.mode}\n"
+                text=f"当前模式：{cfg.project.repo.mode}\n"
                      f"用法：{cfg.commands.prefix} mode inject|agent", ok=False)
         return await self._set_repo_field(cfg, "mode", args[0])
 
@@ -464,7 +617,7 @@ class CommandHandler:
                 return CommandResult(text="模式只能是 inject 或 agent。", ok=False)
             value = mode
 
-        self.s.set_setting_override(cfg.name, name, value, nested="repo")
+        self.s.set_project_override(cfg.name, name, value, nested="repo")
         self.s.save_config(cfg.name)
         label = _REPO_LABELS.get(name, name)
         logger.info(f"[指令] {cfg.name}: repo.{name} = {value!r}")

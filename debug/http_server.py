@@ -64,7 +64,11 @@ class DebugHTTPHandler:
                     "listen_groups": sorted(state.info.listen_groups),
                     "notify_group": state.info.notify_group,
                     "enabled": state.settings.enabled,
-                    "file_prefix": state.settings.file_prefix,
+                    "project_name": state.project.name,
+                    "archive_match_mode": state.project.archive_match_mode,
+                    "ui_enabled": {
+                        key: item.enabled for key, item in state.project.ui.items()
+                    },
                     "job_count": len(state.jobs),
                 }
                 for name, state in service.configs.items()

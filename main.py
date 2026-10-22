@@ -116,9 +116,39 @@ def default_config() -> dict:
                 "默认": {
                     "listen_groups": ["123456789"],
                     "notify_group": "123456789",
+                    # 项目相关：名称 / 各 UI 命名 / 项目代码仓库
+                    "project": {
+                        # 项目名（同时作为报告与提示词中的显示名）
+                        "name": "MaaXXX",
+                        # 文件名初筛：auto=已知 UI 命名/名字像日志
+                        #           known=仅已知 UI 命名
+                        #           prefix=仅 file_prefix 开头
+                        #           any=任意 zip，完全依赖下载后校验
+                        "archive_match_mode": "auto",
+                        # 仅 prefix 模式：是否额外做内容特征识别（默认 True）
+                        "require_log_layout": True,
+                        # 按 UI 开关：键名 mxu / mfaa / maafwapp / auto
+                        # "ui": {"mfaa": {"enabled": False}},
+                        # 项目代码参考：让 AI 对照源码核对节点定义、阈值与 expected 文本
+                        "repo": {
+                            "enabled": False,
+                            # 检索模式：inject=预检索注入提示词（快/省 token）
+                            #           agent =AI 自主调用工具检索（深/耗 token）
+                            "mode": "inject",
+                            # 二选一：本地仓库目录（推荐，无需网络）
+                            "path": "",
+                            # 或 git 地址（支持镜像），默认 MaaXXX 官方仓库
+                            "url": "https://github.com/MAAXYZ/MaaXXX",
+                            "branch": "",
+                            # 按压缩包内解析出的资源版本自动切到对应 tag
+                            "auto_checkout_version": True,
+                            # 允许 AI 请求切换其他 tag 复核
+                            "allow_ai_switch_tag": True,
+                            # 分析结束后还原到分析前所在的分支
+                            "restore_latest_after_analyze": True,
+                        },
+                    },
                     "settings": {
-                        # 日志包文件名前缀（默认 MaaXXX-logs*.zip）
-                        "file_prefix": "MaaXXX-logs",
                         # 结果附图 / 附件：报告后附带错误截图、模板图或相关文件
                         "send_images": True,
                         "max_report_images": 4,
@@ -136,24 +166,6 @@ def default_config() -> dict:
                         "history_enabled": True,
                         "history_period_hours": 24,
                         "history_keep_periods": 2,
-                        # 项目代码参考：让 AI 对照源码核对节点定义、阈值与 expected 文本
-                        "repo": {
-                            "enabled": False,
-                            # 检索模式：inject=预检索注入提示词（快/省 token）
-                            #           agent =AI 自主调用工具检索（深/耗 token）
-                            "mode": "inject",
-                            # 二选一：本地仓库目录（推荐，无需网络）
-                            "path": "",
-                            # 或 git 地址（支持镜像），默认 MaaXXX 官方仓库
-                            "url": "https://github.com/MAAXYZ/MaaXXX",
-                            "branch": "",
-                            # 按日志包文件名中的版本号自动切到对应 tag
-                            "auto_checkout_version": True,
-                            # 允许 AI 请求切换其他 tag 复核
-                            "allow_ai_switch_tag": True,
-                            # 分析结束后还原到分析前所在的分支
-                            "restore_latest_after_analyze": True,
-                        },
                     },
                     # QQ 指令（默认前缀 /maa，发 `/maa help` 查看全部）
                     "commands": {

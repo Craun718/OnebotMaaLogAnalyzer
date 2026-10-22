@@ -18,19 +18,64 @@
 - `/maa set` 的值始终生效，并在重启 / `/maa reload` 后保留
 - 旧版本留下的 `data/<名称>/settings.json`（全量 dump）会在首次启动时自动转换为增量格式（`{"version": 2, "overrides": {...}}`）
 
+> **项目相关设置已全部搬到 `project` 段**：`name`、日志包识别
+> （`archive_match_mode` / `file_prefix` / `require_log_layout`）、
+> `ui.<名称>.enabled`、`repo` 都只写在
+> `bot.configs.<名称>.project`，不再出现在 `settings` 中，
+> 也不与 `settings` 叠加。见 [配置 · project](configuration.md#project项目配置)。
+
 ## 触发与反馈
 
 | 设置项 | 默认 | 说明 |
 | --- | --- | --- |
 | `enabled` | `true` | 该配置是否启用 |
-| `file_prefix` | `MaaXXX-logs` | 日志包文件名前缀 |
+| `file_list_delay_seconds` | `0` | 上传后等待群文件列表刷新的秒数 |
 | `send_progress_message` | `true` | 是否发送进度提示 |
 | `send_summary` | `true` | 是否发送分析结果 |
 | `reply_chunk_chars` | `3500` | 回复分段字符数 |
-| `duplicate_window_seconds` | `120` | 同一文件去重窗口；`0` = 关闭去重 |
+| `duplicate_window_seconds` | `120` | 同一文件（含同一组分卷）去重窗口；`0` = 关闭去重 |
 
 > **去重窗口**：部分协议端（如 SnowLuma）对一次上传会同时发出 `notice.group_upload`
 > 与带 file 段的消息事件，两条入口各自触发一次分析导致重复回复。窗口内的同一文件只处理一次。
+> 分卷日志包（`*-part01.zip` / `*-part02.zip`）也按同一组去重，避免每个分卷各触发一轮报告。
+
+## 日志包命名与 UI 自动识别
+
+日志包是否分析由 `project.archive_match_mode` 与 `project.ui.<名称>.enabled` 决定，
+详见 [配置 · 识别方式](configuration.md#识别方式archive_match_mode)。已知命名如下：
+
+| UI | 文件名示例 | 压缩包布局 |
+| --- | --- | --- |
+| MXU | `MaaAssistantKedrgame-logs-1.0.0-alpha.4-20260814-135755.zip` | 根目录 `maafw.log`、`on_error/`、`config/mxu-*.json` |
+| MFAAvalonia | `log_20261019_110324.zip`、`log_20261019_141709-part01.zip` | `debug/maafw.log`、`logs/log-*.log`、`debug/on_error/` |
+| MaaFwApp | `maafw_logs_20261022_195657.zip` | `log/maafw.log`、`log/app.log`、`device_info.txt`、`pi/debug/maafw.log`、`log/run/*.jsonl` |
+
+Bot 会从文件名、`maafw.log` 头部、MFAA 的 `logs/log-*.log`、MaaFwApp 的 `device_info.txt`
+自动解析 **UI 类型、软件版本、资源版本、MaaFramework 版本、设备与系统**，写入摘要和报告头。
+
+- MXU 的版本号来自文件名（`-logs-<版本>-<时间戳>`），属于项目/资源版本
+- MFAAvalonia 从 `程序版本`、`资源版本`、`MaaFramework 版本` 解析
+- MaaFwApp 从 `device_info.txt` 的 `Version` / `MaaFwApp` / `Framework` 解析
+- MFAA 的 `资源版本` 也会用于自动对齐项目仓库 tag
+
+### 内容特征识别
+
+下载后会检查压缩包内容：
+
+| 命中条件 | 结果 |
+| --- | --- |
+| 已知 UI 布局（如 `debug/maafw.log`、`device_info.txt`） | 正常分析 |
+| 含 `.log` / `.jsonl` 文件 | 正常分析 |
+| 含 `on_error/` 或 `debug/custom/` 截图 | 正常分析 |
+| 以上都没有（即使文件名像日志） | 跳过，不调用 AI |
+
+该检查在 `auto` / `known` / `any` 模式下**始终执行**；`prefix` 模式下由
+`project.require_log_layout` 控制（默认 `true`，设为 `false` 则只信前缀）。
+
+> 仅靠**文件名**推断出的 UI **不算**内容命中。因此 `server-logs-20260101.zip`
+> 这类同名但内容是普通资源的压缩包不会被误分析。
+>
+> 该检查只影响「是否分析」，不影响已确认日志包的 UI/版本解析。
 
 ## 结果附件
 
@@ -78,8 +123,11 @@
 | `max_total_uncompressed_mb` | `120` | 解压总大小上限 MB |
 | `max_zip_members` | `300` | 压缩包内成员数上限 |
 | `max_prompt_chars` | `600000` | 发送给 AI 的摘要最大字符数 |
-| `max_log_files` | `6` | 最多处理日志文件数（保底选 maafw.log / 最新日期 / 最新 agent 各 1 个） |
-| `max_maafw_bak_files` | `1` | 最多处理 `maafw.bak` 日志数 |
+| `max_log_files` | `6` | 最多处理日志文件数（按 UI 布局优先选择框架日志 / UI 日志 / 运行记录） |
+| `max_maafw_bak_files` | `1` | 最多纳入摘要的 `maafw.bak.*` 轮转备份日志数；`0` = 不纳入 |
+| `max_maafw_bak_mb` | `64` | 单个 `maafw.bak` 大小上限 MB；`0` = 不限制 |
+| `merge_archive_parts` | `true` | 自动合并 `*-partNN.zip` 分卷日志包 |
+| `archive_part_settle_seconds` | `3` | 分卷上传后等待多少秒再拉取群文件列表 |
 | `max_log_chars` | `120000` | 单个日志摘要字符上限 |
 | `max_recognition_evidence_chars` | `35000` | OCR 重点证据块字符上限 |
 | `max_recognition_evidence_lines` | `60` | OCR 重点证据行数上限 |
@@ -87,6 +135,20 @@
 | `context_before_lines` | `80` | 错误命中前保留行数（按折叠后行数计） |
 | `context_after_lines` | `60` | 错误命中后保留行数 |
 | `max_sections_per_log` | `60` | 单个日志最多提取的小节数 |
+
+### `maafw.bak` 是什么
+
+MaaFramework 的日志按大小轮转：写满当前 `maafw.log` 后把它改名成
+`maafw.bak.<时间戳>.log`，再新开一个 `maafw.log`。所以**最近的错误往往落在
+备份文件里**（当前 `maafw.log` 只保留了崩溃之后的那一小段）。
+
+- `max_maafw_bak_files`：把最新的几个备份纳入摘要，默认 `1`（只取最近一个）
+- `max_maafw_bak_mb`：单个备份的大小上限，默认 `64` MB；`0` 表示不限制
+- 备份按时间戳倒序挑选，超过上限的直接跳过，避免为了几百 MB 的备份拖慢分析
+
+> 若日志包里的 `maafw.bak` 很多且单个体积很大，调小 `max_maafw_bak_mb`
+> 比调小 `max_maafw_bak_files` 更划算：前者只丢掉过大的那个文件，
+> 后者会丢掉「最近的备份」这一最有价值的证据。
 
 ## 大日志流式扫描
 
@@ -121,14 +183,14 @@
 | `analysis_concurrency` | `1` | 同时进行的分析数 |
 | `download_concurrency` | `2` | 同时进行的下载数 |
 | `download_timeout_seconds` | `120` | 下载超时秒数 |
-| `file_list_delay_seconds` | `0` | 上传后等待群文件列表刷新 |
 
-## 工具与仓库
+## 日志包工具
 
 | 设置项 | 默认 | 说明 |
 | --- | --- | --- |
 | `log_tools_enabled` | `true` | 是否允许 AI 用工具自主读日志包原始文件（**不依赖 repo 是否启用**） |
-| `repo` | 见 [项目代码参考](repo.md) | 项目代码仓库设置 |
+
+> 项目代码仓库不在这里配置：见 [项目代码参考](repo.md) 的 `project.repo`。
 
 ## 其他
 

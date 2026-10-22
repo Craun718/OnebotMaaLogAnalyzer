@@ -4,8 +4,10 @@
 模型可在报告的**任意位置**用指令声明要附带的附件，并**必须指定来源**：
 
     [附图@日志: on_error/on_error_20260101_120002.png]
+    [附图@日志: debug/on_error/on_error_20260101_120002.png]
     [附图@项目: assets/resource/image/Start2.png]
     [附件@日志: config/mxu-MaaXXX.json]
+    [附件@日志: device_info.txt]
     [附件@项目: assets/resource/pipeline/PVP.json]
 
 来源标记（`@日志` / `@项目`）与相对路径都是**必需**的：

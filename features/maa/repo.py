@@ -6,7 +6,8 @@
   - url:  git 仓库地址（含镜像），浅克隆到 data/repos/<hash> 并复用
 
 版本对齐:
-  - 从日志包文件名提取版本号（如 MaaXXX-logs-1.0.0-alpha.9-20260907-033044.zip
+  - 优先使用压缩包内解析出的资源版本（如 MFAAvalonia 的 `资源版本：v1.4.7`），
+    否则从日志包文件名提取版本号（如 MaaXXX-logs-1.0.0-alpha.9-20260907-033044.zip
     → 1.0.0-alpha.9），自动 checkout 对应 tag，使代码参考与日志实际版本一致
   - 支持按需拉取单个 tag（避免首次克隆拉取整个仓库历史）
   - 分析结束后切回最新（默认分支）
@@ -285,9 +286,11 @@ class RepoProvider:
         """当前已切到的 tag / 分支描述，供提示词标注代码版本。"""
         return self._current_ref or "（默认分支）"
 
-    async def align_version(self, file_name: str) -> str:
+    async def align_version(self, file_name: str, *, version: str = "") -> str:
         """
-        根据日志包文件名把仓库切到对应版本 tag。
+        根据日志包版本把仓库切到对应版本 tag。
+
+        version 优先（来自压缩包内解析出的资源版本）；为空时回退到文件名。
 
         返回实际切到的 ref（空字符串 = 未切换，仍为默认分支）。
         """
@@ -305,9 +308,9 @@ class RepoProvider:
         if not self._origin_ref:
             await self.remember_current_ref(root)
 
-        version = extract_version(file_name)
+        version = str(version or "").strip() or extract_version(file_name)
         if not version:
-            logger.info("[仓库] 日志文件名中未识别到版本号，使用默认分支")
+            logger.info("[仓库] 日志文件名与压缩包中均未识别到版本号，使用默认分支")
             return ""
 
         ref = await self._resolve_tag(root, version)

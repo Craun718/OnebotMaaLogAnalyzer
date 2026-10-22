@@ -20,14 +20,18 @@
       "默认": {
         "listen_groups": ["123456789"],
         "notify_group": "123456789",
+        "project": {
+          "name": "MaaXXX",
+          "archive_match_mode": "auto",
+          "ui": { "mxu": { "enabled": true }, "mfaa": { "enabled": true } },
+          "repo": { "enabled": false, "mode": "inject", "url": "https://github.com/MAAXYZ/MaaXXX" }
+        },
         "settings": {
-          "file_prefix": "MaaXXX-logs",
           "followup_enabled": true,
           "followup_window_minutes": 0,
           "history_enabled": true,
           "history_period_hours": 24,
-          "history_keep_periods": 2,
-          "repo": { "enabled": false, "mode": "inject", "url": "https://github.com/MAAXYZ/MaaXXX" }
+          "history_keep_periods": 2
         },
         "commands": { "enabled": true, "prefix": "/maa", "owners": [], "admins": [] }
       }
@@ -85,8 +89,11 @@
     "官服": {
       "listen_groups": ["111111111", "222222222"],
       "notify_group": "111111111",
+      "project": {
+        "name": "MaaXXX",
+        "archive_match_mode": "auto"
+      },
       "settings": {
-        "file_prefix": "MaaXXX-logs",
         "max_log_files": 8
       }
     },
@@ -101,15 +108,132 @@
 | --- | --- |
 | `listen_groups` | 要监听的群号列表 |
 | `notify_group` | 分析结果额外推送的群（可选，留空只发回原群） |
+| `project` | **项目相关**：项目名、日志包识别方式、UI 开关、项目代码仓库 |
 | `settings` | 该配置的分析设置覆盖（可选，未设置项继承全局 `data/settings.json`），见 [分析设置](settings.md) |
 | `commands` | 该配置的指令与权限设置（可选），见 [QQ 指令](commands.md) |
+
+## project：项目配置
+
+`project` 把「项目名 / 日志包识别 / 各 UI 开关 / 代码仓库」从 `settings` 中拆出来，
+避免项目相关配置混在通用分析设置里。
+
+```jsonc
+"project": {
+  // 项目名：同时作为报告头与提示词中的显示名
+  "name": "MAK",
+
+  // 日志包识别方式：auto（默认）/ known / prefix / any
+  "archive_match_mode": "auto",
+
+  // 仅 prefix 模式使用：自定义文件名前缀
+  // "file_prefix": "MaaAssistantKedrgame-logs",
+  // 仅 prefix 模式使用：是否额外做内容特征识别（默认 true）
+  "require_log_layout": true,
+
+  // 按 UI 开关：键名 mxu / mfaa / maafwapp / auto
+  "ui": {
+    "mfaa":     { "enabled": true },
+    "maafwapp": { "enabled": false }   // 不分析 MaaFwApp 的日志包
+  },
+
+  // 项目代码仓库
+  "repo": {
+    "enabled": true,
+    "mode": "agent",
+    "url": "https://github.com/Hollow-YK/MaaAssistantKedrgame",
+    "auto_checkout_version": true
+  }
+}
+```
+
+### 字段说明
+
+| 字段 | 说明 |
+| --- | --- |
+| `name` | 项目名，同时作为报告头与提示词中的显示名 |
+| `archive_match_mode` | 日志包识别方式：`auto` / `known` / `prefix` / `any`，见下节 |
+| `file_prefix` | **仅 `prefix` 模式**：文件名前缀；留空则该模式不会命中任何包 |
+| `require_log_layout` | **仅 `prefix` 模式**：是否额外做内容特征识别（默认 `true`） |
+| `ui.<名称>.enabled` | 是否分析该 UI 的日志；未配置回退 `ui.auto`，再回退 `true` |
+| `repo` | 项目代码仓库，见 [项目代码参考](repo.md) |
+
+> 分卷合并、`maafw.bak` 数量 / 大小等属于**分析设置**，仍在
+> `settings` 中（`merge_archive_parts`、`archive_part_settle_seconds`、
+> `max_maafw_bak_files`、`max_maafw_bak_mb`），见
+> [分析设置 · 摘要提取](settings.md#摘要提取)。
+
+### 识别方式：archive_match_mode
+
+日志包识别统一为「**文件名初筛（下载前）+ 内容特征识别（下载后）**」，由
+`archive_match_mode` 决定初筛策略：
+
+| 模式 | 文件名初筛 | 内容特征识别 |
+| --- | --- | --- |
+| `auto`（默认） | 已知 UI 命名，或名字含 `log` / `logs` / `日志` | 强制 |
+| `known` | 仅已知 UI 命名（MXU / MFAAvalonia / MaaFwApp） | 强制 |
+| `prefix` | 仅 `file_prefix` 开头 | 由 `require_log_layout` 决定（默认 `true`） |
+| `any` | 任意 `.zip` | 强制 |
+
+```text
+上传 .zip
+  ├─ 文件名初筛（archive_match_mode，见上表）
+  ├─ 下载（分卷则合并）
+  └─ 内容特征识别
+       ├─ 识别出的 UI 被 project.ui.<名称>.enabled 关闭 → 跳过
+       ├─ 命中已知 UI 布局（maafw.log / device_info.txt / logs/log-* 等）→ 分析
+       ├─ 有 .log / .jsonl / on_error 截图 → 分析
+       └─ 都没有 → 跳过，不调用 AI，群里回一行「已跳过」
+```
+
+- `auto` / `known` / `any` **不需要任何前缀**；三种已知 UI 的文件名与布局都能自动识别
+- `any` 适合完全自定义命名的日志包：所有 zip 都会下载后校验，代价是无谓下载
+- `prefix` 是唯一使用 `file_prefix` 的模式，`require_log_layout: false` 时**只信前缀**，
+  不再校验内容（适合前缀已足够独特的场景）
+- 内容特征识别只看包内容，仅靠文件名推断的 UI 不算命中，避免 `server-logs.zip` 这类误判
+- `project.ui.<名称>.enabled: false` 会在下载后直接跳过该 UI 的日志包（不调用 AI）
+
+### 解析优先级
+
+`project` 与分析设置完全独立，两者没有任何字段重叠：
+
+```text
+settings：data/settings.json（全局默认）
+          → config.json 的 settings
+          → /maa set 覆盖
+
+project： config.json 的 project
+          → data/<配置名>/project.json（/maa project set 写入）
+```
+
+`project` 中的 `repo` 由 `_prepare_repo` 直接读取，不再经过 `settings`。
+
+`project.ui` 的键名会归一化：`mfaa` / `mfaaValonia` / `mfaa-avalonia` 等价，
+`maafwapp` / `maafw` 等价；`auto` 作为未命中时的兜底。
+
+### 日志包命名与 UI 自动识别
+
+`auto` / `known` / `any` 模式下都会接受三种已知 UI 命名：
+
+| UI | 文件名示例 | `project.ui` 键 |
+| --- | --- | --- |
+| MXU | `MaaAssistantKedrgame-logs-1.0.0-alpha.4-20260814-135755.zip` | `mxu` |
+| MFAAvalonia | `log_20261019_110324.zip`、`log_20261019_141709-part01.zip` | `mfaa` |
+| MaaFwApp | `maafw_logs_20261022_195657.zip` | `maafwapp` |
+
+Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版本，并写入摘要和报告头；
+分卷包 `*-partNN.zip` 会自动下载并合并分析。
+
+> **不兼容旧配置**：`settings` 中的 `file_prefix` / `extra_file_prefixes` /
+> `auto_detect_archive` / `display_name` / `archive_match_mode` /
+> `require_log_layout` / `repo` 已全部移除，请改写到 `project`。
+> 日志包匹配、UI 开关、项目名、项目仓库只在 `project` 中生效。
 
 修改 `config.json` 后可用 `/maa reload` 热重载，**效果与重启进程一致**：
 
 - 重新读取全部段落：`onebot`（模式 / 地址 / 令牌 / 超时）、`bot.data_dir`、`bot.configs`、`llm`、`log`、`debug`
 - 日志**另开一个新文件**（同一秒内重载会追加 `_2`、`_3` 后缀），旧 handler 会先关闭
 - `bot.configs` 中删除的配置会被停用；重新加回即可恢复（数据目录保留）
-- `settings` / `commands` 是声明式的：删掉某个键即回退到下一层（见[分析设置](settings.md)）
+- `settings` / `project` / `commands` 是声明式的：删掉某个键即回退到下一层（见[分析设置](settings.md)）
 - LLM 客户端、OneBot 连接、分析器与历史存储全部重建
 
 > 重建期间连接会短暂中断（通常 1～2 秒），进行中的分析会被中止（与重启相同）。

@@ -23,11 +23,18 @@ RESULT_MARKER = "@@RESULT@@"
 
 
 def _emit(payload: dict) -> None:
-    """把结果以单行标记格式写到 stdout。"""
-    sys.stdout.write(
-        RESULT_MARKER + json.dumps(payload, ensure_ascii=False) + "\n"
-    )
-    sys.stdout.flush()
+    """把结果以单行标记格式写到 stdout（固定 UTF-8，避免受系统代码页影响）。"""
+    line = RESULT_MARKER + json.dumps(payload, ensure_ascii=False) + "\n"
+    sys.stdout.buffer.write(line.encode("utf-8"))
+    sys.stdout.buffer.flush()
+
+
+def _read_job() -> str:
+    """从 stdin 读取任务 JSON（固定 UTF-8，避免受系统代码页影响）。"""
+    stream = getattr(sys.stdin, "buffer", None)
+    if stream is None:
+        return sys.stdin.read()
+    return stream.read().decode("utf-8", errors="replace")
 
 
 async def _run(job: dict) -> dict:
@@ -109,7 +116,7 @@ def _history_snapshot(manager) -> dict:
 
 def main() -> int:
     try:
-        job = json.loads(sys.stdin.read() or "{}")
+        job = json.loads(_read_job() or "{}")
     except json.JSONDecodeError as exc:
         _emit({"error": f"任务 JSON 解析失败: {exc}"})
         return 1

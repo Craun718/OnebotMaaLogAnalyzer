@@ -2,7 +2,7 @@
 
 开启后，Bot 会在调用 AI 前完成三件事：
 
-1. **对齐版本** — 从日志包文件名提取版本号（如 `MaaXXX-logs-1.0.0-alpha.9-20260907-033044.zip` → `1.0.0-alpha.9`），自动 checkout 对应 tag，使代码参考与日志实际运行的版本一致
+1. **对齐版本** — 优先从压缩包内解析资源版本（如 MFAAvalonia 的 `资源版本：v1.4.7`），否则从文件名提取（如 `MaaXXX-logs-1.0.0-alpha.9-20260907-033044.zip` → `1.0.0-alpha.9`），自动 checkout 对应 tag，使代码参考与日志实际运行的版本一致
 2. **检索代码** — 见下方两种模式
 3. **还原位置** — 分析结束（无论成败）**精确还原到分析前所在的 ref**（分支 / tag / 提交），不会把你的工作分支切走
 
@@ -22,15 +22,21 @@
 ## 配置示例
 
 ```jsonc
-// config.json → bot.configs.<配置名>.settings.repo
-"repo": {
-  "enabled": true,
-  "mode": "inject",                            // 或 "agent"
-  "path": "E:/Code/MAA/MaaXXX",               // 本地仓库（推荐，无需网络与 git）
-  "url": "https://github.com/MAAXYZ/MaaXXX",  // 或 git 地址，支持镜像
-  "branch": ""
+// config.json → bot.configs.<配置名>.project.repo
+"project": {
+  "name": "MAK",
+  "repo": {
+    "enabled": true,
+    "mode": "inject",                            // 或 "agent"
+    "path": "E:/Code/MAA/MaaXXX",               // 本地仓库（推荐，无需网络与 git）
+    "url": "https://github.com/MAAXYZ/MaaXXX",  // 或 git 地址，支持镜像
+    "branch": ""
+  }
 }
 ```
+
+> 仓库配置只写在 `project.repo`（`config.json` 或 `/maa repo` / `/maa project set repo.*`），
+> `settings` 中已不再有 `repo` 字段。
 
 ## 全部设置项
 
@@ -43,7 +49,7 @@
 | `branch` | 空 | 克隆时使用的分支 / tag，空 = 默认分支 |
 | `default_branch` | 空 | 无法还原原位置时的兜底目标，空 = 自动探测 |
 | `update_on_analyze` | `false` | 每次分析前 `git pull`（仅 `url` 模式） |
-| `auto_checkout_version` | `true` | 按日志包文件名中的版本号自动切 tag |
+| `auto_checkout_version` | `true` | 按压缩包内解析的资源版本（无则用文件名版本）自动切 tag |
 | `allow_ai_switch_tag` | `true` | 允许 AI 请求切换其他 tag 复核 |
 | `max_tag_switch_rounds` | `2` | AI 切换 tag 的最大轮次 |
 | `restore_latest_after_analyze` | `true` | 分析结束后还原到分析前的位置 |

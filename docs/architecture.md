@@ -35,6 +35,7 @@ OnebotMaaLogAnalyzer/
 │   └── handler.py       #   原始事件 → service 桥接
 ├── core/                # [框架] 基础设施 — 功能模块的唯一依赖入口
 │   ├── models.py        #   Pydantic 数据模型（配置 / 设置 / 任务记录）
+│   ├── archive_names.py #   日志包命名识别（MXU / MFAA / MaaFwApp / 分卷）
 │   ├── data_manager.py  #   JSON 持久化（多配置 + .tmp 原子写）
 │   ├── llm.py           #   OpenAI 兼容 LLM 客户端
 │   └── service.py       #   Bot 能力 API + 配置管理 + 事件分发
@@ -42,7 +43,8 @@ OnebotMaaLogAnalyzer/
 │   └── maa/             #   [日志分析]
 │       ├── watcher.py          # 日志包监听（主要触发入口）
 │       ├── analyzer.py         # 下载 → 摘要 → 仓库检索 → LLM → 报告 流程编排
-│       ├── log_digest.py       # 日志摘要提取（核心算法）
+│       ├── archive_profile.py  # 日志包 UI 类型 / 软件版本 / MaaFramework 版本识别
+│       ├── log_digest.py       # 日志摘要提取（核心算法，按 UI 布局选择日志）
 │       ├── repo.py             # 项目代码检索（仓库/版本/tag 管理）
 │       ├── repo_tools.py       # agent 模式的仓库工具集（含路径沙箱）
 │       ├── log_tools.py        # 日志包工具（AI 自主读压缩包内原始文件）
@@ -67,7 +69,8 @@ OnebotMaaLogAnalyzer/
 │   ├── repos/           # 克隆的仓库缓存（按 url+branch 哈希命名，**永不清理**）
 │   └── <配置名>/         # 各配置独立目录
 │       ├── groups.json       # 监听群 + 通知群
-│       ├── settings.json     # 分析设置覆盖
+│       ├── settings.json     # 分析设置覆盖（/maa set）
+│       ├── project.json      # 项目配置覆盖（/maa project set）
 │       ├── commands.json     # 指令与权限设置
 │       ├── history/          # 分析历史（日志包 + 追问上下文 + 会话状态，按周期自动清理）
 │       └── jobs/records.json # 分析任务记录
