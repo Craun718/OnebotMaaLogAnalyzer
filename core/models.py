@@ -86,13 +86,15 @@ class RepoConfig(BaseModel):
 
     来源二选一（path 优先）：
       - path: 本地已存在的仓库目录，无需网络与 git
-      - url:  git 仓库地址（支持镜像），浅克隆到 data/repos/<hash> 并复用
+      - url:  git 仓库地址；mirrors 按顺序作为备用来源
+        预下载开启 → 完整克隆并初始化子模块；关闭 → 浅克隆并按需拉取
 
     版本切换：
       - 从日志包文件名提取版本号（如 ...-logs-1.0.0-alpha.9-20260907-033044.zip），
         自动 checkout 对应 tag，使代码参考与日志实际运行的版本一致
-      - 可选允许 AI 在限定轮次内请求切换其他 tag 复核
-      - 分析结束后强制切回最新（默认分支）
+      - allow_ai_switch_tag 开启时，AI 可在限定轮次内获取其他 tag / commit 复核
+        （与预下载开关无关）
+      - 分析结束后还原到分析前的分支、tag 或提交
     """
 
     enabled: bool = False
@@ -105,13 +107,19 @@ class RepoConfig(BaseModel):
     # ── 来源 ──
     path: str = ""
     url: str = "https://github.com/MAAXYZ/MaaXXX"
+    mirrors: List[str] = Field(default_factory=list)
     branch: str = ""
     default_branch: str = ""       # 分析结束后切回的目标，空 = 自动探测
-    update_on_analyze: bool = False  # 每次分析前 git pull（仅 url 模式）
+    # 启动时预下载：完整克隆（含全部历史 / tag）并初始化子模块；
+    # 关闭时改为首次分析时浅克隆，并按需拉取 tag / commit
+    preload_enabled: bool = True
+    preload_retries: int = 3
+    update_on_analyze: bool = False  # 每份日志分析前更新默认分支
+    allow_ai_update: bool = True    # 允许 AI 请求更新当前配置的仓库
 
     # ── 版本切换 ──
     auto_checkout_version: bool = True      # 从日志版本号自动切 tag
-    allow_ai_switch_tag: bool = True        # 允许 AI 请求切换 tag
+    allow_ai_switch_tag: bool = True        # 允许 AI 获取并切换 tag / commit
     max_tag_switch_rounds: int = 2          # AI 切换 tag 的最大轮次
     # 分析结束后是否还原到分析前的位置。
     # 部署环境用浅克隆时，还原只是切回原来的 tag，开销可忽略；
@@ -126,11 +134,6 @@ class RepoConfig(BaseModel):
     max_tool_calls_per_round: int = 6  # 单轮最多执行的工具数
     max_tool_result_chars: int = 30000  # 单次工具结果字符上限
     agent_deadline_seconds: int = 600  # agent 循环总时长上限
-
-    # ── 克隆策略 ──
-    clone_depth: int = 1            # 浅克隆深度，0 = 完整克隆（含全部历史）
-    fetch_tags_on_demand: bool = True  # 需要某个 tag 时才拉取
-    clone_timeout_seconds: int = 300
 
     # ── 扫描范围 ──
     extensions: List[str] = Field(
@@ -151,6 +154,16 @@ class RepoConfig(BaseModel):
     def usable(self) -> bool:
         """是否配置了可用来源。"""
         return bool(self.path or self.url)
+
+    def remote_urls(self) -> list[str]:
+        """返回去重后的主地址与镜像，保持配置顺序。"""
+        if self.path:
+            return []
+        return list(dict.fromkeys(
+            str(url).strip()
+            for url in [self.url, *self.mirrors]
+            if str(url).strip()
+        ))
 
     def git_ops_allowed(self) -> bool:
         """是否需要（且允许）对仓库执行 git 切换操作。"""
@@ -297,7 +310,7 @@ class AnalysisSettings(BaseModel):
     # 保留「用于追问的消息 ID + 日志压缩包 + 报告」，使追问可跨越较长时间。
     # 清理策略：每过一个 period 检查一次，删除超过 keep_periods 个周期的记录。
     # 因此默认 1d 周期 / 保留 2 周期 → 可追问约 2~3 天内的日志。
-    # 注意：git 仓库缓存（data/repos）不属于历史记录，**永不删除**。
+    # 注意：git 仓库缓存（data/repo）不属于历史记录，**永不删除**。
     history_enabled: bool = True
     history_period_hours: int = 24      # 保留周期（默认 1 天）
     history_keep_periods: int = 2       # 删除 N 个周期以前的记录
@@ -337,8 +350,9 @@ class AnalysisSettings(BaseModel):
     max_maafw_bak_mb: int = 64
     # 分卷日志包（*-part01.zip / *-part02.zip）自动合并分析
     merge_archive_parts: bool = True
-    # 分卷包上传后等待多少秒再拉取群文件列表，给其余分卷留出上传时间
-    archive_part_settle_seconds: float = 3.0
+    # 分卷包静默期：每收到一个新分卷就重新计时，连续该秒数无新分卷后才分析
+    # 0 = 收到第一个分卷立即分析（可能缺少后续分卷）
+    archive_part_settle_seconds: float = 30.0
     max_log_file_read_kb: int = 512
     small_log_full_read_mb: int = 5
     stream_medium_logs: bool = True

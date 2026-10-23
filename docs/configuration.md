@@ -221,7 +221,8 @@ project： config.json 的 project
 | MaaFwApp | `maafw_logs_20261022_195657.zip` | `maafwapp` |
 
 Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版本，并写入摘要和报告头；
-分卷包 `*-partNN.zip` 会自动下载并合并分析。
+分卷包 `*-partNN.zip` 会先等待上传（连续 `archive_part_settle_seconds` 秒无新分卷），
+再自动下载并合并分析。
 
 > **不兼容旧配置**：`settings` 中的 `file_prefix` / `extra_file_prefixes` /
 > `auto_detect_archive` / `display_name` / `archive_match_mode` /

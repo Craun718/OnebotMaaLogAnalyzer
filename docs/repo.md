@@ -6,7 +6,15 @@
 2. **检索代码** — 见下方两种模式
 3. **还原位置** — 分析结束（无论成败）**精确还原到分析前所在的 ref**（分支 / tag / 提交），不会把你的工作分支切走
 
-来源二选一（`path` 优先）：本地已有仓库目录，或 git 地址（支持镜像，浅克隆到 `data/repos/<hash>` 并复用）。
+来源二选一（`path` 优先）：本地已有仓库目录，或 git 主地址与备用镜像。备用镜像按配置顺序依次尝试；克隆到 `data/repo/<安全配置名>` 并复用。
+
+启用预下载时，Bot 在启动后后台**完整克隆**仓库（全部历史与 tag，并初始化子模块；最多重试 `preload_retries` 次），此后切换任意日志版本都不需要再联网。预下载期间到达日志会使用独立临时浅克隆，不等待启动下载；启动预下载完成后，后续分析切换到配置仓库目录，临时仓库会清理。若启动预下载最终失败，分析期间成功的临时克隆会提升为该配置的缓存。
+
+关闭预下载时改为**浅克隆**（`--depth 1 --single-branch`），首次分析时下载，tag / commit 按需拉取。若此前是浅克隆、之后打开预下载，下次准备仓库时会自动重新完整克隆。
+
+> 进程被中断可能留下 `.clone-*` / `.stale-*` 暂存目录；下次启动会按配置自动清理。克隆超时或取消时会连同 git 子进程（`index-pack` / `remote-https`）一起终止，避免残留文件被占用导致清理失败。
+
+> 每个来源在克隆前会先用 `git ls-remote` 探测（60 秒），无响应的镜像会直接跳过，而不是等到克隆超时。完整克隆超时 30 分钟，浅克隆 10 分钟。
 
 ## 两种检索模式
 
@@ -29,7 +37,10 @@
     "enabled": true,
     "mode": "inject",                            // 或 "agent"
     "path": "E:/Code/MAA/MaaXXX",               // 本地仓库（推荐，无需网络与 git）
-    "url": "https://github.com/MAAXYZ/MaaXXX",  // 或 git 地址，支持镜像
+    "url": "https://github.com/MAAXYZ/MaaXXX",  // 主地址
+    "mirrors": ["https://mirror.example/MaaXXX.git"], // 按顺序备用
+    "preload_enabled": true,
+    "preload_retries": 3,
     "branch": ""
   }
 }
@@ -45,22 +56,23 @@
 | `enabled` | `false` | 是否启用项目代码参考 |
 | `mode` | `inject` | 检索模式：`inject` 或 `agent` |
 | `path` | 空 | 本地仓库目录，**优先于 `url`**，不执行任何仓库代码 |
-| `url` | `https://github.com/MAAXYZ/MaaXXX` | git 地址，**支持镜像**；浅克隆到 `data/repos/<hash>` 并复用 |
+| `url` | `https://github.com/MAAXYZ/MaaXXX` | 主 git 地址；始终浅克隆 |
+| `mirrors` | `[]` | 备用 git 地址，按顺序依次尝试，直到一个来源成功 |
 | `branch` | 空 | 克隆时使用的分支 / tag，空 = 默认分支 |
 | `default_branch` | 空 | 无法还原原位置时的兜底目标，空 = 自动探测 |
-| `update_on_analyze` | `false` | 每次分析前 `git pull`（仅 `url` 模式） |
+| `preload_enabled` | `true` | 启动后后台完整克隆一次（全部历史 / tag + 子模块）；关闭时在首次日志到达时浅克隆 |
+| `preload_retries` | `3` | 启动预下载失败时的尝试次数（最大 5 次，间隔递增） |
+| `update_on_analyze` | `false` | 每份日志分析前更新默认分支，然后再对齐日志版本 tag |
+| `allow_ai_update` | `true` | agent 模式允许 AI 用 `pull_latest` 更新当前配置仓库的默认分支；不接受 URL 或 Git 命令 |
 | `auto_checkout_version` | `true` | 按压缩包内解析的资源版本（无则用文件名版本）自动切 tag |
-| `allow_ai_switch_tag` | `true` | 允许 AI 请求切换其他 tag 复核 |
-| `max_tag_switch_rounds` | `2` | AI 切换 tag 的最大轮次 |
+| `allow_ai_switch_tag` | `true` | 允许 AI 获取并切换到其他 tag / commit 复核，与预下载开关无关 |
+| `max_tag_switch_rounds` | `2` | AI 切换 tag 的最大轮次（`0` = 不开放该工具） |
 | `restore_latest_after_analyze` | `true` | 分析结束后还原到分析前的位置 |
 | `refuse_dirty_worktree` | `true` | 工作区有未提交改动时拒绝切换（保护本地开发） |
 | `max_tool_rounds` | `8` | **agent** 工具调用最大轮次 |
 | `max_tool_calls_per_round` | `6` | **agent** 单轮最多执行的工具数 |
 | `max_tool_result_chars` | `30000` | **agent** 单次工具结果字符上限 |
 | `agent_deadline_seconds` | `600` | **agent** 循环总时长上限 |
-| `clone_depth` | `1` | 浅克隆深度，`0` = 完整克隆（含全部历史） |
-| `fetch_tags_on_demand` | `true` | 需要某个 tag 时才拉取（避免首次克隆拉整个仓库） |
-| `clone_timeout_seconds` | `300` | git 克隆 / 拉取 / 切换超时秒数 |
 | `extensions` | `json/jsonc/yaml/yml/toml/md/txt` | 参与扫描的文件扩展名 |
 | `max_file_kb` | `256` | 跳过大于该值的文件 KB |
 | `max_scan_files` | `20000` | 单次扫描文件数上限 |
@@ -79,5 +91,11 @@
 > **版本号前缀自动兼容**：日志里是 `1.0.0-alpha.9`、仓库 tag 是 `v1.0.0-alpha.9` 也能正确匹配；若日志版本比 tag 更细（带构建号），会退化为前缀匹配。
 >
 > **镜像地址**：`url` 接受任意 git 可达地址（GitHub / Gitee / 自建镜像 / 本地 `file://`）。
+>
+> **子模块**：预下载模式下每次更新 / 切换版本后会执行 `submodule update --init --recursive`；子模块失败只告警，主仓库仍可用。`path` 模式不会改动你的子模块。
+>
+> **失败原因可见**：克隆 / 更新失败时，日志与 `/maa repo` 的预下载状态会给出脱敏后的 git 报错（远端地址替换为「主地址 / 备用镜像 #N」），便于判断是网络、403 还是地址错误。
+>
+> **AI 远端操作受限**：AI 只能调用不带参数的 `pull_latest` 更新此配置的仓库；不得指定 URL、执行任意 Git 命令。获取 tag / commit 的工具由 `allow_ai_switch_tag` 控制（与预下载是否开启无关），且受 `max_tag_switch_rounds` 限制。
 >
 > **本地开发安全**：若 `path` 指向你正在开发的仓库且存在未提交改动，Bot 会跳过版本切换（`refuse_dirty_worktree`），避免 `checkout` 破坏工作区；此时仍会检索当前分支的代码。

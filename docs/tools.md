@@ -30,7 +30,8 @@
 | `search_repo` | 正则搜索，定位节点定义 / 字段 / 阈值（最高效） |
 | `read_file` | 读文件，支持 `start_line` / `end_line` 分段读大文件 |
 | `list_tags` | 列出可用版本 tag |
-| `checkout_tag` | 切换到指定版本复核（受 `max_tag_switch_rounds` 限制） |
+| `pull_latest` | 从当前配置的远端更新默认分支；不接受 URL 或 Git 命令 |
+| `checkout_ref` | 获取 tag / commit；仅在 `allow_ai_switch_tag` 开启时提供（受 `max_tag_switch_rounds` 限制） |
 
 ## 沙箱安全
 
@@ -38,7 +39,7 @@
 - 日志包内路径拒绝绝对路径与 `..` 上跳
 - 拒绝读取 `.git` 内部、二进制文件与[凭据密钥类文件](attachments.md#敏感文件保护)
 - 单文件读取受字节上限、单次返回受字符上限约束
-- 只读仓库文件，**绝不执行仓库中的任何代码**
+- 读取仓库文件；Git 更新/切换仅通过固定工具执行，**绝不执行仓库中的任何代码或任意 Git 命令**
 
 ## 限制
 

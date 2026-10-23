@@ -26,6 +26,7 @@ from core.models import (
     RepoConfig,
     normalize_ui_key,
 )
+from features.maa.repo import redact_remote_url
 
 logger = logging.getLogger("Maa.Commands")
 
@@ -36,7 +37,7 @@ _PROTECTED_FIELDS = {"system_prompt"}
 _FIELD_LABELS: dict[str, str] = {
     "enabled": "是否启用该配置",
     "merge_archive_parts": "自动合并分卷日志包",
-    "archive_part_settle_seconds": "分卷合并前等待秒数",
+    "archive_part_settle_seconds": "分卷静默期（连续无新分卷的秒数）",
     "max_maafw_bak_files": "最多处理几个 maafw.bak",
     "max_maafw_bak_mb": "单个 maafw.bak 大小上限 MB（0=不限）",
     "send_progress_message": "是否发送进度提示",
@@ -80,9 +81,14 @@ _REPO_LABELS: dict[str, str] = {
     "mode": "检索模式：inject / agent",
     "path": "本地仓库目录",
     "url": "git 仓库地址（支持镜像）",
+    "mirrors": "备用镜像地址（按顺序尝试）",
     "branch": "分支 / tag",
+    "preload_enabled": "启动时预下载仓库",
+    "preload_retries": "启动预下载失败重试次数",
+    "update_on_analyze": "每次分析日志前更新仓库",
+    "allow_ai_update": "允许 AI 更新仓库",
     "auto_checkout_version": "按日志版本自动切 tag",
-    "allow_ai_switch_tag": "允许 AI 切换 tag",
+    "allow_ai_switch_tag": "允许 AI 获取并切换 tag / commit",
     "restore_latest_after_analyze": "分析后还原原位置",
     "max_tool_rounds": "agent 最大工具轮次",
     "max_tool_result_chars": "单次工具结果字符上限",
@@ -118,10 +124,12 @@ class CommandResult:
 class CommandHandler:
     """解析并执行 /maa 指令。"""
 
-    def __init__(self, service, followup_store=None, history_store=None):
+    def __init__(self, service, followup_store=None, history_store=None,
+                 analyzer=None):
         self.s = service
         self.followup = followup_store
         self.history = history_store
+        self.analyzer = analyzer
         self._current_group = ""   # 当前指令所属群（供 followup 子指令使用）
 
     # ════════════════════════════════════════════════════════════
@@ -213,7 +221,7 @@ class CommandHandler:
         # repo 的写入子指令需写权限；纯查看保持读权限
         if action == "repo" and rest and rest[0].lower() in {
             "mode", "url", "path", "branch", "on", "enable", "开",
-            "off", "disable", "关",
+            "off", "disable", "关", "mirror", "preload",
         }:
             required = commands.write_level
         # history clean / purge 需写权限
@@ -259,8 +267,10 @@ class CommandHandler:
             f"  {prefix} set <项> <值>      修改分析设置",
             f"  {prefix} project set <项> <值>  修改项目配置",
             f"  {prefix} repo mode <模式>   切换 inject / agent",
-            f"  {prefix} repo url <地址>    设置仓库地址（支持镜像）",
+            f"  {prefix} repo url <地址>    设置仓库主地址",
+            f"  {prefix} repo mirror add <地址> 添加备用镜像",
             f"  {prefix} repo path <目录>   设置本地仓库目录",
+            f"  {prefix} repo preload on|off 启停启动预下载",
             f"  {prefix} history clean      清理超期历史记录",
             f"  {prefix} history purge      清空全部分析历史",
             f"  {prefix} enable            启用本配置",
@@ -406,8 +416,9 @@ class CommandHandler:
                 return CommandResult(text=f"值无效：{error}", ok=False)
             self.s.set_project_override(cfg.name, field_name, value, nested="repo")
             self.s.save_config(cfg.name)
+            shown_value = redact_remote_url(value) if field_name == "url" else value
             return CommandResult(
-                text=f"已设置 project.repo.{field_name} = {value}"
+                text=f"已设置 project.repo.{field_name} = {shown_value}"
                      f"（{_REPO_LABELS.get(field_name, field_name)}）"
             )
 
@@ -431,12 +442,29 @@ class CommandHandler:
             if not _is_simple_type(info.annotation):
                 continue
             value = getattr(repo, name, None)
+            if name == "url" and value:
+                value = redact_remote_url(value)
             label = _REPO_LABELS.get(name, "")
             shown = "空" if value in ("", None) else value
             suffix = f"  # {label}" if label else ""
             lines.append(f"  {name} = {shown}{suffix}")
+        if repo.mirrors:
+            lines.append(
+                "  mirrors = "
+                + ", ".join(redact_remote_url(url) for url in repo.mirrors)
+            )
+        if self.analyzer is not None:
+            lines.extend([
+                "",
+                "预下载状态："
+                + self.analyzer.repo_preload_status(cfg.name),
+            ])
         lines.append("")
-        lines.append(f"修改：{cfg.commands.prefix} repo mode agent   /   {cfg.commands.prefix} repo url <地址>")
+        lines.append(
+            f"修改：{cfg.commands.prefix} repo mode agent / "
+            f"{cfg.commands.prefix} repo mirror add <地址> / "
+            f"{cfg.commands.prefix} repo preload on|off"
+        )
         return CommandResult(text="\n".join(lines))
 
     async def _cmd_jobs(self, cfg: ConfigState, args: list[str]) -> CommandResult:
@@ -594,11 +622,56 @@ class CommandHandler:
                 return CommandResult(
                     text=f"用法：{cfg.commands.prefix} repo {sub} <值>", ok=False)
             return await self._set_repo_field(cfg, sub, " ".join(args[1:]))
+        if sub == "preload" and len(args) >= 2:
+            value = args[1].lower()
+            if value in {"on", "enable", "开"}:
+                value = "true"
+            elif value in {"off", "disable", "关"}:
+                value = "false"
+            return await self._set_repo_field(cfg, "preload_enabled", value)
+        if sub == "mirror":
+            return await self._cmd_repo_mirror(cfg, args[1:])
         if sub in ("on", "enable", "开"):
             return await self._set_repo_field(cfg, "enabled", "true")
         if sub in ("off", "disable", "关"):
             return await self._set_repo_field(cfg, "enabled", "false")
         return CommandResult(text=f"未知 repo 子指令：{sub}", ok=False)
+
+    async def _cmd_repo_mirror(self, cfg: ConfigState,
+                               args: list[str]) -> CommandResult:
+        repo = cfg.project.repo
+        action = args[0].lower() if args else ""
+        mirrors = list(repo.mirrors)
+        if action == "add" and len(args) >= 2:
+            value = " ".join(args[1:]).strip()
+            if not value:
+                return CommandResult(text="镜像地址不能为空。", ok=False)
+            if value in mirrors or value == repo.url:
+                return CommandResult(text="该地址已在主地址或镜像列表中。", ok=False)
+            mirrors.append(value)
+        elif action == "remove" and len(args) >= 2:
+            value = " ".join(args[1:]).strip()
+            if value.isdigit():
+                index = int(value) - 1
+                if index < 0 or index >= len(mirrors):
+                    return CommandResult(text="镜像序号不存在。", ok=False)
+                mirrors.pop(index)
+            elif value in mirrors:
+                mirrors.remove(value)
+            else:
+                return CommandResult(text="镜像地址不存在。", ok=False)
+        elif action == "clear":
+            mirrors.clear()
+        else:
+            return CommandResult(
+                text=f"用法：{cfg.commands.prefix} repo mirror add <地址> / "
+                     f"remove <序号或地址> / clear",
+                ok=False,
+            )
+
+        self.s.set_project_override(cfg.name, "mirrors", mirrors, nested="repo")
+        self.s.save_config(cfg.name)
+        return CommandResult(text="已更新 repo.mirrors（下次准备/更新仓库时生效）。")
 
     async def _set_repo_field(self, cfg: ConfigState, name: str,
                               raw_value: str) -> CommandResult:
@@ -620,7 +693,8 @@ class CommandHandler:
         self.s.set_project_override(cfg.name, name, value, nested="repo")
         self.s.save_config(cfg.name)
         label = _REPO_LABELS.get(name, name)
-        logger.info(f"[指令] {cfg.name}: repo.{name} = {value!r}")
+        shown_value = redact_remote_url(value) if name == "url" else value
+        logger.info(f"[指令] {cfg.name}: repo.{name} = {shown_value!r}")
 
         extra = ""
         if name == "mode":
@@ -630,7 +704,11 @@ class CommandHandler:
             extra = "\n下次分析时会克隆该仓库（首次较慢），请确认地址可访问。"
         elif name == "path":
             extra = "\n请确认该目录存在且是有效的项目仓库。"
-        return CommandResult(text=f"已设置 {label}（repo.{name}）= {value}{extra}")
+        elif name == "preload_enabled":
+            extra = "\n启动预下载的启停变更将在下次启动或 /maa reload 后生效。"
+        return CommandResult(
+            text=f"已设置 {label}（repo.{name}）= {shown_value}{extra}"
+        )
 
 
 # ════════════════════════════════════════════════════════════════

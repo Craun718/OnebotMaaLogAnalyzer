@@ -35,7 +35,9 @@ class MessageHandler:
         self.history = history
         # watcher.send_segments 回调，用于复用图文混排发送逻辑
         self.segment_sender = segment_sender
-        self.commands = CommandHandler(service, followup, history_store=history)
+        self.commands = CommandHandler(
+            service, followup, history_store=history, analyzer=analyzer
+        )
 
     # ════════════════════════════════════════════════════════════
     # 入口

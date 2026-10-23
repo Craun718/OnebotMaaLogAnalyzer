@@ -19,8 +19,11 @@
 /maa project set ui.mfaa.enabled false
 /maa project set repo.mode agent
 /maa repo mode agent   切换 inject / agent
-/maa repo url <地址>   设置仓库地址（支持镜像）
+/maa repo url <地址>   设置仓库主地址
 /maa repo path <目录>  设置本地仓库目录
+/maa repo mirror add <地址>    添加备用镜像（按顺序尝试）
+/maa repo mirror remove <序号或地址>
+/maa repo preload on|off       启用 / 关闭启动预下载
 /maa history clean     清理超期历史记录
 /maa history purge     清空全部分析历史
 /maa enable|disable    启用 / 停用本配置

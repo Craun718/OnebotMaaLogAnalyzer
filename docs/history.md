@@ -48,7 +48,7 @@ graph LR
 | `history_max_records` | `200` | 记录条数安全上限（防磁盘写满） |
 | `history_max_total_mb` | `4096` | 历史目录总大小安全上限 MB |
 
-> ⚠️ **git 仓库缓存（`data/repos/`）不属于历史记录，永远不会被清理。**
+> ⚠️ **git 仓库缓存（`data/repo/`）不属于历史记录，永远不会被清理。**
 > 清理只删除 `data/<配置名>/history/` 内部以记录 ID 命名的子目录（有路径越界校验）。
 
 ## 手动管理

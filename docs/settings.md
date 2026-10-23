@@ -33,11 +33,22 @@
 | `send_progress_message` | `true` | 是否发送进度提示 |
 | `send_summary` | `true` | 是否发送分析结果 |
 | `reply_chunk_chars` | `3500` | 回复分段字符数 |
-| `duplicate_window_seconds` | `120` | 同一文件（含同一组分卷）去重窗口；`0` = 关闭去重 |
+| `duplicate_window_seconds` | `120` | 同一文件 / 同一组归档的去重与冷却窗口；`0` = 关闭去重 |
 
 > **去重窗口**：部分协议端（如 SnowLuma）对一次上传会同时发出 `notice.group_upload`
 > 与带 file 段的消息事件，两条入口各自触发一次分析导致重复回复。窗口内的同一文件只处理一次。
-> 分卷日志包（`*-part01.zip` / `*-part02.zip`）也按同一组去重，避免每个分卷各触发一轮报告。
+>
+> 分析耗时可能超过窗口：同一归档**分析进行中**时到达的分卷 / 重复事件会直接忽略，
+> 且窗口在**分析结束时重新计时**，因此延迟到达的重复通知不会触发第二轮分析。
+
+### 分卷日志包的处理顺序
+
+- **非分卷**（`xxx.zip`）：匹配到后立即下载分析
+- **分卷**（`xxx-part01.zip`、`xxx-part02.zip`…）：先登记并**重新计时**，
+  连续 `archive_part_settle_seconds` 秒没有新分卷后才开始分析一次
+- 分卷静默期内到达的新分卷会取消上一次计时，因此上传顺序、间隔都不影响合并结果
+- 同一分卷经 `notice.group_upload` 与 `message.file` 重复上报不会重置静默计时
+- 分析进行中到达的分卷会被忽略；分析结束后的 `duplicate_window_seconds` 内不再重复触发
 
 ## 日志包命名与 UI 自动识别
 
@@ -127,7 +138,7 @@ Bot 会从文件名、`maafw.log` 头部、MFAA 的 `logs/log-*.log`、MaaFwApp 
 | `max_maafw_bak_files` | `1` | 最多纳入摘要的 `maafw.bak.*` 轮转备份日志数；`0` = 不纳入 |
 | `max_maafw_bak_mb` | `64` | 单个 `maafw.bak` 大小上限 MB；`0` = 不限制 |
 | `merge_archive_parts` | `true` | 自动合并 `*-partNN.zip` 分卷日志包 |
-| `archive_part_settle_seconds` | `3` | 分卷上传后等待多少秒再拉取群文件列表 |
+| `archive_part_settle_seconds` | `30` | 分卷静默期：每来一个新分卷重新计时，连续该秒数无新分卷后才开始分析；`0` = 收到首个分卷立即分析 |
 | `max_log_chars` | `120000` | 单个日志摘要字符上限 |
 | `max_recognition_evidence_chars` | `35000` | OCR 重点证据块字符上限 |
 | `max_recognition_evidence_lines` | `60` | OCR 重点证据行数上限 |

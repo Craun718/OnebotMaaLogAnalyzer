@@ -6,14 +6,15 @@
   - search_repo   正则搜索（定位节点定义、字段、阈值）
   - read_file     读文件（支持行范围，便于分段查看大文件）
   - list_tags     列出可用版本 tag
-  - checkout_tag  切换到指定版本复核
+  - checkout_ref  获取 tag / commit（受 allow_ai_switch_tag 与次数限制）
+  - pull_latest   从当前配置远端更新默认分支
 
 安全边界:
   - 所有路径先 resolve 再校验必须位于仓库根目录内（防 ../ 逃逸与符号链接逃逸）
   - 读取受单文件字节上限、单次返回字符上限约束
   - 拒绝读取 .git 内部与明显的二进制文件
   - 只读仓库文件，绝不执行仓库中的任何代码
-  - checkout_tag 受 refuse_dirty_worktree 保护，且计入总轮次
+  - Git 更新与切换仅能通过固定工具及当前配置的远端执行
 """
 from __future__ import annotations
 
@@ -129,25 +130,57 @@ TOOL_DEFINITIONS: list[dict] = [
     {
         "type": "function",
         "function": {
-            "name": "checkout_tag",
+            "name": "checkout_ref",
             "description": (
-                "把项目仓库切换到指定版本 tag，之后读取的代码即为该版本。"
-                "仅在需要核对日志运行版本之外的其他版本时使用。"
-                "分析结束后 Bot 会自动切回最新版本。"
+                "从当前配置的仓库远端获取并切换到指定 tag 或 commit SHA。"
+                "仅在确需核对其他版本时使用，受切换次数上限约束。"
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "tag": {
+                    "ref": {
                         "type": "string",
-                        "description": "版本 tag，如 v1.0.0-alpha.9",
+                        "description": "tag 名或 7-40 位 commit SHA",
                     },
                 },
-                "required": ["tag"],
+                "required": ["ref"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "pull_latest",
+            "description": (
+                "从当前配置的项目仓库远端更新默认分支。"
+                "不接受 URL、分支或 Git 命令参数；仅在需要最新源码且有权限时调用。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
             },
         },
     },
 ]
+
+
+def repo_tool_definitions(config: RepoConfig) -> list[dict]:
+    """Expose only repo tools allowed by this repository's settings."""
+    definitions: list[dict] = []
+    for item in TOOL_DEFINITIONS:
+        name = item["function"]["name"]
+        if name == "pull_latest" and (
+            not config.allow_ai_update or config.path
+        ):
+            continue
+        if name == "checkout_ref" and (
+            not config.allow_ai_switch_tag
+            or int(config.max_tag_switch_rounds or 0) <= 0
+        ):
+            continue
+        definitions.append(item)
+    return definitions
 
 
 # 日志压缩包工具（供 AI 像读仓库一样读取日志包内的原始文件）
@@ -252,7 +285,8 @@ class RepoTools:
     def __init__(self, provider: RepoProvider, config: RepoConfig):
         self.provider = provider
         self.cfg = config
-        self.tag_switches = 0          # 已切换 tag 次数（受 max_tag_switch_rounds 限制）
+        self.ref_switches = 0
+        self.update_calls = 0
         self._max_read_bytes = max(16, int(config.max_file_kb or 256)) * 1024
 
     # ════════════════════════════════════════════════════════════
@@ -266,11 +300,12 @@ class RepoTools:
             "search_repo": self._search_repo,
             "read_file": self._read_file,
             "list_tags": self._list_tags,
-            "checkout_tag": self._checkout_tag,
+            "checkout_ref": self._checkout_ref,
+            "pull_latest": self._pull_latest,
         }.get(name)
 
         if handler is None:
-            return f"未知工具：{name}。可用工具：list_dir, search_repo, read_file, list_tags, checkout_tag"
+            return f"未知仓库工具：{name}"
 
         try:
             return await handler(arguments or {})
@@ -526,42 +561,29 @@ class RepoTools:
             text = f"（仅显示最近 {len(shown)} 个）\n" + text
         return text
 
-    async def _checkout_tag(self, args: dict) -> str:
-        tag = str(args.get("tag") or "").strip()
-        if not tag:
-            return "缺少 tag 参数"
+    async def _checkout_ref(self, args: dict) -> str:
+        ref = str(args.get("ref") or "").strip()
+        if not ref:
+            return "缺少 ref 参数"
 
         limit = max(0, int(self.cfg.max_tag_switch_rounds or 0))
         if not self.cfg.allow_ai_switch_tag:
             return "配置已禁用 AI 切换版本（repo.allow_ai_switch_tag=false）"
-        if self.tag_switches >= limit:
+        if self.ref_switches >= limit:
             return f"已达到切换版本上限（{limit} 次），请基于当前版本给出结论"
 
-        root = self.provider.root
-        if root is None or not (root / ".git").exists():
-            return "仓库不是 git 仓库（或未配置 git 来源），无法切换版本"
+        ok, message = await self.provider.checkout_remote_ref(ref)
+        if ok:
+            self.ref_switches += 1
+            return (f"{message}（本分析已切换 {self.ref_switches}/{limit} 次）。"
+                    "后续仓库读取将使用该版本；分析结束后会还原原位置。")
+        return message
 
-        if await self.provider.is_dirty(root):
-            return ("仓库存在未提交改动，为保护工作区已拒绝切换版本。"
-                    "请基于当前版本给出结论。")
-
-        # 允许省略 v 前缀
-        target = tag
-        if not await self.provider.tag_exists(root, target):
-            alt = tag if tag.startswith("v") else f"v{tag}"
-            if await self.provider.tag_exists(root, alt):
-                target = alt
-            else:
-                await self.provider._fetch_tag_candidates(root, tag)
-                if await self.provider.tag_exists(root, alt):
-                    target = alt
-                elif not await self.provider.tag_exists(root, target):
-                    return f"未找到 tag：{tag}（可用 list_tags 查看）"
-
-        if not await self.provider.checkout(root, target):
-            return f"切换到 {target} 失败：{self.provider.last_error or '未知原因'}"
-
-        self.tag_switches += 1
-        return (f"已切换到版本 {target}（本分析已切换 {self.tag_switches}/{limit} 次）。"
-                f"后续 read_file / search_repo 读到的是该版本代码。"
-                f"分析结束后会自动切回最新版本。")
+    async def _pull_latest(self, args: dict) -> str:
+        if not self.cfg.allow_ai_update:
+            return "配置已禁用 AI 更新仓库"
+        if self.update_calls >= 1:
+            return "本次分析已调用过更新工具，请基于当前仓库继续分析"
+        self.update_calls += 1
+        ok, message = await self.provider.update_latest()
+        return message if ok else f"更新未成功：{message}"
