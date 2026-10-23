@@ -295,8 +295,9 @@ class CLISession:
             lines.append(f"  {BOLD}{name}{RESET}")
             lines.append(f"     监听群: {groups}")
             lines.append(f"     通知群: {notify}")
-            lines.append(f"     启用: {state.settings.enabled}  "
-                         f"前缀: {state.settings.file_prefix}  "
+            lines.append(f"     项目: {state.project.name or '（未设置）'}  "
+                         f"识别: {state.project.archive_match_mode}  "
+                         f"启用: {state.settings.enabled}  "
                          f"任务数: {len(state.jobs)}")
         return "\n".join(lines)
 

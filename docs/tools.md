@@ -17,6 +17,8 @@
 > 例如摘要里被截断的完整堆栈、某个配置项的原文、某行日志的上下文。
 > 压缩包**只读不落盘**（不解压到磁盘），路径同样受相对路径沙箱与敏感文件策略约束。
 > 追问时也会开放这些工具，因此 AI 不再只能回答「摘要中未包含」。
+> 日志路径会随 UI 不同而变化（MXU 根目录 `maafw.log`、MFAAvalonia `debug/maafw.log`、
+> MaaFwApp `log/maafw.log` 与 `pi/debug/maafw.log`），工具按压缩包内实际路径访问，无需解压。
 
 ## 项目代码仓库工具
 
@@ -28,7 +30,8 @@
 | `search_repo` | 正则搜索，定位节点定义 / 字段 / 阈值（最高效） |
 | `read_file` | 读文件，支持 `start_line` / `end_line` 分段读大文件 |
 | `list_tags` | 列出可用版本 tag |
-| `checkout_tag` | 切换到指定版本复核（受 `max_tag_switch_rounds` 限制） |
+| `pull_latest` | 从当前配置的远端更新默认分支；不接受 URL 或 Git 命令 |
+| `checkout_ref` | 获取 tag / commit；仅在 `allow_ai_switch_tag` 开启时提供（受 `max_tag_switch_rounds` 限制） |
 
 ## 沙箱安全
 
@@ -36,7 +39,7 @@
 - 日志包内路径拒绝绝对路径与 `..` 上跳
 - 拒绝读取 `.git` 内部、二进制文件与[凭据密钥类文件](attachments.md#敏感文件保护)
 - 单文件读取受字节上限、单次返回受字符上限约束
-- 只读仓库文件，**绝不执行仓库中的任何代码**
+- 读取仓库文件；Git 更新/切换仅通过固定工具执行，**绝不执行仓库中的任何代码或任意 Git 命令**
 
 ## 限制
 

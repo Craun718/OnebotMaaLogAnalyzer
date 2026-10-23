@@ -116,9 +116,47 @@ def default_config() -> dict:
                 "默认": {
                     "listen_groups": ["123456789"],
                     "notify_group": "123456789",
+                    # 项目相关：名称 / 各 UI 命名 / 项目代码仓库
+                    "project": {
+                        # 项目名（同时作为报告与提示词中的显示名）
+                        "name": "MaaXXX",
+                        # 文件名初筛：auto=已知 UI 命名/名字像日志
+                        #           known=仅已知 UI 命名
+                        #           prefix=仅 file_prefix 开头
+                        #           any=任意 zip，完全依赖下载后校验
+                        "archive_match_mode": "auto",
+                        # 仅 prefix 模式：是否额外做内容特征识别（默认 True）
+                        "require_log_layout": True,
+                        # 按 UI 开关：键名 mxu / mfaa / maafwapp / auto
+                        # "ui": {"mfaa": {"enabled": False}},
+                        # 项目代码参考：让 AI 对照源码核对节点定义、阈值与 expected 文本
+                        "repo": {
+                            "enabled": False,
+                            # 检索模式：inject=预检索注入提示词（快/省 token）
+                            #           agent =AI 自主调用工具检索（深/耗 token）
+                            "mode": "inject",
+                            # 二选一：本地仓库目录（推荐，无需网络）
+                            "path": "",
+                            # 或主 git 地址与按顺序尝试的备用镜像
+                            "url": "https://github.com/MAAXYZ/MaaXXX",
+                            "mirrors": [],
+                            "branch": "",
+                            # 启动预下载：完整克隆（含全部历史 / tag）并初始化子模块
+                            # 关闭时改为首次分析时浅克隆
+                            "preload_enabled": True,
+                            "preload_retries": 3,
+                            # 每份日志分析前更新；AI 也可按需调用 pull_latest
+                            "update_on_analyze": False,
+                            "allow_ai_update": True,
+                            # 按压缩包内解析出的资源版本自动切到对应 tag
+                            "auto_checkout_version": True,
+                            # 允许 AI 请求切换其他 tag 复核
+                            "allow_ai_switch_tag": True,
+                            # 分析结束后还原到分析前所在的分支
+                            "restore_latest_after_analyze": True,
+                        },
+                    },
                     "settings": {
-                        # 日志包文件名前缀（默认 MaaXXX-logs*.zip）
-                        "file_prefix": "MaaXXX-logs",
                         # 结果附图 / 附件：报告后附带错误截图、模板图或相关文件
                         "send_images": True,
                         "max_report_images": 4,
@@ -132,28 +170,10 @@ def default_config() -> dict:
                         "followup_window_minutes": 0,
                         # 分析历史：归档日志包 + 追问消息 ID，超期自动清理
                         # 默认保留周期 1d、保留 2 个周期 ⇒ 可追问约 2 天内的日志
-                        # 注意：git 仓库缓存（data/repos）不属于历史，永不删除
+                        # 注意：git 仓库缓存（data/repo）不属于历史，永不删除
                         "history_enabled": True,
                         "history_period_hours": 24,
                         "history_keep_periods": 2,
-                        # 项目代码参考：让 AI 对照源码核对节点定义、阈值与 expected 文本
-                        "repo": {
-                            "enabled": False,
-                            # 检索模式：inject=预检索注入提示词（快/省 token）
-                            #           agent =AI 自主调用工具检索（深/耗 token）
-                            "mode": "inject",
-                            # 二选一：本地仓库目录（推荐，无需网络）
-                            "path": "",
-                            # 或 git 地址（支持镜像），默认 MaaXXX 官方仓库
-                            "url": "https://github.com/MAAXYZ/MaaXXX",
-                            "branch": "",
-                            # 按日志包文件名中的版本号自动切到对应 tag
-                            "auto_checkout_version": True,
-                            # 允许 AI 请求切换其他 tag 复核
-                            "allow_ai_switch_tag": True,
-                            # 分析结束后还原到分析前所在的分支
-                            "restore_latest_after_analyze": True,
-                        },
                     },
                     # QQ 指令（默认前缀 /maa，发 `/maa help` 查看全部）
                     "commands": {
@@ -213,7 +233,7 @@ async def _history_cleanup_loop(history, service, interval_seconds: int = 3600):
     周期清理分析历史（默认每小时检查一次）。
 
     每个周期（history_period_hours）删除超过 history_keep_periods 个周期的记录。
-    仅清理 data/<配置>/history/ 目录，**不会**触碰 git 仓库缓存 data/repos。
+    仅清理 data/<配置>/history/ 目录，**不会**触碰 git 仓库缓存 data/repo。
     """
     while True:
         try:
@@ -337,6 +357,7 @@ class BotRuntime:
             asyncio.create_task(self._detect_backend()),
             asyncio.create_task(_history_cleanup_loop(self.history, self.service)),
         ]
+        self._tasks.extend(self.analyzer.start_repo_preloads())
         if mode in ("http_ws", "ws"):
             self._tasks.append(asyncio.create_task(self.ws.connect(ws_url)))
         if mode in ("ws_reverse", "http_ws_reverse"):
@@ -376,6 +397,9 @@ class BotRuntime:
 
     async def stop(self) -> None:
         """停止所有后台任务与连接，并保存数据（相当于进程退出的收尾）。"""
+        if self.watcher is not None:
+            # 丢弃尚未触发的分卷计时，避免重载后仍用旧配置分析
+            self.watcher.cancel_pending()
         tasks, self._tasks = self._tasks, []
         for task in tasks:
             task.cancel()

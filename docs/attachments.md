@@ -4,10 +4,15 @@
 
 ```text
 [附图@日志: on_error/on_error_20260101_120002.png]
+[附图@日志: debug/on_error/on_error_20260101_120002.png]
 [附图@项目: assets/resource/image/Start2.png]
 [附件@日志: config/mxu-MaaXXX.json]
+[附件@日志: device_info.txt]
 [附件@项目: assets/resource/pipeline/PVP.json]
 ```
+
+不同 UI 的日志包布局不同：MXU 的错误截图通常在根目录 `on_error/`，
+MFAAvalonia 在 `debug/on_error/`，MaaFwApp 可能没有错误截图。路径必须与摘要/工具返回的实际路径一致。
 
 ## 必须指定来源
 

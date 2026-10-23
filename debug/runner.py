@@ -371,8 +371,6 @@ def _apply_setup(manager: "DebugManager", setup: dict):
             raw_settings = spec.get("settings")
             if isinstance(raw_settings, dict):
                 raw_settings = json.loads(json.dumps(raw_settings))
-                if repo_path:
-                    raw_settings.setdefault("repo", {}).setdefault("path", repo_path)
                 state.settings = AnalysisSettings.model_validate(raw_settings)
                 # 夹具直接给出完整设置：登记为显式覆盖，
                 # 使后续 /maa set 重算时不会丢掉夹具里的其余字段
@@ -383,6 +381,19 @@ def _apply_setup(manager: "DebugManager", setup: dict):
                 state.commands = CommandConfig.model_validate(
                     json.loads(json.dumps(raw_commands))
                 )
+
+            raw_project = spec.get("project")
+            if isinstance(raw_project, dict):
+                raw_project = json.loads(json.dumps(raw_project))
+                if repo_path:
+                    raw_project.setdefault("repo", {}).setdefault("path", repo_path)
+                state.project_base = raw_project
+                state.project = manager.service._build_project(
+                    state.project_base, state.project_overrides, name
+                )
+            elif repo_path:
+                # 夹具没写 project 时，模拟仓库仍要注入到生效 repo
+                state.project.repo.path = repo_path
 
             manager.service.configs[name] = state
 
@@ -488,7 +499,7 @@ def _run_in_subprocess(manager: "DebugManager", event: dict) -> dict:
     repo_root = Path(__file__).resolve().parent.parent
 
     proc = subprocess.run(
-        [_sys.executable, "-m", "debug.worker"],
+        [_sys.executable, "-X", "utf8", "-m", "debug.worker"],
         input=json.dumps(job, ensure_ascii=False),
         capture_output=True,
         text=True,
@@ -689,13 +700,18 @@ def _sync_cfg_entry(manager: "DebugManager", name: str, spec: dict,
 
     settings = spec.get("settings")
     if isinstance(settings, dict):
-        cloned = json.loads(json.dumps(settings))
-        if repo_path:
-            cloned.setdefault("repo", {}).setdefault("path", repo_path)
-        entry["settings"] = cloned
+        entry["settings"] = json.loads(json.dumps(settings))
     commands = spec.get("commands")
     if isinstance(commands, dict):
         entry["commands"] = json.loads(json.dumps(commands))
+    project = spec.get("project")
+    if isinstance(project, dict):
+        cloned_project = json.loads(json.dumps(project))
+        if repo_path:
+            cloned_project.setdefault("repo", {}).setdefault("path", repo_path)
+        entry["project"] = cloned_project
+    elif repo_path:
+        entry["project"] = {"repo": {"path": repo_path}}
 
 
 def _run_history_cleanup(manager: "DebugManager", spec) -> None:

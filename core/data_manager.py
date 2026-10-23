@@ -207,6 +207,27 @@ class DataManager:
             return
         self._write_file(p, {"version": self.SETTINGS_VERSION, "overrides": overrides})
 
+    # ==================== 单配置的 project.json（/maa project set 覆盖） ====================
+
+    PROJECT_VERSION = 1
+
+    def load_config_project(self, name: str) -> Optional[dict]:
+        """加载配置级 project 覆盖（`/maa project set` 写入的增量）。"""
+        p = self._config_dir(name) / "project.json"
+        data = self._read_file(p)
+        return data if isinstance(data, dict) else None
+
+    def save_config_project(self, name: str, overrides: dict):
+        """保存 project 覆盖（为空时删除文件）。"""
+        p = self._config_dir(name) / "project.json"
+        if not overrides:
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return
+        self._write_file(p, {"version": self.PROJECT_VERSION, "overrides": overrides})
+
     # ==================== 生命周期 ====================
 
     def check_all(self):
@@ -217,5 +238,6 @@ class DataManager:
         """持久化单个配置的全部数据。"""
         self.save_config_info(name, state.info)
         self.save_config_settings(name, state.settings_overrides)
+        self.save_config_project(name, state.project_overrides)
         self.save_config_commands(name, state.commands)
         self.save_config_jobs(name, state.jobs)

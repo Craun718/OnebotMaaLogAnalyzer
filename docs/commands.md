@@ -6,15 +6,24 @@
 /maa help              查看全部指令
 /maa status            当前配置与运行状态
 /maa get               查看当前分析设置
+/maa project           查看项目配置（名称 / 各 UI / 仓库）
 /maa repo              查看项目代码仓库设置
 /maa jobs              最近分析记录
 /maa history           分析历史归档（可跨天追问）
 /maa followup          追问答疑会话状态
 
 /maa set <项> <值>      修改分析设置（如 /maa set max_log_files 3）
+/maa project set name MAK
+/maa project set archive_match_mode prefix
+/maa project set file_prefix MaaXXX-logs
+/maa project set ui.mfaa.enabled false
+/maa project set repo.mode agent
 /maa repo mode agent   切换 inject / agent
-/maa repo url <地址>   设置仓库地址（支持镜像）
+/maa repo url <地址>   设置仓库主地址
 /maa repo path <目录>  设置本地仓库目录
+/maa repo mirror add <地址>    添加备用镜像（按顺序尝试）
+/maa repo mirror remove <序号或地址>
+/maa repo preload on|off       启用 / 关闭启动预下载
 /maa history clean     清理超期历史记录
 /maa history purge     清空全部分析历史
 /maa enable|disable    启用 / 停用本配置

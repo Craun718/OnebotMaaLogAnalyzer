@@ -35,7 +35,9 @@ class MessageHandler:
         self.history = history
         # watcher.send_segments 回调，用于复用图文混排发送逻辑
         self.segment_sender = segment_sender
-        self.commands = CommandHandler(service, followup, history_store=history)
+        self.commands = CommandHandler(
+            service, followup, history_store=history, analyzer=analyzer
+        )
 
     # ════════════════════════════════════════════════════════════
     # 入口
@@ -125,13 +127,14 @@ class MessageHandler:
 
         # 复用本次分析已就绪的仓库 provider；重启后内存缓存为空，
         # 这里按配置重建并确保就绪，否则仓库工具与 @项目 附件都会失效。
-        provider = await self.analyzer.ensure_repo_provider(config_name, settings)
+        provider = await self.analyzer.ensure_repo_provider(config_name, cfg.project)
         answer = await self.analyzer.answer_followup(
             settings=settings,
             messages=session.messages,
             question=question,
             digest=getattr(session, "digest", None),
             provider=provider,
+            project=cfg.project,
         )
         if answer is None or not answer.text:
             # 模型没给出任何可用内容（如全程只调工具、收敛也失败）。

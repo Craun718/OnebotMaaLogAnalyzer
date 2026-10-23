@@ -24,6 +24,10 @@ from .models import (
     CommandConfig,
     ConfigState,
     JobRecord,
+    ProjectConfig,
+    ProjectUISettings,
+    RepoConfig,
+    normalize_ui_key,
 )
 
 if TYPE_CHECKING:
@@ -67,6 +71,31 @@ def _normalize_keys(model_cls, data: dict) -> dict:
         if isinstance(value, dict) and isinstance(sub, type) and hasattr(sub, "model_fields"):
             value = _normalize_keys(sub, value)
         result[field_name] = value
+    return result
+
+
+def _normalize_project(data: dict) -> dict:
+    """
+    归一化 `project` 段：顶层键、ui.<名称> 与 repo 子字段都兼容两种命名。
+
+    `_normalize_keys` 不会递归 dict 值与 Optional[BaseModel]，这里补上。
+    """
+    if not isinstance(data, dict):
+        return {}
+    result = _normalize_keys(ProjectConfig, data)
+
+    ui_raw = result.get("ui")
+    if isinstance(ui_raw, dict):
+        ui: dict[str, dict] = {}
+        for key, value in ui_raw.items():
+            if not isinstance(value, dict):
+                continue
+            ui[normalize_ui_key(key)] = _normalize_keys(ProjectUISettings, value)
+        result["ui"] = ui
+
+    repo_raw = result.get("repo")
+    if isinstance(repo_raw, dict):
+        result["repo"] = _normalize_keys(RepoConfig, repo_raw)
     return result
 
 
@@ -374,7 +403,13 @@ class MaaService:
             legacy = True
 
         settings = self.apply_settings_overrides(self.global_settings, overrides, name)
-        return ConfigState(
+        raw_project = self.dm.load_config_project(name)
+        project_overrides = (
+            raw_project.get("overrides")
+            if isinstance(raw_project, dict) and isinstance(raw_project.get("overrides"), dict)
+            else {}
+        )
+        state = ConfigState(
             name=name,
             info=info,
             settings=settings,
@@ -383,14 +418,46 @@ class MaaService:
             next_job_id=max((j.id for j in jobs), default=0) + 1,
             settings_overrides=overrides,
             settings_legacy=legacy,
+            project_overrides=project_overrides,
+        )
+        state.project = self._build_project(
+            state.project_base, state.project_overrides, name
+        )
+        return state
+
+    @staticmethod
+    def _build_project(base: dict, overrides: dict, label: str = "") -> ProjectConfig:
+        """合并并校验 project 配置；失败时退回空配置。"""
+        merged = _deep_merge(base or {}, overrides or {})
+        if not merged:
+            return ProjectConfig()
+        try:
+            return ProjectConfig.model_validate(merged)
+        except Exception as exc:
+            where = f"[{label}] " if label else ""
+            logger.warning(f"{where}project 配置无效，使用空配置：{exc}")
+            return ProjectConfig()
+
+    def recompute_project(self, name: str) -> None:
+        """
+        按「config.json → /maa project set」重新计算项目配置。
+
+        project 是声明式的：从 config.json 删掉某个键即回退到
+        `/maa project set` 的值或模型默认值。
+        """
+        state = self.configs.get(name)
+        if state is None:
+            return
+        state.project = self._build_project(
+            state.project_base, state.project_overrides, name
         )
 
     def recompute_settings(self, name: str) -> None:
         """
         按「全局 → config.json → /maa set」重新计算生效设置。
 
-        config.json 是声明式基线；`/maa set` 是显式运行时覆盖，优先级最高，
-        因此删除 config.json 中的键会回退到 /maa set 的值或全局默认值。
+        config.json 是声明式基线；`/maa set` 是显式运行时覆盖，优先级最高。
+        项目相关字段（识别方式 / UI 开关 / 仓库）不在 settings 中，见 `recompute_project`。
         """
         state = self.configs.get(name)
         if state is None:
@@ -401,6 +468,27 @@ class MaaService:
         state.settings = self.apply_settings_overrides(
             base, state.settings_overrides, name
         )
+
+    def set_project_override(self, name: str, key: str, value: Any,
+                             nested: str = "") -> None:
+        """
+        记录一次 `/maa project set` 覆盖并立即重算。
+
+        `nested` 支持多级路径（如 `ui.mfaa` / `repo`），会按层级建 dict。
+        """
+        state = self.configs.get(name)
+        if state is None:
+            return
+        node = state.project_overrides
+        for part in [p for p in str(nested or "").split(".") if p]:
+            child = node.get(part)
+            if not isinstance(child, dict):
+                child = {}
+                node[part] = child
+            node = child
+        node[key] = value
+        self.recompute_project(name)
+        self.recompute_settings(name)
 
     def set_setting_override(self, name: str, key: str, value: Any,
                              nested: str = "") -> None:
@@ -446,8 +534,9 @@ class MaaService:
         用 config.json → bot.configs 同步配置（与重启进程等价）。
 
         - 不在 config.json 中的配置会被停用（数据目录保留，重新加回即可恢复）
-        - `settings` / `commands` 是声明式的：删掉某个键即回退到下一层
-        - 设置分层：全局 → config.json → `/maa set`
+        - `settings` / `project` / `commands` 是声明式的：删掉某个键即回退到下一层
+        - 设置分层：全局 → config.json → `/maa set` → `project`
+        - 项目配置分层：config.json 的 `project` → `/maa project set`
         """
         if not isinstance(configs_cfg, dict):
             return
@@ -488,8 +577,13 @@ class MaaService:
                     state.settings_overrides, state.json_settings
                 )
                 state.settings_legacy = False
+
+            # 项目：config.json 作为声明式基线，/maa project set 覆盖在其上
+            state.project_base = _normalize_project(spec.get("project") or {})
+            self.recompute_project(name)
             self.recompute_settings(name)
             self.dm.save_config_settings(name, state.settings_overrides)
+            self.dm.save_config_project(name, state.project_overrides)
 
             # 指令：完全由 config.json 决定（删除段即回退默认值）
             state.commands = self.apply_commands_overrides(

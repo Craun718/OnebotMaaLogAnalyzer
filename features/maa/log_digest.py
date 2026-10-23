@@ -9,7 +9,15 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 
-from .text_utils import format_bytes, limit_text
+from .archive_profile import (
+    UI_MAAFWAPP,
+    UI_MFAA,
+    UI_MXU,
+    UI_UNKNOWN,
+    ArchiveProfile,
+    detect_archive_profile,
+)
+from .text_utils import decode_bytes, format_bytes, limit_text
 
 
 ERROR_PATTERN = re.compile(
@@ -47,6 +55,7 @@ class DigestOptions:
     max_stream_log_bytes: int = 0
     max_log_files: int = 6
     max_maafw_bak_files: int = 1
+    max_maafw_bak_bytes: int = 64 * 1024 * 1024
     log_head_lines: int = 16
     context_before_lines: int = 80
     context_after_lines: int = 60
@@ -67,7 +76,14 @@ class DigestResult:
     log_files: list[str] = field(default_factory=list)
     config_files: list[str] = field(default_factory=list)
     error_images: list[str] = field(default_factory=list)
+    custom_images: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # 报告与提示词使用的项目名（project.name > 压缩包解析 > MaaXXX）
+    project_name: str = ""
+    # 是否像日志包（有日志文件 / 已知 UI 布局 / 错误截图）
+    is_log_archive: bool = True
+    # 自动识别的 UI / 软件版本 / MaaFramework 版本
+    profile: ArchiveProfile | None = None
     # 压缩包内全部图片（供分析结果附图使用）
     all_images: list[str] = field(default_factory=list)
     # 压缩包内全部文件（供模型请求任意附件使用）
@@ -90,12 +106,15 @@ def build_log_digest(
     group_id: str | int | None = None,
     project_name: str = "MaaXXX",
     options: DigestOptions | None = None,
+    extra_notes: list[str] | None = None,
 ) -> DigestResult:
     opts = options or DigestOptions()
 
     with zipfile.ZipFile(zip_path) as archive:
         infos = [info for info in archive.infolist() if not info.is_dir()]
         notes: list[str] = []
+        if extra_notes:
+            notes.extend(str(note) for note in extra_notes if note)
         if len(infos) > opts.max_zip_members:
             notes.append(f"压缩包文件数 {len(infos)} 超过限制 {opts.max_zip_members}，仅处理前者范围内的重点文件。")
 
@@ -110,9 +129,18 @@ def build_log_digest(
         if len(safe_infos) != len(infos):
             notes.append("压缩包中存在不安全路径，已跳过。")
 
-        log_infos = _select_log_infos(safe_infos, opts)
+        profile = detect_archive_profile(
+            zip_path,
+            file_name=original_file_name,
+            archive=archive,
+            infos=infos,
+        )
+        notes.extend(profile.notes)
+
+        log_infos = _select_log_infos(safe_infos, opts, profile, notes)
         config_infos = _select_config_infos(safe_infos)
         error_images = _select_error_images(safe_infos, opts.max_error_images)
+        custom_images = _select_custom_images(safe_infos, opts.max_error_images)
         all_images = _list_all_images(safe_infos)
 
         time_ranges: list[str] = []
@@ -134,15 +162,21 @@ def build_log_digest(
                 notes.append(f"{info.filename} 超过单文件读取限制，配置摘要可能不完整。")
             config_sections.append(_summarize_config(info.filename, text, opts.max_config_chars))
 
+    is_log_archive = _looks_like_log_archive(
+        profile, log_infos, error_images, custom_images
+    )
+    resolved_project = _resolve_project_name(project_name, profile)
     prompt = _build_prompt(
         original_file_name=original_file_name,
         group_id=group_id,
-        project_name=project_name,
+        project_name=resolved_project,
+        profile=profile,
         file_count=len(infos),
         total_uncompressed_size=total_uncompressed,
         log_files=[info.filename for info in log_infos],
         config_files=[info.filename for info in config_infos],
         error_images=error_images,
+        custom_images=custom_images,
         time_ranges=time_ranges,
         keyword_summaries=keyword_summaries,
         config_sections=config_sections,
@@ -158,7 +192,11 @@ def build_log_digest(
         log_files=[info.filename for info in log_infos],
         config_files=[info.filename for info in config_infos],
         error_images=error_images,
+        custom_images=custom_images,
         notes=notes,
+        project_name=resolved_project,
+        is_log_archive=is_log_archive,
+        profile=profile,
         all_images=all_images,
         all_members=[info.filename.replace("\\", "/") for info in safe_infos],
         zip_path=str(zip_path),
@@ -178,21 +216,54 @@ def describe_zip(zip_path: str,
     try:
         with zipfile.ZipFile(zip_path) as archive:
             infos = [info for info in archive.infolist() if not info.is_dir()]
+            profile = detect_archive_profile(
+                zip_path,
+                archive=archive,
+                infos=infos,
+            )
     except (zipfile.BadZipFile, OSError, RuntimeError):
         return None
 
     safe_infos = [info for info in infos if _is_safe_member(info.filename)]
+    notes: list[str] = []
+    log_infos = _select_log_infos(safe_infos, opts, profile, notes)
+    error_images = _select_error_images(safe_infos, opts.max_error_images)
+    custom_images = _select_custom_images(safe_infos, opts.max_error_images)
     return DigestResult(
         prompt="",
         file_count=len(infos),
         total_uncompressed_size=sum(max(0, int(info.file_size)) for info in infos),
-        log_files=[info.filename for info in _select_log_infos(safe_infos, opts)],
+        log_files=[info.filename for info in log_infos],
         config_files=[info.filename for info in _select_config_infos(safe_infos)],
-        error_images=_select_error_images(safe_infos, opts.max_error_images),
+        error_images=error_images,
+        custom_images=custom_images,
+        notes=notes + profile.notes,
+        project_name=profile.project_name,
+        is_log_archive=_looks_like_log_archive(
+            profile, log_infos, error_images, custom_images
+        ),
+        profile=profile,
         all_images=_list_all_images(safe_infos),
         all_members=[info.filename.replace("\\", "/") for info in safe_infos],
         zip_path=str(zip_path),
     )
+
+
+def _looks_like_log_archive(
+    profile: ArchiveProfile | None,
+    log_infos: list[zipfile.ZipInfo],
+    error_images: list[str],
+    custom_images: list[str],
+) -> bool:
+    """
+    判断压缩包是否像日志包。
+
+    满足任一条件即可：压缩包布局命中已知 UI、包含日志/运行记录文件、
+    或包含错误/自定义截图。仅靠文件名推断的 UI **不算**，避免误判非日志 zip。
+    """
+    if log_infos or error_images or custom_images:
+        return True
+    return profile is not None and profile.layout_detected
 
 
 def _list_all_images(infos: list[zipfile.ZipInfo]) -> list[str]:
@@ -238,50 +309,145 @@ def _is_safe_member(name: str) -> bool:
     return not any(part in ("", ".", "..") for part in path.parts)
 
 
-def _select_log_infos(infos: list[zipfile.ZipInfo], opts: DigestOptions) -> list[zipfile.ZipInfo]:
-    logs = [info for info in infos if info.filename.lower().endswith(".log")]
+def _select_log_infos(
+    infos: list[zipfile.ZipInfo],
+    opts: DigestOptions,
+    profile: ArchiveProfile | None = None,
+    notes: list[str] | None = None,
+) -> list[zipfile.ZipInfo]:
+    """
+    按 UI 布局选择要摘要的日志。
 
-    dated_logs: list[zipfile.ZipInfo] = []
-    maafw_current: list[zipfile.ZipInfo] = []
-    maafw_bak: list[zipfile.ZipInfo] = []
-    agent_logs: list[zipfile.ZipInfo] = []
-    other_logs: list[zipfile.ZipInfo] = []
+    不同 UI 的日志目录不同：
+      - MXU：根目录 maafw.log / 日期日志 / mxu-agent-*.log
+      - MFAAvalonia：debug/maafw.log / logs/log-*.log
+      - MaaFwApp：log/maafw.log / log/app.log / pi/debug/maafw.log /
+        pi/debug/custom/*.log / log/run/*.jsonl / logcat
+    """
+    ui = profile.ui_type if profile is not None else UI_UNKNOWN
+    notes = notes if notes is not None else []
+
+    logs = [
+        info for info in infos
+        if info.filename.lower().endswith((".log", ".jsonl"))
+    ]
+    buckets: dict[str, list[zipfile.ZipInfo]] = {
+        key: [] for key in (
+            "maafw", "bak", "app", "dated", "agent",
+            "custom", "run", "schedule", "debug", "other",
+        )
+    }
 
     for info in logs:
-        name = info.filename.replace("\\", "/").lower()
-        base = PurePosixPath(name).name
-        if re.match(r"\d{4}[-.]\d{2}[-.]\d{2}", base):
-            dated_logs.append(info)
-        elif base == "maafw.log":
-            maafw_current.append(info)
+        name = info.filename.replace("\\", "/")
+        lower = name.lower()
+        base = PurePosixPath(lower).name
+
+        if base == "maafw.log":
+            role = "maafw"
         elif base.startswith("maafw.bak"):
-            maafw_bak.append(info)
-        elif "agent" in base:
-            agent_logs.append(info)
+            role = "bak"
+        elif base.startswith("mxu-agent-"):
+            role = "agent"
+        elif "custom" in lower:
+            role = "custom"
+        elif ui == UI_MXU and re.match(r"\d{4}[-.]\d{2}[-.]\d{2}", base):
+            role = "dated"
+        elif ui == UI_MFAA and lower.startswith("logs/") and base.startswith("log-"):
+            role = "app"
+        elif ui == UI_MFAA and lower.startswith("logs/") and base.endswith(".log"):
+            role = "app"
+        elif ui == UI_MAAFWAPP and lower == "log/app.log":
+            role = "app"
+        elif ui == UI_MAAFWAPP and lower.startswith("log/run/") and base.endswith(".jsonl"):
+            role = "run"
+        elif ui == UI_MAAFWAPP and (lower.startswith("debug/") or "logcat" in lower):
+            role = "debug"
+        elif re.match(r"\d{4}[-.]\d{2}[-.]\d{2}", base):
+            role = "dated"
+        elif lower.startswith("logs/") and base.startswith("log-"):
+            role = "app"
+        elif base == "app.log":
+            role = "app"
+        elif base.endswith(".jsonl"):
+            role = "run"
+        elif lower.startswith("debug/"):
+            role = "debug"
+        elif base in {"schedule-trigger.log", "schedule.log"}:
+            role = "schedule"
         else:
-            other_logs.append(info)
+            role = "other"
+        buckets[role].append(info)
 
     deduped: list[zipfile.ZipInfo] = []
     seen: set[str] = set()
 
-    def add_info(info: zipfile.ZipInfo | None) -> None:
+    def add_info(info: zipfile.ZipInfo | None) -> bool:
         if not info or len(deduped) >= opts.max_log_files:
-            return
+            return False
         key = info.filename.replace("\\", "/").lower()
         if key in seen:
-            return
+            return False
         seen.add(key)
         deduped.append(info)
+        return True
 
-    # 保底优先级：当前主日志、最新 GUI/日期日志、最新 agent 日志。
-    add_info(_newest_log(maafw_current))
-    add_info(_newest_log(dated_logs))
-    add_info(_newest_log(agent_logs))
+    def newest(items: list[zipfile.ZipInfo], count: int = 1) -> list[zipfile.ZipInfo]:
+        return sorted(items, key=_log_recency_key, reverse=True)[: max(0, count)]
 
-    for info in sorted(maafw_bak, key=_log_recency_key, reverse=True)[: max(0, opts.max_maafw_bak_files)]:
+    # 1. 框架日志：MaaFwApp 同时保留 UI 侧与 Agent 侧两份 maafw.log
+    maafw_logs = buckets["maafw"]
+    if ui == UI_MAAFWAPP:
+        ordered = sorted(
+            maafw_logs,
+            key=lambda info: (
+                0 if info.filename.replace("\\", "/").lower() == "log/maafw.log" else 1,
+                _log_recency_key(info),
+            ),
+        )
+        for info in ordered[:2]:
+            add_info(info)
+    else:
+        add_info(_newest_log(maafw_logs))
+
+    # 2. UI 主日志
+    for info in newest(buckets["app"], 1):
         add_info(info)
 
-    for info in sorted(dated_logs + agent_logs + other_logs, key=_log_recency_key, reverse=True):
+    # 3. 运行记录 / Agent / 自定义截图日志（按 UI 调整优先级）
+    if ui == UI_MXU:
+        role_plan = (("dated", 1), ("agent", 1), ("custom", 1), ("run", 1))
+    else:
+        # 定时任务触发记录往往直接包含 FAILED_START / INVALID_PLAN，优先保留
+        role_plan = (("schedule", 1), ("run", 1), ("custom", 1),
+                     ("agent", 1), ("dated", 1))
+    for role, count in role_plan + (("debug", 1),):
+        for info in newest(buckets[role], count):
+            add_info(info)
+
+    # 4. 备份日志（受数量与单文件大小限制，避免误扫数百 MB 的 maafw.bak）
+    backup_limit = max(0, int(opts.max_maafw_bak_files))
+    backup_bytes = max(0, int(opts.max_maafw_bak_bytes))
+
+    for info in sorted(buckets["bak"], key=_log_recency_key, reverse=True):
+        if backup_limit <= 0 or len(deduped) >= opts.max_log_files:
+            break
+        if backup_bytes > 0 and int(info.file_size) > backup_bytes:
+            notes.append(
+                f"{info.filename} 超过备份日志大小上限 "
+                f"{format_bytes(backup_bytes)}，已跳过；"
+                "如需分析可调大 max_maafw_bak_mb 或设为 0。"
+            )
+            continue
+        if add_info(info):
+            backup_limit -= 1
+
+    # 5. 剩余日志按时间补齐
+    remaining = [
+        info for role, items in buckets.items() if role != "bak"
+        for info in items
+    ]
+    for info in sorted(remaining, key=_log_recency_key, reverse=True):
         add_info(info)
 
     return deduped
@@ -907,11 +1073,21 @@ def _select_config_infos(infos: list[zipfile.ZipInfo]) -> list[zipfile.ZipInfo]:
     wanted = []
     for info in infos:
         name = info.filename.replace("\\", "/").lower()
-        if name in {"config/maa_option.json", "config/pip_config.json"}:
+        if name in {"config/maa_option.json", "config/pip_config.json", "device_info.txt"}:
             wanted.append(info)
-        elif name.startswith("config/") and name.endswith(".json"):
+        elif name.startswith("config/") and name.endswith((".json", ".jsonc")):
             wanted.append(info)
     return sorted(wanted, key=lambda item: item.filename.lower())[:8]
+
+
+def _is_on_error_image(name: str) -> bool:
+    parts = PurePosixPath(name.replace("\\", "/").lower()).parts
+    return "on_error" in parts[:-1]
+
+
+def _is_custom_image(name: str) -> bool:
+    parts = PurePosixPath(name.replace("\\", "/").lower()).parts
+    return "custom" in parts[:-1]
 
 
 def _select_error_images(infos: list[zipfile.ZipInfo], limit: int) -> list[str]:
@@ -919,7 +1095,18 @@ def _select_error_images(infos: list[zipfile.ZipInfo], limit: int) -> list[str]:
     for info in infos:
         name = info.filename.replace("\\", "/")
         suffix = PurePosixPath(name).suffix.lower()
-        if name.lower().startswith("on_error/") and suffix in IMAGE_SUFFIXES:
+        if suffix in IMAGE_SUFFIXES and _is_on_error_image(name):
+            images.append(name)
+    return sorted(images, reverse=True)[:limit]
+
+
+def _select_custom_images(infos: list[zipfile.ZipInfo], limit: int) -> list[str]:
+    """debug/custom 等目录下的自定义截图（非 on_error）。"""
+    images = []
+    for info in infos:
+        name = info.filename.replace("\\", "/")
+        suffix = PurePosixPath(name).suffix.lower()
+        if suffix in IMAGE_SUFFIXES and _is_custom_image(name):
             images.append(name)
     return sorted(images, reverse=True)[:limit]
 
@@ -938,12 +1125,7 @@ def _read_text_member(
 
 
 def _decode_bytes(data: bytes) -> str:
-    for encoding in ("utf-8-sig", "utf-8", "gb18030", "big5"):
-        try:
-            return data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("utf-8", errors="replace")
+    return decode_bytes(data)
 
 
 def _extract_time_range(text: str) -> str | None:
@@ -1067,6 +1249,13 @@ def _limit_recognition_evidence_chars(evidence: list[str], opts: DigestOptions) 
 
 
 def _summarize_config(name: str, text: str, max_chars: int) -> str:
+    normalized = name.replace("\\", "/").lower()
+    base_name = PurePosixPath(normalized).name
+
+    # MaaFwApp 导出的设备与应用信息（纯文本）
+    if base_name == "device_info.txt":
+        return f"### {name}\n设备与应用信息：\n{limit_text(text, max_chars)}"
+
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
@@ -1074,8 +1263,6 @@ def _summarize_config(name: str, text: str, max_chars: int) -> str:
 
     # mxu-<项目名>.json（如 mxu-MaaXXX.json / mxu-MaaAssistantKedrgame.json）
     # 结构一致，统一使用结构化摘要，避免退化为冗长的原始 JSON
-    normalized = name.replace("\\", "/").lower()
-    base_name = PurePosixPath(normalized).name
     if base_name.startswith("mxu-") and base_name.endswith(".json"):
         summary = _summarize_mxu_config(data)
         if summary:
@@ -1139,16 +1326,36 @@ def _flatten_task_options(option_values: Any) -> list[str]:
     return result
 
 
+def _resolve_project_name(
+    project_name: str,
+    profile: ArchiveProfile | None,
+) -> str:
+    """
+    解析报告/提示词使用的项目名。
+
+    优先级：`project.name` > 压缩包解析出的项目名 > MaaXXX。
+    """
+    configured = str(project_name or "").strip()
+    if configured:
+        return configured
+    archive_name = (
+        str(profile.project_name or "").strip() if profile is not None else ""
+    )
+    return archive_name or "MaaXXX"
+
+
 def _build_prompt(
     *,
     original_file_name: str,
     group_id: str | int | None,
     project_name: str = "MaaXXX",
+    profile: ArchiveProfile | None = None,
     file_count: int,
     total_uncompressed_size: int,
     log_files: list[str],
     config_files: list[str],
     error_images: list[str],
+    custom_images: list[str],
     time_ranges: list[str],
     keyword_summaries: list[str],
     config_sections: list[str],
@@ -1156,25 +1363,34 @@ def _build_prompt(
     notes: list[str],
     max_prompt_chars: int,
 ) -> str:
+    display_project = str(project_name or "").strip() or "MaaXXX"
+
     parts = [
-        f"下面是 {project_name or 'MaaXXX'} 日志包的自动摘要，请只根据这些内容分析本次报错原因。",
+        f"下面是 {display_project} 日志包的自动摘要，请只根据这些内容分析本次报错原因。",
         "",
         f"文件名：{original_file_name}",
         f"上传群：{group_id or '未知'}",
         f"压缩包文件数：{file_count}",
         f"解压后总大小：{format_bytes(total_uncompressed_size)}",
         "",
+        "运行环境（自动解析）：",
+        "\n".join(f"- {line}" for line in profile.prompt_lines())
+        if profile is not None else "- 未能识别 UI 与版本信息",
+        "",
         "处理备注：",
         "\n".join(f"- {note}" for note in notes) if notes else "- 无",
         "",
         "日志文件：",
-        "\n".join(f"- {name}" for name in log_files) if log_files else "- 未找到 .log 文件",
+        "\n".join(f"- {name}" for name in log_files) if log_files else "- 未找到 .log / .jsonl 文件",
         "",
         "日志时间范围：",
         "\n".join(f"- {item}" for item in time_ranges) if time_ranges else "- 未识别到时间范围",
         "",
-        "错误截图文件：",
+        "错误截图文件（on_error）：",
         "\n".join(f"- {name}" for name in error_images) if error_images else "- 未找到 on_error 图片",
+        "",
+        "自定义截图文件（debug/custom 等）：",
+        "\n".join(f"- {name}" for name in custom_images) if custom_images else "- 未找到自定义截图",
         "",
         "关键词统计：",
         "\n".join(keyword_summaries) if keyword_summaries else "- 未统计到重点关键词",

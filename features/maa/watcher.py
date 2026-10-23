@@ -9,13 +9,16 @@
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
+from core.archive_names import ui_key_from_file_name
 from core.models import ConfigState, LogFileItem
 from features.maa.analyzer import MaaAnalyzer
+from features.maa.archive_profile import parse_archive_part
 from features.maa.text_utils import format_bytes, split_text
 
 if TYPE_CHECKING:
@@ -35,18 +38,37 @@ class LogWatcher:
         self.history = history
         # (群, 文件名, 大小) → 最近一次处理时间（用于跨入口去重）
         self._recent: dict[tuple[str, str, int], float] = {}
+        # (群, 归档标识) → 开始时间：正在分析中的日志包
+        self._active: dict[tuple[str, str], float] = {}
+        # (群, 归档标识) → 正在等待分卷到齐的任务
+        self._part_batches: dict[tuple[str, str], dict] = {}
 
     # ════════════════════════════════════════════════════════════
     # 去重
     # ════════════════════════════════════════════════════════════
 
+    @staticmethod
+    def _part_key(group_id: str, file_name: str, settings) -> Optional[tuple[str, str]]:
+        """分卷包对应的归档键；非分卷或未开启合并时返回 None。"""
+        part = parse_archive_part(file_name)
+        if part is None or not settings.merge_archive_parts:
+            return None
+        return (str(group_id), f"part:{part.base.lower()}")
+
+    def _active_key(self, group_id: str, file_name: str, settings) -> tuple[str, str]:
+        """分析占用键：分卷按归档归并，其余按文件名。"""
+        return self._part_key(group_id, file_name, settings) or (
+            str(group_id), str(file_name)
+        )
+
     def _is_duplicate(self, group_id: str, file_name: str,
                       file_size: Optional[int], settings) -> bool:
         """
-        判断是否为重复触发。
+        判断是否为同一文件的重复上报。
 
         同一文件可能同时经 notice.group_upload 与 message.file 上报，
         在 duplicate_window_seconds 内只处理一次。窗口 <= 0 时不去重。
+        分析耗时可能超过窗口，结束时由 `_touch_recent` 重新计时。
         """
         window = int(getattr(settings, "duplicate_window_seconds", 0) or 0)
         if window <= 0:
@@ -65,9 +87,27 @@ class LogWatcher:
         last = self._recent.get(key)
         if last is not None and (now - last) < window:
             return True
-
         self._recent[key] = now
         return False
+
+    def _archive_cooling(self, key: tuple[str, str], settings) -> bool:
+        """同一组归档是否刚分析完（冷却期内不再触发）。"""
+        window = int(getattr(settings, "duplicate_window_seconds", 0) or 0)
+        if window <= 0:
+            return False
+        last = self._recent.get((key[0], key[1], 0))
+        return last is not None and (time.monotonic() - last) < window
+
+    def _touch_recent(self, group_id: str, file_name: str,
+                      file_size: Optional[int], settings) -> None:
+        """分析结束后重新计时，避免长分析期间窗口过期而重复分析。"""
+        if int(getattr(settings, "duplicate_window_seconds", 0) or 0) <= 0:
+            return
+        now = time.monotonic()
+        self._recent[(str(group_id), str(file_name), int(file_size or 0))] = now
+        part_key = self._part_key(group_id, file_name, settings)
+        if part_key is not None:
+            self._recent[(part_key[0], part_key[1], 0)] = now
 
     # ════════════════════════════════════════════════════════════
     # 事件入口
@@ -91,6 +131,7 @@ class LogWatcher:
             file_name=file_name,
             file_info=file_info,
             uploader=str(event.get("user_id", "")),
+            source="notice.group_upload",
         )
 
     async def on_message_file(self, event: dict):
@@ -111,6 +152,7 @@ class LogWatcher:
                 file_name=file_name,
                 file_info=seg,
                 uploader=uploader,
+                source="message.file",
             )
 
     # ════════════════════════════════════════════════════════════
@@ -118,7 +160,7 @@ class LogWatcher:
     # ════════════════════════════════════════════════════════════
 
     async def _handle(self, *, group_id: str, file_name: str,
-                      file_info: dict, uploader: str) -> None:
+                      file_info: dict, uploader: str, source: str = "") -> None:
         """判断是否为目标日志包，是则执行分析。"""
         cfg = self.s.resolve_config(group_id)
         if cfg is None:
@@ -128,16 +170,42 @@ class LogWatcher:
         settings = cfg.settings
         if not settings.enabled:
             return
-        if not settings.matches(file_name):
+        if not cfg.project.matches(file_name):
+            return
+
+        # 文件名能确定 UI 且该 UI 已被关闭时，连下载都省掉
+        ui_key = ui_key_from_file_name(file_name)
+        if ui_key and not cfg.project.ui_enabled(ui_key):
+            logger.info(f"[监听] 跳过 {file_name}：UI {ui_key} 已在 project.ui 中禁用")
             return
 
         file_size = self._pick_int(file_info, "size", "file_size", "fileSize")
 
-        # 同一上传可能经多条路径到达（如 notice.group_upload 与 message.file
-        # 同时上报），在去重窗口内只处理一次。
+        # 同一归档正在分析时，后续到达的分卷 / 重复事件直接忽略，
+        # 避免重复下载与重复报告（分析可能比去重窗口更久）。
+        active_key = self._active_key(group_id, file_name, settings)
+        if active_key in self._active:
+            logger.info(
+                f"[监听] 跳过进行中的重复触发：{file_name}"
+                f"（群 {group_id}，来源 {source or '未知'}）"
+            )
+            return
+
+        # 分卷包：先收集，等到一段时间没有新分卷再统一分析
+        part_key = self._part_key(group_id, file_name, settings)
+        if part_key is not None:
+            self._queue_part(
+                cfg, group_id, part_key, file_name, file_info,
+                file_size, uploader, source, settings,
+            )
+            return
+
+        # 非分卷：同一上传可能经多条路径到达（如 notice.group_upload 与
+        # message.file 同时上报），在去重窗口内只处理一次。
         if self._is_duplicate(group_id, file_name, file_size, settings):
             logger.info(
-                f"[监听] 跳过重复触发：{file_name}（群 {group_id}，"
+                f"[监听] 跳过重复触发：{file_name}"
+                f"（群 {group_id}，来源 {source or '未知'}，"
                 f"{settings.duplicate_window_seconds}s 内已处理过）"
             )
             return
@@ -154,20 +222,138 @@ class LogWatcher:
 
         file_id = self._pick_str(file_info, "id", "file_id", "fileId") or None
 
-        if settings.send_progress_message:
-            await self.s.send_text(
-                int(group_id),
-                f"检测到日志包：{file_name}\n正在下载并分析，请稍等。",
-            )
-
-        await self._analyze(
-            cfg, group_id, uploader,
-            LogFileItem(
-                file_id=file_id or "",
-                file_name=file_name,
-                size=int(file_size or 0),
-            ),
+        logger.info(
+            f"[监听] 触发分析：{file_name}（群 {group_id}，来源 {source or '未知'}）"
         )
+        # 先登记再发进度，避免并发事件在 await 期间重复进入
+        self._active[active_key] = time.monotonic()
+        try:
+            if settings.send_progress_message:
+                await self.s.send_text(
+                    int(group_id),
+                    f"检测到日志包：{file_name}\n正在下载并分析，请稍等。",
+                )
+            await self._analyze(
+                cfg, group_id, uploader,
+                LogFileItem(
+                    file_id=file_id or "",
+                    file_name=file_name,
+                    size=int(file_size or 0),
+                ),
+            )
+        finally:
+            self._active.pop(active_key, None)
+            # 分析可能超过去重窗口，结束时重新计时
+            self._touch_recent(group_id, file_name, file_size, settings)
+
+    # ════════════════════════════════════════════════════════════
+    # 分卷：等待到齐再分析
+    # ════════════════════════════════════════════════════════════
+
+    def cancel_pending(self) -> None:
+        """取消尚未触发的分卷计时（停止 / 重载运行时调用）。"""
+        for batch in self._part_batches.values():
+            task = batch.get("task")
+            if task is not None and not task.done():
+                task.cancel()
+        self._part_batches.clear()
+
+    def _queue_part(self, cfg: ConfigState, group_id: str,
+                    key: tuple[str, str], file_name: str, file_info: dict,
+                    file_size: Optional[int], uploader: str, source: str,
+                    settings) -> None:
+        """登记分卷并重置等待计时；静默一段时间后才触发分析。"""
+        if self._archive_cooling(key, settings):
+            logger.info(
+                f"[监听] 跳过重复触发：{file_name}"
+                f"（群 {group_id}，来源 {source or '未知'}，"
+                f"{settings.duplicate_window_seconds}s 内已分析过该归档）"
+            )
+            return
+
+        # 同一分卷经两条入口重复上报：不重启计时
+        if self._is_duplicate(group_id, file_name, file_size, settings):
+            logger.info(
+                f"[监听] 跳过重复触发：{file_name}"
+                f"（群 {group_id}，来源 {source or '未知'}，"
+                f"{settings.duplicate_window_seconds}s 内已处理过）"
+            )
+            return
+
+        batch = self._part_batches.get(key)
+        if batch is None:
+            batch = {"parts": [], "task": None}
+            self._part_batches[key] = batch
+        if file_name not in batch["parts"]:
+            batch["parts"].append(file_name)
+        batch.update({
+            "file_name": file_name,
+            "file_info": file_info,
+            "file_size": file_size,
+            "uploader": uploader,
+        })
+
+        previous = batch.get("task")
+        if previous is not None and not previous.done():
+            previous.cancel()
+
+        settle = max(0.0, float(settings.archive_part_settle_seconds or 0))
+        batch["task"] = asyncio.create_task(
+            self._run_part_batch(cfg, group_id, key, settle, settings)
+        )
+        logger.info(
+            f"[监听] 分卷已登记：{file_name}（群 {group_id}，"
+            f"已收集 {len(batch['parts'])} 个，来源 {source or '未知'}），"
+            f"等待 {settle:g}s 无新分卷后分析"
+        )
+
+    async def _run_part_batch(self, cfg: ConfigState, group_id: str,
+                              key: tuple[str, str], settle: float,
+                              settings) -> None:
+        """等待静默期结束，然后按合并分卷的方式分析一次。"""
+        try:
+            if settle > 0:
+                await asyncio.sleep(settle)
+        except asyncio.CancelledError:
+            return
+
+        batch = self._part_batches.pop(key, None)
+        if batch is None or key in self._active:
+            return
+
+        file_name = batch["file_name"]
+        file_info = batch["file_info"]
+        file_size = batch["file_size"]
+        uploader = batch["uploader"]
+        logger.info(
+            f"[监听] 分卷已收齐（{len(batch['parts'])} 个），开始分析：{file_name}"
+        )
+
+        self._active[key] = time.monotonic()
+        try:
+            if settings.send_progress_message:
+                await self.s.send_text(
+                    int(group_id),
+                    f"检测到日志包：{file_name}\n正在下载并分析，请稍等。",
+                )
+            await self._analyze(
+                cfg, group_id, uploader,
+                LogFileItem(
+                    file_id=self._pick_str(
+                        file_info, "id", "file_id", "fileId"
+                    ) or "",
+                    file_name=file_name,
+                    size=int(file_size or 0),
+                ),
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # 后台任务没有事件分发器兜底，这里自行记录
+            logger.exception(f"[监听] 分卷分析异常：{file_name}")
+        finally:
+            self._active.pop(key, None)
+            self._touch_recent(group_id, file_name, file_size, settings)
 
     async def _analyze(self, cfg: ConfigState, group_id: str,
                        uploader: str, file_info: LogFileItem) -> None:
@@ -189,6 +375,7 @@ class LogWatcher:
         outcome = await self.analyzer.analyze(
             config_name=cfg.name,
             settings=settings,
+            project=cfg.project,
             group_id=group_int,
             file_name=file_info.file_name,
             file_id=file_info.file_id,

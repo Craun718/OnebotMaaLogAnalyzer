@@ -2,7 +2,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [配置](configuration.md) | `config.json` 全部字段、多群配置、通信模式、模型选择建议 |
+| [配置](configuration.md) | `config.json` 全部字段、`project` 项目配置、多群配置、通信模式、模型选择建议 |
 | [分析设置](settings.md) | 全部设置项（触发 / 附件 / 追问 / 历史 / 摘要 / 并发 / 模型） |
 | [QQ 指令](commands.md) | `/maa` 指令清单与三级权限控制 |
 | [结果附件](attachments.md) | 模型自主附图/附件：来源限定、相对路径沙箱、敏感文件保护、图文混排 |

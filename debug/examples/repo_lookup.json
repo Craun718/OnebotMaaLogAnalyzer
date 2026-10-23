@@ -9,13 +9,22 @@
           "recognition": {
             "type": "OCR",
             "param": {
-              "expected": ["开始"],
-              "roi": [640, 360, 200, 80],
+              "expected": [
+                "开始"
+              ],
+              "roi": [
+                640,
+                360,
+                200,
+                80
+              ],
               "threshold": 0.9
             }
           },
           "action": "Click",
-          "next": ["MainInterface"]
+          "next": [
+            "MainInterface"
+          ]
         }
       },
       "assets/resource/pipeline/PVP.json": {
@@ -24,8 +33,15 @@
           "recognition": {
             "type": "TemplateMatch",
             "param": {
-              "template": ["UI/Combat/Start2.png"],
-              "roi": [971, 630, 300, 80],
+              "template": [
+                "UI/Combat/Start2.png"
+              ],
+              "roi": [
+                971,
+                630,
+                300,
+                80
+              ],
               "threshold": 0.7
             }
           },
@@ -33,73 +49,111 @@
         }
       },
       "assets/resource/pipeline/Unrelated.json": {
-        "Some_Other_Node": {"desc": "与本次日志无关的节点"}
+        "Some_Other_Node": {
+          "desc": "与本次日志无关的节点"
+        }
       }
     },
     "configs": {
       "仓库开启": {
-        "listen_groups": ["123456"],
+        "listen_groups": [
+          "123456"
+        ],
         "notify_group": "123456",
         "settings": {
-          "send_progress_message": false,
-          "file_prefix": "MaaXXX-logs",
+          "send_progress_message": false
+        },
+        "project": {
           "repo": {
             "enabled": true,
             "max_files": 4,
             "max_chars": 20000
-          }
+          },
+          "name": "MaaXXX"
         }
       },
       "仓库关闭": {
-        "listen_groups": ["654321"],
+        "listen_groups": [
+          "654321"
+        ],
         "notify_group": "654321",
         "settings": {
-          "send_progress_message": false,
-          "file_prefix": "MaaXXX-logs",
+          "send_progress_message": false
+        },
+        "project": {
           "repo": {
             "enabled": false
-          }
+          },
+          "name": "MaaXXX"
         }
       },
       "仓库路径无效": {
-        "listen_groups": ["777777"],
+        "listen_groups": [
+          "777777"
+        ],
         "notify_group": "777777",
         "settings": {
-          "send_progress_message": false,
-          "file_prefix": "MaaXXX-logs",
+          "send_progress_message": false
+        },
+        "project": {
           "repo": {
             "enabled": true,
             "path": "Z:/definitely/not/a/real/repo/path"
-          }
+          },
+          "name": "MaaXXX"
         }
       },
       "agent模式": {
-        "listen_groups": ["888888"],
+        "listen_groups": [
+          "888888"
+        ],
         "notify_group": "888888",
         "settings": {
-          "send_progress_message": false,
-          "file_prefix": "MaaXXX-logs",
+          "send_progress_message": false
+        },
+        "project": {
           "repo": {
             "enabled": true,
             "mode": "agent",
             "max_tool_rounds": 3,
             "max_tool_calls_per_round": 2
-          }
+          },
+          "name": "MaaXXX"
         }
       }
     },
     "files": {
       "123456": [
-        {"file_name": "MaaXXX-logs-repo.zip", "file_id": "fid_repo", "size": 2048, "modify_time": 1767225600}
+        {
+          "file_name": "MaaXXX-logs-repo.zip",
+          "file_id": "fid_repo",
+          "size": 2048,
+          "modify_time": 1767225600
+        }
       ],
       "654321": [
-        {"file_name": "MaaXXX-logs-norepo.zip", "file_id": "fid_norepo", "size": 2048, "modify_time": 1767225600}
+        {
+          "file_name": "MaaXXX-logs-norepo.zip",
+          "file_id": "fid_norepo",
+          "size": 2048,
+          "modify_time": 1767225600
+        }
       ],
       "777777": [
-        {"file_name": "MaaXXX-logs-badrepo.zip", "file_id": "fid_bad", "size": 2048, "modify_time": 1767225600}
+        {
+          "file_name": "MaaXXX-logs-badrepo.zip",
+          "file_id": "fid_bad",
+          "size": 2048,
+          "modify_time": 1767225600
+        }
       ],
       "888888": [
-        {"file_name": "MaaXXX-logs-agent.zip", "file_id": "fid_agent", "size": 2048, "modify_time": 1767225600}
+        {
+          "file_name": "MaaXXX-logs-agent.zip",
+          "file_id": "fid_agent",
+          "size": 2048,
+          "modify_time": 1767225600
+        }
       ]
     }
   },
@@ -111,7 +165,11 @@
         "notice_type": "group_upload",
         "group_id": 123456,
         "user_id": 10001,
-        "file": {"id": "fid_repo", "name": "MaaXXX-logs-repo.zip", "size": 2048}
+        "file": {
+          "id": "fid_repo",
+          "name": "MaaXXX-logs-repo.zip",
+          "size": 2048
+        }
       },
       "assert": {
         "no_error": true,
@@ -126,7 +184,11 @@
         "notice_type": "group_upload",
         "group_id": 123456,
         "user_id": 10001,
-        "file": {"id": "fid_repo", "name": "MaaXXX-logs-repo.zip", "size": 2048}
+        "file": {
+          "id": "fid_repo",
+          "name": "MaaXXX-logs-repo.zip",
+          "size": 2048
+        }
       },
       "assert": {
         "no_error": true,
@@ -141,7 +203,11 @@
         "notice_type": "group_upload",
         "group_id": 654321,
         "user_id": 10001,
-        "file": {"id": "fid_norepo", "name": "MaaXXX-logs-norepo.zip", "size": 2048}
+        "file": {
+          "id": "fid_norepo",
+          "name": "MaaXXX-logs-norepo.zip",
+          "size": 2048
+        }
       },
       "assert": {
         "no_error": true,
@@ -156,7 +222,11 @@
         "notice_type": "group_upload",
         "group_id": 777777,
         "user_id": 10001,
-        "file": {"id": "fid_bad", "name": "MaaXXX-logs-badrepo.zip", "size": 2048}
+        "file": {
+          "id": "fid_bad",
+          "name": "MaaXXX-logs-badrepo.zip",
+          "size": 2048
+        }
       },
       "assert": {
         "no_error": true,
@@ -172,7 +242,11 @@
         "notice_type": "group_upload",
         "group_id": 888888,
         "user_id": 10001,
-        "file": {"id": "fid_agent", "name": "MaaXXX-logs-agent.zip", "size": 2048}
+        "file": {
+          "id": "fid_agent",
+          "name": "MaaXXX-logs-agent.zip",
+          "size": 2048
+        }
       },
       "assert": {
         "no_error": true,
@@ -188,11 +262,18 @@
         "notice_type": "group_upload",
         "group_id": 888888,
         "user_id": 10001,
-        "file": {"id": "fid_agent", "name": "MaaXXX-logs-agent.zip", "size": 2048}
+        "file": {
+          "id": "fid_agent",
+          "name": "MaaXXX-logs-agent.zip",
+          "size": 2048
+        }
       },
       "assert": {
         "no_error": true,
-        "prompt_not_contains": ["已命中标识符", "项目代码参考"]
+        "prompt_not_contains": [
+          "已命中标识符",
+          "项目代码参考"
+        ]
       }
     }
   ]

@@ -1,6 +1,16 @@
 from __future__ import annotations
 
 
+def decode_bytes(data: bytes) -> str:
+    """按常见日志编码解码字节串。"""
+    for encoding in ("utf-8-sig", "utf-8", "gb18030", "big5"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
 def format_bytes(size: int | float | None) -> str:
     if size is None:
         return "未知大小"

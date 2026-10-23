@@ -142,7 +142,7 @@ python -c "import asyncio;from debug.runner import run_test_file;from debug impo
 | --- | --- |
 | `configs` | 声明配置与监听群（可直接含 `commands`） |
 | `files` | 预置群文件列表 |
-| `mock_repo` | 物化模拟仓库（`{相对路径: 内容}`），自动注入该配置的 `repo.path` |
+| `mock_repo` | 物化模拟仓库（`{相对路径: 内容}`），自动注入该配置的 `project.repo.path` |
 | `create_files` | 创建 sentinel 文件（验证仓库缓存未被清理） |
 | `history` | 播种历史记录（`reset` 清空、每条的 `age_hours` 构造过期记录） |
 | `history_cleanup` | 播种后立即执行一次清理 |

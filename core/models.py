@@ -14,9 +14,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
+
+from core.archive_names import (
+    is_known_log_archive_name,
+    looks_like_log_archive_name,
+    normalize_archive_name,
+)
 
 
 def _to_camel(name: str) -> str:
@@ -80,13 +86,15 @@ class RepoConfig(BaseModel):
 
     来源二选一（path 优先）：
       - path: 本地已存在的仓库目录，无需网络与 git
-      - url:  git 仓库地址（支持镜像），浅克隆到 data/repos/<hash> 并复用
+      - url:  git 仓库地址；mirrors 按顺序作为备用来源
+        预下载开启 → 完整克隆并初始化子模块；关闭 → 浅克隆并按需拉取
 
     版本切换：
       - 从日志包文件名提取版本号（如 ...-logs-1.0.0-alpha.9-20260907-033044.zip），
         自动 checkout 对应 tag，使代码参考与日志实际运行的版本一致
-      - 可选允许 AI 在限定轮次内请求切换其他 tag 复核
-      - 分析结束后强制切回最新（默认分支）
+      - allow_ai_switch_tag 开启时，AI 可在限定轮次内获取其他 tag / commit 复核
+        （与预下载开关无关）
+      - 分析结束后还原到分析前的分支、tag 或提交
     """
 
     enabled: bool = False
@@ -99,13 +107,19 @@ class RepoConfig(BaseModel):
     # ── 来源 ──
     path: str = ""
     url: str = "https://github.com/MAAXYZ/MaaXXX"
+    mirrors: List[str] = Field(default_factory=list)
     branch: str = ""
     default_branch: str = ""       # 分析结束后切回的目标，空 = 自动探测
-    update_on_analyze: bool = False  # 每次分析前 git pull（仅 url 模式）
+    # 启动时预下载：完整克隆（含全部历史 / tag）并初始化子模块；
+    # 关闭时改为首次分析时浅克隆，并按需拉取 tag / commit
+    preload_enabled: bool = True
+    preload_retries: int = 3
+    update_on_analyze: bool = False  # 每份日志分析前更新默认分支
+    allow_ai_update: bool = True    # 允许 AI 请求更新当前配置的仓库
 
     # ── 版本切换 ──
     auto_checkout_version: bool = True      # 从日志版本号自动切 tag
-    allow_ai_switch_tag: bool = True        # 允许 AI 请求切换 tag
+    allow_ai_switch_tag: bool = True        # 允许 AI 获取并切换 tag / commit
     max_tag_switch_rounds: int = 2          # AI 切换 tag 的最大轮次
     # 分析结束后是否还原到分析前的位置。
     # 部署环境用浅克隆时，还原只是切回原来的 tag，开销可忽略；
@@ -120,11 +134,6 @@ class RepoConfig(BaseModel):
     max_tool_calls_per_round: int = 6  # 单轮最多执行的工具数
     max_tool_result_chars: int = 30000  # 单次工具结果字符上限
     agent_deadline_seconds: int = 600  # agent 循环总时长上限
-
-    # ── 克隆策略 ──
-    clone_depth: int = 1            # 浅克隆深度，0 = 完整克隆（含全部历史）
-    fetch_tags_on_demand: bool = True  # 需要某个 tag 时才拉取
-    clone_timeout_seconds: int = 300
 
     # ── 扫描范围 ──
     extensions: List[str] = Field(
@@ -146,6 +155,16 @@ class RepoConfig(BaseModel):
         """是否配置了可用来源。"""
         return bool(self.path or self.url)
 
+    def remote_urls(self) -> list[str]:
+        """返回去重后的主地址与镜像，保持配置顺序。"""
+        if self.path:
+            return []
+        return list(dict.fromkeys(
+            str(url).strip()
+            for url in [self.url, *self.mirrors]
+            if str(url).strip()
+        ))
+
     def git_ops_allowed(self) -> bool:
         """是否需要（且允许）对仓库执行 git 切换操作。"""
         return self.auto_checkout_version or self.allow_ai_switch_tag
@@ -155,12 +174,107 @@ class RepoConfig(BaseModel):
         return str(self.mode or "").strip().lower() == "agent"
 
 
+_UI_KEY_ALIASES = {
+    "mxu": "mxu",
+    "mxuapp": "mxu",
+    "mfaa": "mfaa",
+    "mfaavalonia": "mfaa",
+    "mfaaavalonia": "mfaa",
+    "maafwapp": "maafwapp",
+    "maafw": "maafwapp",
+    "auto": "auto",
+    "default": "auto",
+    "unknown": "auto",
+    "other": "auto",
+}
+
+
+def normalize_ui_key(key: str) -> str:
+    """把 UI 名称归一化为 project.ui 的键名（未知名称原样保留小写）。"""
+    text = re.sub(r"[^a-z0-9]", "", str(key or "").lower())
+    if not text:
+        return "auto"
+    return _UI_KEY_ALIASES.get(text, text)
+
+
+class ProjectUISettings(BaseModel):
+    """单个 UI 的设置（`project.ui.<名称>`）——只控制是否分析该 UI。"""
+
+    enabled: bool = True
+
+    model_config = {"populate_by_name": True, "alias_generator": _to_camel}
+
+
+class ProjectConfig(BaseModel):
+    """
+    项目相关设置（`bot.configs.<名称>.project`）。
+
+    - `name`：项目名（如 MAK），同时作为报告与提示词中的显示名
+    - `archive_match_mode`：日志包识别方式
+    - `file_prefix` / `require_log_layout`：仅 `prefix` 模式使用
+    - `ui`：按 UI 开关（键名 mxu / mfaa / maafwapp / auto）
+    - `repo`：项目代码仓库
+    """
+
+    name: str = ""
+    # auto   文件名特征初筛 + 内容特征识别（默认）
+    # known  仅已知 UI 文件名初筛 + 内容特征识别
+    # prefix 仅前缀识别；require_log_layout=true 时额外做内容特征识别
+    # any    仅内容特征识别（任意 zip 都会下载后检查）
+    archive_match_mode: str = "auto"
+    # 仅 prefix 模式使用
+    file_prefix: str = ""
+    require_log_layout: bool = True
+
+    ui: Dict[str, ProjectUISettings] = Field(default_factory=dict)
+    repo: RepoConfig = Field(default_factory=RepoConfig)
+
+    model_config = {"populate_by_name": True, "alias_generator": _to_camel}
+
+    def ui_key_for(self, ui_key: str) -> str:
+        """把任意写法归一化为 project.ui 的键名。"""
+        return normalize_ui_key(ui_key)
+
+    def ui_enabled(self, ui_key: str) -> bool:
+        """该 UI 是否允许分析；未配置时回退 `auto`，再回退 True。"""
+        key = normalize_ui_key(ui_key)
+        item = self.ui.get(key)
+        if item is not None:
+            return bool(item.enabled)
+        fallback = self.ui.get("auto")
+        if fallback is not None:
+            return bool(fallback.enabled)
+        return True
+
+    def matches(self, file_name: str) -> bool:
+        """
+        文件名初筛（下载前）。
+
+        内容特征识别始终在下载后进行，见 `require_log_layout` 与
+        `DigestResult.is_log_archive`。
+        """
+        name = normalize_archive_name(file_name)
+        if not name.lower().endswith(".zip"):
+            return False
+
+        mode = str(self.archive_match_mode or "auto").strip().lower()
+        if mode == "any":
+            return True
+        if mode == "prefix":
+            prefix = str(self.file_prefix or "").strip()
+            return bool(prefix) and name.startswith(prefix)
+        if is_known_log_archive_name(name):
+            return True
+        if mode == "known":
+            return False
+        return looks_like_log_archive_name(name)
+
+
 class AnalysisSettings(BaseModel):
     """日志分析设置 — 全局默认 + 各配置可覆盖。"""
 
     # ── 触发 ──
     enabled: bool = True
-    file_prefix: str = "MaaXXX-logs"
     file_list_delay_seconds: float = 0.0   # 上传后等待群文件列表刷新
     # 同一文件的去重窗口（秒）。
     # 部分协议端（如 SnowLuma）对一次上传会同时发出 notice.group_upload
@@ -196,7 +310,7 @@ class AnalysisSettings(BaseModel):
     # 保留「用于追问的消息 ID + 日志压缩包 + 报告」，使追问可跨越较长时间。
     # 清理策略：每过一个 period 检查一次，删除超过 keep_periods 个周期的记录。
     # 因此默认 1d 周期 / 保留 2 周期 → 可追问约 2~3 天内的日志。
-    # 注意：git 仓库缓存（data/repos）不属于历史记录，**永不删除**。
+    # 注意：git 仓库缓存（data/repo）不属于历史记录，**永不删除**。
     history_enabled: bool = True
     history_period_hours: int = 24      # 保留周期（默认 1 天）
     history_keep_periods: int = 2       # 删除 N 个周期以前的记录
@@ -215,9 +329,6 @@ class AnalysisSettings(BaseModel):
     temperature: Optional[float] = None  # None=使用全局 LLM 温度
     model: str = ""                      # 覆盖全局模型名，空=用全局
 
-    # ── 项目代码仓库（供 AI 对照源码）──
-    repo: RepoConfig = Field(default_factory=RepoConfig)
-
     # ── 日志包工具（让 AI 像读仓库一样读日志包原始文件）──
     # 开启后，即使 repo.enabled=false，分析也会走工具模式：
     # 模型可调用 log_search / log_read_file / log_list_files 直接查压缩包内容，
@@ -235,6 +346,13 @@ class AnalysisSettings(BaseModel):
     max_zip_members: int = 300
     max_log_files: int = 6
     max_maafw_bak_files: int = 1
+    # 单个 maafw.bak 日志的大小上限（MB）；0 = 不限制。避免误扫数百 MB 备份
+    max_maafw_bak_mb: int = 64
+    # 分卷日志包（*-part01.zip / *-part02.zip）自动合并分析
+    merge_archive_parts: bool = True
+    # 分卷包静默期：每收到一个新分卷就重新计时，连续该秒数无新分卷后才分析
+    # 0 = 收到第一个分卷立即分析（可能缺少后续分卷）
+    archive_part_settle_seconds: float = 30.0
     max_log_file_read_kb: int = 512
     small_log_full_read_mb: int = 5
     stream_medium_logs: bool = True
@@ -255,29 +373,6 @@ class AnalysisSettings(BaseModel):
 
     def max_zip_bytes(self) -> int:
         return max(1, int(self.max_zip_size_mb or 100)) * 1024 * 1024
-
-    def project_name(self) -> str:
-        """
-        从日志包前缀推导项目名，用于报告头与提示词。
-
-        前缀形如 `<项目名>-logs`，例如：
-          MaaXXX-logs                → MaaXXX
-          MaaAssistantKedrgame-logs  → MaaAssistantKedrgame
-          MaaNTE_logs                → MaaNTE
-        若前缀不含 logs 后缀，则原样返回（去掉首尾分隔符）。
-        """
-        prefix = str(self.file_prefix or "").strip()
-        if not prefix:
-            return "MaaXXX"
-        name = re.sub(r"[-_\s]*logs?$", "", prefix, flags=re.IGNORECASE)
-        name = name.strip("-_ ")
-        return name or prefix
-
-    def matches(self, file_name: str) -> bool:
-        """判断文件名是否为需要分析的日志包。"""
-        name = str(file_name or "")
-        prefix = str(self.file_prefix or "MaaXXX-logs")
-        return name.startswith(prefix) and name.lower().endswith(".zip")
 
 
 class LogFileItem(BaseModel):
@@ -357,10 +452,15 @@ class ConfigState:
 
     # 设置来源分层（优先级从低到高）：
     #   global_settings（data/settings.json）
-    #   → settings_overrides（/maa set，持久化到 data/<名称>/settings.json）
     #   → json_settings（config.json 的 settings 段，仅内存）
-    # 这样从 config.json 删掉某个键就会回退到下一层，而不是被旧值粘住。
+    #   → settings_overrides（/maa set，持久化到 data/<名称>/settings.json）
+    # 这样从 config.json 删掉某个键就会回退到 /maa set 的值或全局默认值。
     settings_overrides: dict = field(default_factory=dict)
     json_settings: dict = field(default_factory=dict)
     # 旧版 settings.json 是全量 dump，首次同步后会被改写成增量格式
     settings_legacy: bool = False
+
+    # 项目配置（config.json 的 project 段 + /maa project set 覆盖）
+    project: ProjectConfig = field(default_factory=ProjectConfig)
+    project_base: dict = field(default_factory=dict)
+    project_overrides: dict = field(default_factory=dict)
