@@ -11,6 +11,7 @@
     "http_url": "http://127.0.0.1:3000",
     "ws_url": "ws://127.0.0.1:3001",
     "ws_reverse_port": 8080,
+    "ws_reverse_host": "127.0.0.1",
     "access_token": "",
     "api_timeout_seconds": 30
   },
@@ -106,8 +107,9 @@
 | `onebot.mode` | 通信模式（见下方） |
 | `onebot.http_url` | HTTP API 地址，`""` 禁用 |
 | `onebot.ws_url` | 正向 WS 地址，`""` 禁用 |
-| `onebot.ws_reverse_port` | 反向 WS 端口，`0` 禁用 |
-| `onebot.access_token` | 鉴权令牌，需与 OneBot 实现一致 |
+| `onebot.ws_reverse_port` | 反向 WS 端口；使用反向模式时必填（1–65535），否则启动报错 |
+| `onebot.ws_reverse_host` | 反向 WS 监听地址，默认 `127.0.0.1`；需外网访问时显式改为 `0.0.0.0` |
+| `onebot.access_token` | 鉴权令牌，需与 OneBot 实现一致；反向 WS 会校验 Header 或 `?access_token=` |
 | `onebot.api_timeout_seconds` | API 调用超时（秒），默认 30 |
 | `bot.data_dir` | 数据目录 |
 | `bot.configs` | **多群配置**：配置名 → 监听群 / 通知群 / 设置覆盖 / 指令设置 |

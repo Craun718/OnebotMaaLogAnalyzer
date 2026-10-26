@@ -23,6 +23,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit
 
 from bot.api import OneBotAPI
 from bot.client import OneBotWS
@@ -103,6 +104,53 @@ def setup_logging(log_cfg: dict):
 MODES = ("ws", "http_ws", "ws_reverse", "http_ws_reverse")
 
 
+def validate_onebot_config(cfg: dict) -> str:
+    """校验 onebot 连接配置，返回模式名；非法配置直接抛 ValueError。
+
+    把错误暴露在启动期，而不是表现为无尽的重连循环。
+    """
+    ob = cfg.get("onebot") or {}
+    mode = str(ob.get("mode", "http_ws"))
+    if mode not in MODES:
+        raise ValueError(f"未知模式: {mode}，可选: {', '.join(MODES)}")
+
+    def _url(key: str, schemes: tuple[str, ...], required: bool) -> str:
+        raw = str(ob.get(key, "") or "").strip()
+        if not raw:
+            if required:
+                raise ValueError(f"onebot.mode={mode} 需要设置 onebot.{key}")
+            return ""
+        parts = urlsplit(raw)
+        if parts.scheme not in schemes or not parts.hostname:
+            raise ValueError(
+                f"onebot.{key} 不是合法的 {schemes[0]} 地址: {raw!r}"
+            )
+        try:
+            parts.port
+        except ValueError as exc:
+            raise ValueError(f"onebot.{key} 端口非法: {raw!r}") from exc
+        return raw
+
+    if mode in ("http_ws", "http_ws_reverse"):
+        _url("http_url", ("http", "https"), True)
+    if mode in ("ws", "http_ws"):
+        _url("ws_url", ("ws", "wss"), True)
+    if mode in ("ws_reverse", "http_ws_reverse"):
+        try:
+            port = int(ob.get("ws_reverse_port", 0) or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("onebot.ws_reverse_port 必须是整数") from exc
+        if not 1 <= port <= 65535:
+            raise ValueError(
+                f"onebot.mode={mode} 需要 1-65535 的 ws_reverse_port，"
+                f"当前为 {port}"
+            )
+        host = str(ob.get("ws_reverse_host", "127.0.0.1") or "").strip()
+        if not host:
+            raise ValueError("onebot.ws_reverse_host 不能为空")
+    return mode
+
+
 def default_config() -> dict:
     """首次运行时生成的默认配置。"""
     return {
@@ -111,6 +159,7 @@ def default_config() -> dict:
             "http_url": "http://127.0.0.1:3000",
             "ws_url": "ws://127.0.0.1:3001",
             "ws_reverse_port": 8080,
+            "ws_reverse_host": "127.0.0.1",
             "access_token": "",
             "api_timeout_seconds": 30,
         },
@@ -365,14 +414,13 @@ class BotRuntime:
         # 与重启一致：每次启动都重新初始化日志（另开新文件）
         setup_logging(cfg.get("log") or {})
 
-        mode = str(ob.get("mode", "http_ws"))
-        if mode not in MODES:
-            raise ValueError(f"未知模式: {mode}，可选: {', '.join(MODES)}")
+        mode = validate_onebot_config(cfg)
 
         token = ob.get("access_token", "")
         http_url = ob.get("http_url", "")
         ws_url = ob.get("ws_url", "")
-        ws_reverse_port = int(ob.get("ws_reverse_port", 0))
+        ws_reverse_port = int(ob.get("ws_reverse_port", 0) or 0)
+        ws_reverse_host = str(ob.get("ws_reverse_host", "127.0.0.1") or "127.0.0.1")
         api_timeout = int(ob.get("api_timeout_seconds", 30) or 30)
 
         # HTTP 模式下 API 走 HTTP；WS / ws_reverse 模式下 api 走同一 WS 连接
@@ -447,7 +495,9 @@ class BotRuntime:
             self._tasks.append(asyncio.create_task(self.ws.connect(ws_url)))
         if mode in ("ws_reverse", "http_ws_reverse"):
             self._tasks.append(
-                asyncio.create_task(self.ws.serve("0.0.0.0", ws_reverse_port))
+                asyncio.create_task(
+                    self.ws.serve(ws_reverse_host, ws_reverse_port)
+                )
             )
 
         debug_cfg = cfg.get("debug") or {}
