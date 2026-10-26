@@ -446,12 +446,17 @@ class DebugManager:
         self.llm_converge_empty: bool = False
 
     @classmethod
-    def from_config(cls, cfg: dict, data_dir: str = "data/test") -> "DebugManager":
-        """根据配置字典构建完整的调试管线。"""
+    def from_config(cls, cfg: dict, data_dir: Optional[str] = None) -> "DebugManager":
+        """根据配置字典构建完整的调试管线。
+
+        数据目录优先级：显式 data_dir > debug.data_dir > data/test。
+        **不会**回退到 bot.data_dir，避免调试数据污染生产目录。
+        """
         bot_cfg = cfg.get("bot", {})
+        target_dir = data_dir or (cfg.get("debug") or {}).get("data_dir") or "data/test"
 
         api = DebugAPI()
-        dm = DataManager(bot_cfg.get("data_dir", data_dir))
+        dm = DataManager(target_dir)
 
         service = MaaService(api=api, dm=dm)  # type: ignore[arg-type]
         service.load()

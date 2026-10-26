@@ -399,6 +399,7 @@ class BotRuntime:
         self.watcher = None
         self.messages = None
         self.handler = None
+        self.debug_manager = None
         self._tasks: list[asyncio.Task] = []
 
     # ════════════════════════════════════════════════════════════
@@ -414,7 +415,14 @@ class BotRuntime:
         # 与重启一致：每次启动都重新初始化日志（另开新文件）
         setup_logging(cfg.get("log") or {})
 
-        mode = validate_onebot_config(cfg)
+        debug_cfg = cfg.get("debug") or {}
+        debug_enabled = bool(debug_cfg.get("enabled", False))
+        mode = str(ob.get("mode", "http_ws"))
+        if mode not in MODES:
+            raise ValueError(f"未知模式: {mode}，可选: {', '.join(MODES)}")
+        # 离线调试不建立 OneBot 连接，因此也不校验连接参数
+        if not debug_enabled:
+            validate_onebot_config(cfg)
 
         token = ob.get("access_token", "")
         http_url = ob.get("http_url", "")
@@ -435,7 +443,13 @@ class BotRuntime:
             self.api.set_ws_send(self.ws.send)
             self.ws.on_api_response(self.api.handle_ws_response)
 
-        self.dm = DataManager(bot_cfg.get("data_dir", "data"))
+        # 调试模式只使用 debug.data_dir，绝不回退到生产 bot.data_dir
+        data_dir = (
+            (debug_cfg.get("data_dir") or "data/test")
+            if debug_enabled
+            else bot_cfg.get("data_dir", "data")
+        )
+        self.dm = DataManager(data_dir)
 
         self.llm = build_llm_pool(llm_cfg, UsageStore(self.dm._dir))
         if not self.llm.configured:
@@ -486,24 +500,11 @@ class BotRuntime:
         self.ws.on_event("notice", self.handler.on_notice)
         self.ws.on_event("request", self.handler.on_request)
 
-        self._tasks = [
-            asyncio.create_task(self._detect_backend()),
-            asyncio.create_task(_history_cleanup_loop(self.history, self.service)),
-        ]
-        self._tasks.extend(self.analyzer.start_repo_preloads())
-        if mode in ("http_ws", "ws"):
-            self._tasks.append(asyncio.create_task(self.ws.connect(ws_url)))
-        if mode in ("ws_reverse", "http_ws_reverse"):
-            self._tasks.append(
-                asyncio.create_task(
-                    self.ws.serve(ws_reverse_host, ws_reverse_port)
-                )
-            )
-
-        debug_cfg = cfg.get("debug") or {}
-        if debug_cfg.get("enabled", False):
+        self._tasks = []
+        if debug_enabled:
             # 调试模块仅存在于源码仓库，不随发布包分发
             try:
+                from debug import DebugManager
                 from debug.http_server import start_http_server
             except ImportError as exc:
                 raise RuntimeError(
@@ -511,10 +512,30 @@ class BotRuntime:
                     "调试模式仅适用于源码仓库（发布包不含 debug/）。"
                     "请将 config.json 中的 debug.enabled 设为 false 后重启。"
                 ) from exc
+            # 离线调试：不连接 OneBot、不探测协议端、不预加载仓库
+            self.debug_manager = DebugManager.from_config(cfg, data_dir=data_dir)
             http_port = int(debug_cfg.get("http_port", 8765))
             self._tasks.append(asyncio.create_task(
-                start_http_server(http_port, self.service, cfg)
+                start_http_server(http_port, self.debug_manager)
             ))
+            logger.info(
+                f"[Debug] 离线调试模式：不连接 OneBot，数据目录 {data_dir}，"
+                f"HTTP 调试端点 127.0.0.1:{http_port}"
+            )
+        else:
+            self._tasks = [
+                asyncio.create_task(self._detect_backend()),
+                asyncio.create_task(_history_cleanup_loop(self.history, self.service)),
+            ]
+            self._tasks.extend(self.analyzer.start_repo_preloads())
+            if mode in ("http_ws", "ws"):
+                self._tasks.append(asyncio.create_task(self.ws.connect(ws_url)))
+            if mode in ("ws_reverse", "http_ws_reverse"):
+                self._tasks.append(
+                    asyncio.create_task(
+                        self.ws.serve(ws_reverse_host, ws_reverse_port)
+                    )
+                )
 
         logger.info(f"OnebotMaaLogAnalyzer 已就绪 (mode={mode})，等待日志包上传...")
 
@@ -667,7 +688,7 @@ async def main():
             sys.exit(1)
 
         try:
-            await run_cli(runtime.service, cfg)
+            await run_cli(runtime.debug_manager)
         except KeyboardInterrupt:
             logger.info("收到中断信号")
         finally:

@@ -19,7 +19,7 @@
         }
       }
     },
-    "model_report": "结论：\n（调试模式模拟输出）PVP 节点阈值偏低。\n\n下面这张模板图取自项目仓库：\n[附图@项目: assets/resource/image/Start2.png]\n可以看到模板内容。\n\n对应的节点定义如下：\n[附件@项目: assets/resource/pipeline/PVP.json]\n其中 threshold 为 0.7。",
+    "model_report": "结论：\n（调试模式模拟输出）PVP 节点阈值偏低。\n\n下面这张模板图取自项目仓库：\n[附件@项目: assets/resource/image/Start2.png]\n可以看到模板内容。\n\n对应的节点定义如下：\n[附件@项目: assets/resource/pipeline/PVP.json]\n其中 threshold 为 0.7。",
     "configs": {
       "注入组": {
         "listen_groups": [

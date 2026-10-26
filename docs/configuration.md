@@ -122,9 +122,9 @@
 | `log.log_to_file` | 是否输出日志到文件 |
 | `log.log_level` | 日志等级：`DEBUG` / `INFO` / `WARNING` / `ERROR` |
 | `log.log_dir` | 日志目录，每次启动生成 `YYYY-MM-DD_HH-MM-SS.log`；行内 `[配置名]` 标注该行属于哪个配置 |
-| `debug.enabled` | 启用调试模式（默认 `false`），见 [调试](debugging.md) |
+| `debug.enabled` | 启用离线调试模式（默认 `false`），不连接 OneBot，见 [调试](debugging.md) |
 | `debug.http_port` | 调试 HTTP 端口（默认 `8765`，仅 `127.0.0.1`） |
-| `debug.data_dir` | 调试模式使用的测试数据目录（默认 `data/test`） |
+| `debug.data_dir` | 调试模式唯一的数据目录（默认 `data/test`），调试时不会读写 `bot.data_dir` |
 
 > `config.json` 含 API 密钥与 `access_token`，已被 `.gitignore` 排除，**不要提交到仓库**。
 

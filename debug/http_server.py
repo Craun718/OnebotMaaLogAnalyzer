@@ -19,7 +19,6 @@ from pathlib import Path
 
 from aiohttp import web
 
-from core.service import MaaService
 from debug import DebugManager, DebugResult
 
 logger = logging.getLogger("Maa.Debug.HTTP")
@@ -189,9 +188,8 @@ class DebugHTTPHandler:
         app.router.add_post("/debug/run", self.run_tests)
 
 
-async def start_http_server(port: int, service: MaaService, cfg: dict):
-    """启动 HTTP 调试服务器（后台任务）。"""
-    manager = DebugManager.from_config(cfg)
+async def start_http_server(port: int, manager: "DebugManager"):
+    """启动 HTTP 调试服务器（后台任务），复用调用方构建的调试管线。"""
     handler = DebugHTTPHandler(manager)
 
     app = web.Application()

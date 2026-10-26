@@ -3,6 +3,8 @@
 设置 `debug.enabled: true` 后启动 Bot，将进入**离线调试模式**——不连接真实 OneBot 服务端，通过模拟事件注入来验证代码逻辑。
 
 > 调试模块仅存在于源码仓库，不随发布包分发。若发布包中启用了 `debug.enabled`，Bot 会提示并退出。
+>
+> 调试数据只写入 `debug.data_dir`（默认 `data/test`），**不会**使用 `bot.data_dir`；也不会建立 OneBot 连接、探测协议端或预加载仓库。
 
 ## CLI 交互式 REPL
 
