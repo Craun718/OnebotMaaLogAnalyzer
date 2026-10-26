@@ -58,10 +58,13 @@ MFAAvalonia 在 `debug/on_error/`，MaaFwApp 可能没有错误截图。路径�
 | `assets\resource\pipeline\PVP.json` | ✅ 接受（分隔符统一） |
 | `C:/Windows/system32/config.json` | ❌ 拒绝（绝对路径） |
 | `/etc/passwd` | ❌ 拒绝（绝对路径） |
+| `sub/../normal.txt` | ❌ 拒绝（含 `..` 上跳组件，即使最终仍在来源内） |
 | `../../secret.txt` | ❌ 拒绝（上跳越界） |
 | `.env` / `sub/.env` | ❌ 拒绝（凭据文件） |
 | `sub/.git/config` | ❌ 拒绝（版本控制内部） |
 | `server.pem` / `id_rsa` | ❌ 拒绝（私钥） |
+
+所有路径先拒绝任何 `..` 上跳组件；仓库路径还会按符号链接解析后的实际位置校验范围，阻止符号链接逃逸。
 
 缺少来源标记或路径非法的指令会被直接丢弃（只记日志，不发送任何内容）。
 
