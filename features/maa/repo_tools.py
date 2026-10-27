@@ -32,7 +32,9 @@ from features.maa.repo import (
     RepoProvider,
     _SKIP_DIRS,
 )
-from features.maa.safety import describe_rejection, is_sensitive_path
+from features.maa.safety import (
+    resolve_repo_path,
+)
 
 logger = logging.getLogger("Maa.RepoTools")
 
@@ -345,38 +347,7 @@ class RepoTools:
         root = self.provider.root
         if root is None:
             return None, "仓库不可用"
-        try:
-            root_real = root.resolve()
-        except OSError as exc:
-            return None, f"仓库路径无法解析：{exc}"
-
-        raw = str(rel or "").strip().replace("\\", "/").lstrip("/")
-        if not raw:
-            return root_real, ""
-
-        candidate = (root_real / raw)
-        try:
-            resolved = candidate.resolve()
-        except OSError as exc:
-            return None, f"路径无法解析：{exc}"
-
-        # 必须位于仓库根目录内（含自身）
-        if resolved != root_real and root_real not in resolved.parents:
-            return None, f"路径越出仓库范围，已拒绝：{rel}"
-
-        # 拒绝访问 .git 内部
-        try:
-            rel_parts = resolved.relative_to(root_real).parts
-        except ValueError:
-            return None, f"路径越出仓库范围，已拒绝：{rel}"
-        if rel_parts and rel_parts[0] == ".git":
-            return None, "已拒绝访问 .git 目录"
-
-        # 拒绝凭据 / 密钥类文件（.env、私钥、凭据清单等）
-        if is_sensitive_path("/".join(rel_parts)):
-            return None, describe_rejection("/".join(rel_parts))
-
-        return resolved, ""
+        return resolve_repo_path(root, rel)
 
     @staticmethod
     def _display(root: Optional[Path], path: Path) -> str:
@@ -406,14 +377,22 @@ class RepoTools:
 
         entries: list[str] = []
         try:
-            for entry in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
+            relative_dir = target.relative_to(self.provider.root.resolve())
+            safe_entries: list[tuple[Path, Path]] = []
+            for entry in target.iterdir():
                 if entry.name in _SKIP_DIRS:
                     continue
-                if entry.is_dir():
+                resolved, _ = self._resolve((relative_dir / entry.name).as_posix())
+                if resolved is not None:
+                    safe_entries.append((entry, resolved))
+            for entry, resolved in sorted(
+                safe_entries, key=lambda pair: (pair[1].is_file(), pair[0].name.lower())
+            ):
+                if resolved.is_dir():
                     entries.append(f"{entry.name}/")
                 else:
                     try:
-                        size = entry.stat().st_size
+                        size = resolved.stat().st_size
                     except OSError:
                         size = 0
                     entries.append(f"{entry.name}  ({size} 字节)")
@@ -461,11 +440,23 @@ class RepoTools:
         scanned = 0
         truncated = False
         stop = False
+        root = self.provider.root.resolve()
 
         for dirpath, dirnames, filenames in os.walk(base):
-            dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in _SKIP_DIRS
+                and self._resolve(
+                    (Path(dirpath) / d).relative_to(root).as_posix()
+                )[0] is not None
+            ]
             for filename in filenames:
                 path = Path(dirpath) / filename
+                path, _ = self._resolve(
+                    path.relative_to(root).as_posix()
+                )
+                if path is None:
+                    continue
                 if not self._is_readable(path):
                     continue
                 if exts and path.suffix.lower() not in exts:

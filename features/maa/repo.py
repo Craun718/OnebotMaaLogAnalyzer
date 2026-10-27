@@ -43,7 +43,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from core.models import RepoConfig
 from features.maa.log_digest import IMAGE_SUFFIXES
-from features.maa.safety import describe_rejection, is_sensitive_path
+from features.maa.safety import normalize_relative_input, resolve_repo_path
 
 logger = logging.getLogger("Maa.Repo")
 
@@ -1271,13 +1271,21 @@ class RepoProvider:
         truncated = False
 
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+            dirnames[:] = [
+                d for d in dirnames if d not in _SKIP_DIRS
+                and resolve_repo_path(
+                    root, (Path(dirpath) / d).relative_to(root).as_posix()
+                )[0] is not None
+            ]
             for filename in filenames:
                 ext = os.path.splitext(filename)[1].lower()
                 if exts and ext not in exts:
                     continue
 
-                path = Path(dirpath) / filename
+                requested = Path(dirpath) / filename
+                path, _ = resolve_repo_path(root, requested.relative_to(root).as_posix())
+                if path is None:
+                    continue
                 try:
                     if path.stat().st_size > max_file_bytes:
                         continue
@@ -1291,7 +1299,7 @@ class RepoProvider:
                     break
 
                 lines = text.splitlines()
-                rel = path.relative_to(root).as_posix()
+                rel = requested.relative_to(root).as_posix()
                 hits: dict[int, str] = {}
                 defs: set[int] = set()
                 idents_here: set[str] = set()
@@ -1446,36 +1454,18 @@ class RepoProvider:
             # 非图片附件可能较大，放宽到 2 MB
             max_bytes = max(max_bytes, 2 * 1024 * 1024)
 
-        root_resolved = root.resolve()
         ordered: list[tuple[str, bytes]] = []
         seen: set[str] = set()
 
         for raw in names:
-            # 只用 removeprefix 去掉 "./" 前缀，不能用 lstrip：
-            # lstrip("./") 会剥掉开头所有 '.' 与 '/'，把 ".env" 变成 "env"，
-            # 从而读到另一个文件（同名歧义）或绕过安全检查。
-            rel = str(raw or "").strip().replace("\\", "/")
-            while rel.startswith("./"):
-                rel = rel[2:]
-            rel = rel.lstrip("/")
+            candidate, error = resolve_repo_path(root, raw)
+            if candidate is None:
+                logger.info(f"[仓库] {error}")
+                continue
+            rel = normalize_relative_input(raw)
             if not rel or rel in seen:
                 continue
             seen.add(rel)
-
-            # 凭据 / 密钥类文件禁止外发
-            if is_sensitive_path(rel):
-                logger.info(f"[仓库] 拒绝外发敏感文件：{describe_rejection(rel)}")
-                continue
-
-            candidate = root / rel
-            # 沙箱校验：必须位于仓库根目录内
-            try:
-                resolved = candidate.resolve()
-                if root_resolved not in resolved.parents:
-                    logger.info(f"[仓库] 拒绝越界路径：{rel}")
-                    continue
-            except OSError:
-                continue
 
             if not candidate.is_file():
                 continue
@@ -1500,10 +1490,10 @@ class RepoProvider:
         """读取文件指定行，用于补齐上下文。路径必须位于仓库内。"""
         if root is None:
             return None
-        path = (root / rel).resolve()
+        path, _ = resolve_repo_path(root, rel)
+        if path is None:
+            return None
         try:
-            if root.resolve() not in path.parents and path.parent != root.resolve():
-                return None
             with path.open("r", encoding="utf-8", errors="ignore") as handle:
                 for index, line in enumerate(handle, 1):
                     if index == lineno:

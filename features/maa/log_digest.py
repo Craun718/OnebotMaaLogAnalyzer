@@ -20,6 +20,7 @@ from .archive_profile import (
 from core.tokens import estimate_tokens, fold_text
 
 from .text_utils import decode_bytes, format_bytes, limit_text
+from .safety import is_sensitive_path, normalize_tool_path
 
 
 ERROR_PATTERN = re.compile(
@@ -137,7 +138,7 @@ def build_log_digest(
             zip_path,
             file_name=original_file_name,
             archive=archive,
-            infos=infos,
+            infos=safe_infos,
         )
         notes.extend(profile.notes)
 
@@ -221,15 +222,15 @@ def describe_zip(zip_path: str,
     try:
         with zipfile.ZipFile(zip_path) as archive:
             infos = [info for info in archive.infolist() if not info.is_dir()]
+            safe_infos = [info for info in infos if _is_safe_member(info.filename)]
             profile = detect_archive_profile(
                 zip_path,
                 archive=archive,
-                infos=infos,
+                infos=safe_infos,
             )
     except (zipfile.BadZipFile, OSError, RuntimeError):
         return None
 
-    safe_infos = [info for info in infos if _is_safe_member(info.filename)]
     notes: list[str] = []
     log_infos = _select_log_infos(safe_infos, opts, profile, notes)
     error_images = _select_error_images(safe_infos, opts.max_error_images)
@@ -290,13 +291,17 @@ def read_zip_member(zip_path: str, member_name: str,
     """
     if not zip_path or not member_name:
         return None
-    wanted = member_name.replace("\\", "/")
+    wanted = normalize_tool_path(member_name)
+    if not wanted or is_sensitive_path(wanted):
+        return None
     try:
         with zipfile.ZipFile(zip_path) as archive:
             for info in archive.infolist():
                 if info.is_dir():
                     continue
-                if info.filename.replace("\\", "/") != wanted:
+                if not _is_safe_member(info.filename):
+                    continue
+                if normalize_tool_path(info.filename) != wanted:
                     continue
                 if max_bytes > 0 and info.file_size > max_bytes:
                     return None
@@ -307,11 +312,8 @@ def read_zip_member(zip_path: str, member_name: str,
 
 
 def _is_safe_member(name: str) -> bool:
-    normalized = name.replace("\\", "/")
-    path = PurePosixPath(normalized)
-    if path.is_absolute():
-        return False
-    return not any(part in ("", ".", "..") for part in path.parts)
+    normalized = normalize_tool_path(name)
+    return bool(normalized) and not is_sensitive_path(name) and not is_sensitive_path(normalized)
 
 
 def _select_log_infos(

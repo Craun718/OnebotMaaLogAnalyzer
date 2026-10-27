@@ -11,7 +11,7 @@
   - read_file   读取某个文本成员（支持行范围）
 
 安全边界:
-  - 路径必须是包内相对路径，拒绝绝对路径与 `..` 上跳
+  - 路径必须是包内相对路径，拒绝绝对路径与任何 `..` 上跳组件
   - 拒绝凭据 / 密钥类文件名（与仓库侧共用 safety 策略）
   - 单文件读取受字节上限、单次返回受字符上限约束
   - 只读，不落盘（不把压缩包解压到磁盘）
@@ -26,7 +26,11 @@ from typing import Any, Optional
 
 from core.tokens import trim_to_tokens
 from features.maa.log_digest import IMAGE_SUFFIXES
-from features.maa.safety import describe_rejection, is_sensitive_path
+from features.maa.safety import (
+    describe_rejection,
+    is_sensitive_path,
+    normalize_tool_path,
+)
 
 logger = logging.getLogger("Maa.LogTools")
 
@@ -88,16 +92,7 @@ class LogArchiveTools:
     @staticmethod
     def _normalize(rel: str) -> Optional[str]:
         """规范化包内相对路径；非法返回 None。"""
-        text = str(rel or "").strip().replace("\\", "/")
-        while text.startswith("./"):
-            text = text[2:]
-        text = text.strip("/")
-        if not text:
-            return ""
-        parts = PurePosixPath(text).parts
-        if any(part in ("..", "") for part in parts):
-            return None
-        return "/".join(parts)
+        return normalize_tool_path(rel)
 
     @staticmethod
     def _is_text_member(name: str) -> bool:
@@ -111,9 +106,7 @@ class LogArchiveTools:
             return self._archive
         try:
             self._archive = zipfile.ZipFile(self.zip_path)
-            self._member_list = [
-                info for info in self._archive.infolist() if not info.is_dir()
-            ]
+            self._members(self._archive)
             return self._archive
         except (zipfile.BadZipFile, OSError) as exc:
             logger.warning(f"[日志工具] 无法打开压缩包：{exc}")
@@ -122,7 +115,11 @@ class LogArchiveTools:
     def _members(self, archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
         if self._member_list is None:
             self._member_list = [
-                info for info in archive.infolist() if not info.is_dir()
+                info for info in archive.infolist()
+                if not info.is_dir()
+                and self._normalize(info.filename) not in (None, "")
+                and not is_sensitive_path(info.filename)
+                and not is_sensitive_path(self._normalize(info.filename))
             ]
         return self._member_list
 
@@ -149,7 +146,7 @@ class LogArchiveTools:
         files: list[str] = []
         dirs: set[str] = set()
         for info in self._members(archive):
-            name = info.filename.replace("\\", "/")
+            name = self._normalize(info.filename)
             if prefix and not name.startswith(prefix):
                 continue
             rest = name[len(prefix):]
@@ -199,7 +196,7 @@ class LogArchiveTools:
         truncated = False
         prefix = f"{rel}/" if rel else ""
         for info in self._members(archive):
-            name = info.filename.replace("\\", "/")
+            name = self._normalize(info.filename)
             if prefix and not name.startswith(prefix):
                 continue
             if not self._is_text_member(name):
@@ -253,7 +250,7 @@ class LogArchiveTools:
             return "日志包不可用（可能已被清理）"
         target = None
         for info in self._members(archive):
-            if info.filename.replace("\\", "/") == rel:
+            if self._normalize(info.filename) == rel:
                 target = info
                 break
         if target is None:
@@ -307,7 +304,7 @@ class LogArchiveTools:
         if archive is None:
             return "日志包不可用（可能已被清理）"
         images = [
-            f"{info.filename.replace(chr(92), '/')}  ({info.file_size} 字节)"
+            f"{self._normalize(info.filename)}  ({info.file_size} 字节)"
             for info in self._members(archive)
             if PurePosixPath(info.filename).suffix.lower() in IMAGE_SUFFIXES
         ]

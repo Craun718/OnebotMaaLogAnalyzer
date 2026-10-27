@@ -10,7 +10,7 @@
 
 来源标记（`@日志` / `@项目`）与相对路径都是**必需**的：
   - 只从指定来源查找，避免同名文件命中非预期内容
-  - 路径必须是**相对路径**，拒绝绝对路径与 `..` 上跳，防止越界读取
+  - 路径必须是**相对路径**，拒绝绝对路径，读取前校验实际范围
 
 图片与文件统一使用「附件」指令，Bot 按扩展名决定呈现方式：
   - 图片（png/jpg/webp/bmp）→ 内联进报告（图片化报告）或 image 消息段
@@ -36,7 +36,11 @@ from features.maa.log_digest import (
     DigestResult,
     read_zip_member,
 )
-from features.maa.safety import describe_rejection, is_sensitive_path
+from features.maa.safety import (
+    describe_rejection,
+    is_sensitive_path,
+    normalize_tool_path,
+)
 
 logger = logging.getLogger("Maa.Attach")
 
@@ -134,32 +138,9 @@ def _normalize_source(raw: str) -> str:
 
 
 def normalize_rel_path(raw: str) -> Optional[str]:
-    """
-    规范化相对路径；非法（绝对路径 / 上跳 / 空）返回 None。
-
-    这是防越界的关键：只允许仓库或压缩包内的相对路径。
-
-    注意：这里只做**路径形状**校验，不判断内容敏感性；
-    凭据类文件由 `safety.is_sensitive_path()` 单独拦截。
-    """
+    """去除指令引号并校验相对路径，拒绝任何上跳组件。"""
     text = str(raw or "").strip().strip("`\"'")
-    if not text:
-        return None
-    # 统一分隔符，去掉开头的 ./ 与 /
-    text = text.replace("\\", "/")
-    while text.startswith("./"):
-        text = text[2:]
-    if text.startswith("/"):
-        return None
-    # 驱动器盘符（C:/...）或 UNC 路径一律拒绝
-    if re.match(r"^[A-Za-z]:", text):
-        return None
-    parts = PurePosixPath(text).parts
-    if not parts:
-        return None
-    if any(part in ("..", "") for part in parts):
-        return None
-    return "/".join(parts)
+    return normalize_tool_path(text) or None
 
 
 def _split_source_and_path(label: str, src1: str, raw: str) -> tuple[str, str]:
@@ -353,7 +334,9 @@ def build_report_segments(
     zip_full: dict[str, str] = {}
     if digest and digest.zip_path:
         for name in (getattr(digest, "all_members", None) or digest.all_images):
-            zip_full.setdefault(name.replace("\\", "/").lower(), name)
+            normalized = normalize_tool_path(name)
+            if normalized:
+                zip_full.setdefault(normalized.lower(), name)
 
     # 仓库索引：仅完整相对路径
     repo_full: dict[str, tuple[str, bytes]] = {}

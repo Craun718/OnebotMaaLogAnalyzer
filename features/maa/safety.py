@@ -15,7 +15,52 @@
 """
 from __future__ import annotations
 
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
+
+
+def normalize_relative_input(raw: str) -> str | None:
+    """拒绝绝对路径、空字节与任何 .. 组件；仓库路径仍须校验实际范围。"""
+    text = str(raw or "").strip().replace("\\", "/")
+    if "\x00" in text or text.startswith("/") or PureWindowsPath(text).drive:
+        return None
+    parts = PurePosixPath(text).parts
+    if ".." in parts:
+        return None
+    normalized = "/".join(parts)
+    if PureWindowsPath(normalized).drive:
+        return None
+    return normalized
+
+
+def normalize_tool_path(raw: str) -> str | None:
+    """规范化工具及 ZIP 成员的相对路径，拒绝任何上跳组件。"""
+    return normalize_relative_input(raw)
+
+
+def resolve_repo_path(root: Path, raw: str) -> tuple[Path | None, str]:
+    """严格解析已有仓库路径，再校验范围和敏感性；调用方只使用返回的路径。
+
+    输入先拒绝任何 .. 组件，再以实际路径阻止符号链接逃逸。此检查
+    不提供并发修改目录时的原子打开保证，仓库更新应与读取互斥。
+    """
+    rel = normalize_relative_input(raw)
+    if rel is None:
+        return None, f"路径非法（须为仓库内相对路径）：{raw}"
+    try:
+        root_real = root.resolve(strict=True)
+        resolved = (root_real / rel).resolve(strict=True)
+        actual = resolved.relative_to(root_real).as_posix()
+    except ValueError:
+        return None, f"路径非法（越出仓库范围），已拒绝：{raw}"
+    except FileNotFoundError:
+        return None, f"路径不存在：{rel}"
+    except (OSError, RuntimeError):
+        return None, f"路径无法解析，已拒绝：{rel}"
+    for name in (rel, actual):
+        if is_sensitive_path(name):
+            return None, describe_rejection(name)
+    return resolved, ""
+
 
 # 整个目录禁止（出现在路径任意层级都拒绝）
 SENSITIVE_DIRS = {
@@ -56,7 +101,7 @@ def is_sensitive_path(rel: str) -> bool:
     """
     判断相对路径是否涉及凭据 / 密钥，禁止外发。
 
-    路径已由 normalize_rel_path() 规范化（相对、无 .. 上跳）。
+    调用方须另外校验路径范围；本函数只负责敏感路径策略。
     """
     text = str(rel or "").strip().replace("\\", "/").lower()
     if not text:

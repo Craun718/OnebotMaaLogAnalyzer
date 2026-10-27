@@ -184,7 +184,9 @@ def detect_archive_profile(
 
     try:
         if archive is not None:
-            return _detect_profile(profile, archive, infos or archive.infolist(), name, file_ui)
+            return _detect_profile(
+                profile, archive, infos if infos is not None else archive.infolist(), name, file_ui
+            )
         with zipfile.ZipFile(zip_path) as opened:
             return _detect_profile(profile, opened, opened.infolist(), name, file_ui)
     except Exception as exc:
