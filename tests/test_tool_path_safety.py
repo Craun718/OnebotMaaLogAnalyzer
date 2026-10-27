@@ -55,7 +55,7 @@ class RepoToolPathTests(unittest.IsolatedAsyncioTestCase):
         self.root = base / "repo"
         self.root.mkdir()
         (base / "outside.txt").write_text("OUTSIDE_MARKER\n")
-        (self.root / "normal.txt").write_text("NORMAL_MARKER\n")
+        (self.root / "normal.txt").write_bytes(b"NORMAL_MARKER\n")
         (self.root / "linked.txt").symlink_to(base / "outside.txt")
         (self.root / "internal.txt").symlink_to(self.root / "normal.txt")
         (self.root / "external_dir").symlink_to(base, target_is_directory=True)
