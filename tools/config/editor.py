@@ -90,7 +90,10 @@ RENDER_MODES = (
     ("text", "text — 纯文本"),
 )
 VISION_DETAILS = (("high", "high"), ("low", "low"), ("auto", "auto"))
-PROVIDER_KINDS = (("openai", "openai — OpenAI 兼容 /chat/completions"),)
+PROVIDER_KINDS = (
+    ("openai", "openai — OpenAI 兼容 /chat/completions"),
+    ("anthropic", "anthropic — Anthropic Messages /v1/messages"),
+)
 LOG_LEVELS = (("DEBUG", "DEBUG"), ("INFO", "INFO"), ("WARNING", "WARNING"), ("ERROR", "ERROR"))
 UI_KEYS = ("mxu", "mfaa", "maafwapp", "auto")
 
@@ -989,6 +992,11 @@ const LABELS = {
   'settings.digest_timeout_seconds': '摘要超时（秒）',
   'settings.ai_stage_timeout_seconds': 'AI 阶段总时长（秒）',
   'settings.max_context_tokens': '上下文 token 上限',
+  'settings.context_compact_enabled': '自动压缩上下文',
+  'settings.context_compact_ratio': '压缩触发比例',
+  'settings.context_retain_ratio': '保留最近对话比例',
+  'settings.context_prune_tool_result_tokens': '历史工具结果上限',
+  'settings.context_summary_tokens': '压缩摘要上限',
   'settings.analysis_cache_hours': '结果缓存（小时）',
   'settings.circuit_breaker_enabled': '启用熔断',
   'settings.system_prompt': '追加系统提示词',
@@ -1043,7 +1051,7 @@ const LABELS = {
   'circuit_breaker.rate_cooldown_seconds': '限流/配额冷却（秒）',
   'circuit_breaker.auth_cooldown_seconds': '鉴权失败冷却（秒）',
   'provider.name': '端点名称',
-  'provider.kind': '协议类型',
+  'provider.kind': '协议类型（openai / anthropic）',
   'provider.base_url': 'Base URL',
   'provider.api_key': 'API Key',
   'provider.max_concurrency': '并发上限',
@@ -1082,12 +1090,16 @@ const HELP = {
   'report.template': 'templates/ 下的目录名，可用 tools/templates/editor.py 调试模板。',
   'report.browser_path': '留空则自动探测 Edge / Chrome / Chromium。',
   'report.max_height_px': '单页最大高度，超出的内容会分页。',
-  'settings.max_context_tokens': '0 = 使用 llm.defaults.max_context_tokens。',
+  'settings.max_context_tokens': '0 = 候选模型优先，再回退 llm.defaults。输入预算会自动预留输出 token。',
+  'settings.context_compact_ratio': '估算输入超过「输入预算 × 该比例」时压缩历史。',
+  'settings.context_retain_ratio': '压缩后保留最近对话的 token 占比。',
+  'settings.context_prune_tool_result_tokens': '压缩时历史工具结果裁剪到的 token 上限。',
+  'settings.context_summary_tokens': '压缩摘要本身的目标 token 上限。',
   'settings.followup_window_minutes': '0 = 跟随历史保留期。',
   'settings.max_log_chars': '进入提示词的日志字符上限，越大越贵。',
   'commands.read_level': '0 任何人 / 1 管理员 / 2 超管。',
   'llm.models': '按顺序尝试：前面的失败（401 除外）会顺延到下一个候选。',
-  'provider.base_url': 'OpenAI 兼容端点，例如 https://api.deepseek.com/v1。',
+  'provider.base_url': 'openai 填 …/v1；anthropic 填 …（自动补 /v1/messages），例如 https://api.deepseek.com/anthropic。',
   'provider.api_key': '明文保存在 config.json 中，注意不要提交到公开仓库。',
   'model.supports.tools': '分析默认使用工具循环，关闭后该模型无法承担带工具的调用。',
   'model.max_tokens': '0 = 使用 llm.defaults.max_tokens。',
@@ -1106,6 +1118,9 @@ const SETTINGS_GROUPS = [
   ['并发与超时', ['analysis_concurrency', 'download_concurrency', 'download_timeout_seconds',
     'digest_timeout_seconds', 'ai_stage_timeout_seconds', 'max_context_tokens',
     'analysis_cache_hours', 'circuit_breaker_enabled']],
+  ['上下文压缩', ['context_compact_enabled', 'context_compact_ratio',
+    'context_retain_ratio', 'context_prune_tool_result_tokens',
+    'context_summary_tokens']],
   ['模型', ['system_prompt', 'log_tools_enabled']],
   ['临时文件', ['cleanup_after_done', 'save_digest_debug']],
   ['压缩包与摘要', ['max_zip_size_mb', 'max_total_uncompressed_mb', 'max_prompt_chars',

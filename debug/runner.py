@@ -31,6 +31,8 @@
   system_prompt_contains  系统提示词包含指定文本
   system_prompt_not_contains 系统提示词不包含指定文本
   no_error                无异常 (true/false)
+  compaction_count        上下文压缩调用次数（int 或 {"min":..,"max":..}）
+  first_user_stable       首条 user 消息在会话中保持不变（缓存前缀稳定）
 """
 from __future__ import annotations
 
@@ -41,7 +43,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from core.models import (
     AnalysisSettings,
@@ -193,6 +195,19 @@ def _resolve_placeholders(value, manager: "DebugManager",
     return walk(value)
 
 
+def _message_text(content: Any) -> str:
+    """提取消息文本（用于比较前缀是否稳定）。"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(part.get("text") or "")
+            for part in content
+            if isinstance(part, dict) and part.get("text")
+        )
+    return str(content or "")
+
+
 def _check_assertions(assertions: dict, reply: Optional[str],
                       api_actions: list[str], api_count: int,
                       has_error: bool, prompts: Optional[list[str]] = None,
@@ -200,7 +215,10 @@ def _check_assertions(assertions: dict, reply: Optional[str],
                       segments: Optional[list[str]] = None,
                       history: Optional[dict] = None,
                       tools: Optional[list[str]] = None,
-                      tool_results: Optional[list[str]] = None) -> list[str]:
+                      tool_results: Optional[list[str]] = None,
+                      compaction_count: int = 0,
+                      snapshots: Optional[list[tuple[str, list[dict]]]] = None
+                      ) -> list[str]:
     """
     检查断言，返回失败的断言描述列表。
 
@@ -237,6 +255,35 @@ def _check_assertions(assertions: dict, reply: Optional[str],
         for unexpected in _as_list(assertions["system_prompt_not_contains"]):
             if unexpected in system_text:
                 failures.append(f"system_prompt_not_contains: 系统提示词中不应包含 {unexpected!r}")
+
+    if assertions.get("first_user_stable"):
+        firsts: list[str] = []
+        for phase, messages in (snapshots or []):
+            if str(phase).endswith("-compact"):
+                continue
+            message = next(
+                (m for m in messages if m.get("role") == "user"), None
+            )
+            if message is not None:
+                firsts.append(_message_text(message.get("content")))
+        if len(set(firsts)) > 1:
+            failures.append(
+                "first_user_stable: 首条 user 消息在会话中被改写，提示词前缀缓存会失效"
+            )
+
+    if "compaction_count" in assertions:
+        expected = assertions["compaction_count"]
+        if isinstance(expected, dict):
+            minimum = int(expected.get("min", 0) or 0)
+            maximum = int(expected.get("max", 10 ** 9) or 10 ** 9)
+            if not minimum <= compaction_count <= maximum:
+                failures.append(
+                    f"compaction_count: 期望 {minimum}-{maximum}，实际 {compaction_count}"
+                )
+        elif compaction_count != int(expected or 0):
+            failures.append(
+                f"compaction_count: 期望 {expected}，实际 {compaction_count}"
+            )
 
     if "no_error" in assertions:
         expect_no_error = bool(assertions["no_error"])
@@ -855,6 +902,10 @@ async def run_test_file(file_path: str,
             manager.llm.tool_rounds.clear()
         if hasattr(manager.llm, "tool_results"):
             manager.llm.tool_results.clear()
+        if hasattr(manager.llm, "compaction_calls"):
+            manager.llm.compaction_calls.clear()
+        if hasattr(manager.llm, "message_snapshots"):
+            manager.llm.message_snapshots.clear()
         # 场景可声明 preserve_followup=true 来跨场景保留追问会话
         if not scenario.get("preserve_followup") and manager.followup is not None:
             manager.followup._sessions.clear()
@@ -921,6 +972,8 @@ async def run_test_file(file_path: str,
                 getattr(inject_result, "tools", None) or _tool_names(manager),
                 getattr(inject_result, "tool_results", None)
                 or list(getattr(manager.llm, "tool_results", []) or []),
+                len(getattr(manager.llm, "compaction_calls", []) or []),
+                list(getattr(manager.llm, "message_snapshots", []) or []),
             )
             failures.extend(_check_files(manager, assertions))
             result.failures = failures

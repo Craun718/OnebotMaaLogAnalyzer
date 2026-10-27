@@ -1,0 +1,58 @@
+{
+  "name": "上下文压缩 — 小预算下自动压缩并继续分析",
+  "description": "验证：输入超过预算时触发一次摘要压缩，压缩后仍能完成工具循环并输出报告；首条 user（日志摘要）保留。",
+  "setup": {
+    "configs": {
+      "压缩组": {
+        "listen_groups": [
+          "555555"
+        ],
+        "notify_group": "555555",
+        "settings": {
+          "send_progress_message": false,
+          "max_context_tokens": 2600,
+          "context_compact_ratio": 0.6,
+          "context_retain_ratio": 0.2,
+          "context_summary_tokens": 400
+        },
+        "project": {
+          "name": "MaaXXX"
+        }
+      }
+    },
+    "files": {
+      "555555": [
+        {
+          "file_name": "MaaXXX-logs-20260101-120000.zip",
+          "file_id": "fid_compact",
+          "size": 2048,
+          "modify_time": 1767225600
+        }
+      ]
+    }
+  },
+  "scenarios": [
+    {
+      "name": "小预算触发自动压缩",
+      "event": {
+        "post_type": "notice",
+        "notice_type": "group_upload",
+        "group_id": 555555,
+        "user_id": 10001,
+        "file": {
+          "id": "fid_compact",
+          "name": "MaaXXX-logs-20260101-120000.zip",
+          "size": 2048
+        }
+      },
+      "assert": {
+        "no_error": true,
+        "reply_contains": "检测到 1 条 ERROR 记录",
+        "compaction_count": {
+          "min": 1
+        },
+        "first_user_stable": true
+      }
+    }
+  ]
+}

@@ -13,9 +13,11 @@ Universal: / 路径，API + 事件共线
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 from typing import Awaitable, Callable, Optional
+from urllib.parse import parse_qs, urlsplit
 
 import websockets
 
@@ -29,8 +31,9 @@ APIResponseHandler = Callable[[dict], None]
 class OneBotWS:
     """OneBot v11 WebSocket。"""
 
-    def __init__(self, access_token: str = ""):
+    def __init__(self, access_token: str = "", *, max_event_tasks: int = 200):
         self.access_token = access_token
+        self.max_event_tasks = max(1, int(max_event_tasks))
         self._event_handlers: dict[str, list[EventHandler]] = {}
         self._api_handler: Optional[APIHandler] = None
         self._api_response_handler: Optional[APIResponseHandler] = None
@@ -107,12 +110,36 @@ class OneBotWS:
 
     # ==================== 反向 WS ====================
 
+    def _authorized(self, ws) -> bool:
+        """校验反向 WS 连接携带的 access_token（Header 或 query）。"""
+        if not self.access_token:
+            return True
+        request = getattr(ws, "request", None)
+        headers = getattr(request, "headers", {}) or {}
+        provided = headers.get("Authorization", "") or ""
+        if provided.lower().startswith("bearer "):
+            provided = provided[7:].strip()
+        if not provided:
+            path = getattr(request, "path", "") or ""
+            provided = (parse_qs(urlsplit(path).query).get("access_token") or [""])[0]
+        return hmac.compare_digest(provided, self.access_token)
+
     async def serve(self, host: str, port: int):
         """反向 WS — Bot 监听，OneBot 连接过来。"""
+        if not self.access_token:
+            logger.warning(
+                "[WS←] onebot.access_token 为空，反向 WS 不校验来源；"
+                "请仅监听 127.0.0.1 或设置令牌。"
+            )
         logger.info(f"[WS←] 监听 {host}:{port} ...")
         self._running = True
 
         async def on_connect(ws):
+            if not self._authorized(ws):
+                peer = getattr(ws, "remote_address", None)
+                logger.warning(f"[WS←] 拒绝未授权连接: {peer}")
+                await ws.close(code=1008, reason="unauthorized")
+                return
             self._connection_count += 1
             role = ""
             try:
@@ -164,6 +191,12 @@ class OneBotWS:
                 continue
 
             if "post_type" in msg:
+                if len(self._event_tasks) >= self.max_event_tasks:
+                    logger.warning(
+                        f"事件处理任务已达上限 {self.max_event_tasks}，丢弃事件"
+                        f" (post_type={msg.get('post_type', '')})"
+                    )
+                    continue
                 task = asyncio.create_task(self._dispatch_event(msg))
                 self._event_tasks.add(task)
                 task.add_done_callback(self._event_tasks.discard)

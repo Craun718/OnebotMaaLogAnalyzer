@@ -3,6 +3,8 @@
 设置 `debug.enabled: true` 后启动 Bot，将进入**离线调试模式**——不连接真实 OneBot 服务端，通过模拟事件注入来验证代码逻辑。
 
 > 调试模块仅存在于源码仓库，不随发布包分发。若发布包中启用了 `debug.enabled`，Bot 会提示并退出。
+>
+> 调试数据只写入 `debug.data_dir`（默认 `data/test`），**不会**使用 `bot.data_dir`；也不会建立 OneBot 连接、探测协议端或预加载仓库。
 
 ## CLI 交互式 REPL
 
@@ -188,6 +190,8 @@ python -c "import asyncio;from debug.runner import run_test_file;from debug impo
 | `tools_include` / `tools_exclude` | 向模型提供的工具名包含 / 不包含（如 `search_repo`） |
 | `tool_results_contains` | 工具**执行结果**中包含指定文本（证明工具真读到了内容） |
 | `no_error` | 无异常（`true` / `false`） |
+| `compaction_count` | 上下文压缩调用次数（整数或 `{"min":..,"max":..}`） |
+| `first_user_stable` | 首条 user 消息在会话中保持不变（提示词前缀缓存稳定的前提） |
 | `history_count` / `history_zips` / `history_no_zips` / `history_message_ids` | 历史归档状态 |
 | `files_exist` / `files_missing` | 相对 `data_dir` 的文件存在性（验证 `repos/` 缓存未被清理） |
 

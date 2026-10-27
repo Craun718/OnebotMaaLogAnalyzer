@@ -21,7 +21,6 @@ import shlex
 from pathlib import Path
 from typing import Optional
 
-from core.service import MaaService
 from debug import DebugManager, DebugResult
 
 logger = logging.getLogger("Maa.Debug.CLI")
@@ -317,9 +316,8 @@ class CLISession:
         return "\n".join(lines)
 
 
-async def run_cli(service: MaaService, cfg: dict):
+async def run_cli(manager: DebugManager):
     """启动 CLI 交互式 REPL（阻塞直到用户输入 quit）。"""
-    manager = DebugManager.from_config(cfg)
     session = CLISession(manager)
 
     print(f"\n{BOLD}{CYAN}═══ OnebotMaaLogAnalyzer 调试 CLI ═══{RESET}")

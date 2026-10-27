@@ -107,10 +107,12 @@ class ModelSpec(BaseModel):
 
 
 class LLMProviderConfig(BaseModel):
-    """全局 `llm.providers[]`：一个 OpenAI 兼容端点。"""
+    """全局 `llm.providers[]`：一个 LLM 端点（OpenAI 兼容或 Anthropic Messages）。"""
 
     name: str = ""
-    kind: str = "openai"          # 首版只实现 openai
+    # openai = /v1/chat/completions；anthropic = /v1/messages
+    # （DeepSeek 的 anthropic 兼容端点同样用 anthropic）
+    kind: str = "openai"
     base_url: str = ""
     api_key: str = ""
     max_concurrency: int = 2
@@ -473,6 +475,17 @@ class AnalysisSettings(BaseModel):
     ai_stage_timeout_seconds: int = 300
     # 0 = 用 llm.defaults.max_context_tokens；非 0 时按配置覆盖
     max_context_tokens: int = 0
+    # ── 上下文自动压缩 ──
+    # 估算输入超过「输入预算 × context_compact_ratio」时压缩历史；
+    # 端点返回超限时也会强制压缩后重试。
+    context_compact_enabled: bool = True
+    context_compact_ratio: float = 0.8
+    # 压缩后保留最近对话的 token 占比
+    context_retain_ratio: float = 0.25
+    # 历史工具结果裁剪到的 token 上限（0 = 不裁剪）
+    context_prune_tool_result_tokens: int = 512
+    # 摘要本身的目标 token 上限
+    context_summary_tokens: int = 1500
     # 分析结果缓存小时数；0 = 关闭
     analysis_cache_hours: int = 0
     # 连续失败触发熔断（端点级冷却），失败时降级为模板报告

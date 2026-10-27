@@ -29,6 +29,10 @@ from core.llm import (
     LLMError,
     RequestParams,
     backoff_seconds,
+    cache_hit_rate,
+    create_llm_client,
+    normalize_usage,
+    provider_kind,
 )
 from core.models import (
     ConfigLLM,
@@ -119,6 +123,14 @@ def validate_llm_config(llm_cfg: dict, configs_cfg: dict) -> list[str]:
             errors.append(f"llm.providers 中端点名重复：{name}")
             continue
         providers[name] = provider
+        raw_kind = str(provider.kind or "").strip().lower()
+        if raw_kind and raw_kind not in (
+            "openai", "anthropic", "anthropic-messages", "claude", "messages",
+        ):
+            errors.append(
+                f"端点 {name} 的 kind 不受支持：{provider.kind!r}"
+                f"（可选 openai / anthropic）"
+            )
         if not str(provider.base_url or "").strip():
             errors.append(f"端点 {name} 缺少 base_url")
         model_names = [str(m.model or "").strip() for m in provider.models]
@@ -279,7 +291,7 @@ class LLMPool:
             if not name:
                 continue
             self.providers[name] = provider
-            self.clients[name] = LLMClient(provider)
+            self.clients[name] = create_llm_client(provider)
             self._breakers[name] = _BreakerState()
 
     # ── 描述 ──
@@ -300,7 +312,8 @@ class LLMPool:
                 for spec in provider.models
             ) or "（无模型）"
             lines.append(
-                f"端点 {name}: {provider.base_url or '（未配置）'}"
+                f"端点 {name}（{provider_kind(provider)}）: "
+                f"{provider.base_url or '（未配置）'}"
                 f" · 密钥指纹 {client.key_fingerprint} · {models}"
             )
         return lines
@@ -483,7 +496,7 @@ class LLMPool:
 
     def context_budget(self, config_llm: Optional[ConfigLLM],
                        override: int = 0) -> int:
-        """本次调用的上下文 token 预算（取第一个候选的配置）。"""
+        """本次调用的上下文窗口（token，取第一个候选的配置）。"""
         if override > 0:
             return int(override)
         candidates = self.resolve(config_llm)
@@ -492,6 +505,27 @@ class LLMPool:
             if spec.max_context_tokens > 0:
                 return int(spec.max_context_tokens)
         return int(self.defaults.max_context_tokens or 48000)
+
+    def input_budget(self, config_llm: Optional[ConfigLLM],
+                     override: int = 0, *, margin: int = 512) -> int:
+        """
+        输入侧 token 预算：上下文窗口 − 本次最大输出 − 安全余量。
+
+        只按窗口裁剪而不预留输出空间，会让「刚好塞满」的请求被端点
+        以 400 拒绝；这里统一预留。
+        """
+        config_llm = config_llm or ConfigLLM()
+        candidates = self.resolve(config_llm)
+        if candidates:
+            params = self._params(
+                candidates[0], config_llm, max_context_tokens=override
+            )
+            window = int(params.max_context_tokens)
+            output = int(params.max_tokens)
+        else:
+            window = int(override or self.defaults.max_context_tokens or 48000)
+            output = int(self.defaults.max_tokens or 8192)
+        return max(1024, window - max(1, output) - max(0, int(margin)))
 
     # ── 调用 ──
 
@@ -555,6 +589,19 @@ class LLMPool:
                     elapsed = int((time.monotonic() - started) * 1000)
                     if use_breaker:
                         self._report_success(candidate.provider.name)
+                    usage = normalize_usage(reply.usage)
+                    if usage["prompt_tokens"] > 0:
+                        rate = cache_hit_rate(
+                            usage["uncached_prompt_tokens"],
+                            usage["cache_read_tokens"],
+                            usage["cache_write_tokens"],
+                        )
+                        logger.info(
+                            f"[LLM] {candidate.label()} 输入 {usage['prompt_tokens']} tokens"
+                            f" · 缓存命中 {rate * 100:.0f}%"
+                            f"（读取 {usage['cache_read_tokens']}"
+                            f" / 未命中 {usage['uncached_prompt_tokens']}）"
+                        )
                     self._record_usage(
                         UsageRecord(
                             session_id=session_id,
@@ -564,9 +611,12 @@ class LLMPool:
                             model=candidate.spec.model,
                             phase=phase,
                             ok=True,
-                            prompt_tokens=int(reply.usage.get("prompt_tokens") or 0),
-                            completion_tokens=int(reply.usage.get("completion_tokens") or 0),
-                            total_tokens=int(reply.usage.get("total_tokens") or 0),
+                            prompt_tokens=usage["prompt_tokens"],
+                            completion_tokens=usage["completion_tokens"],
+                            total_tokens=usage["total_tokens"],
+                            uncached_prompt_tokens=usage["uncached_prompt_tokens"],
+                            cache_read_tokens=usage["cache_read_tokens"],
+                            cache_write_tokens=usage["cache_write_tokens"],
                             elapsed_ms=elapsed,
                         ),
                         messages,
@@ -730,6 +780,8 @@ class LLMPool:
                 "calls": 0, "failed": 0,
                 "prompt_tokens": 0, "completion_tokens": 0,
                 "total_tokens": 0, "elapsed_ms": 0,
+                "cache_read_tokens": 0, "cache_write_tokens": 0,
+                "cache_hit_rate": 0.0,
                 "providers": [], "models": [], "pairs": {},
             }
         return {
@@ -739,6 +791,9 @@ class LLMPool:
             "completion_tokens": group.completion_tokens,
             "total_tokens": group.total(),
             "elapsed_ms": group.elapsed_ms,
+            "cache_read_tokens": group.cache_read_tokens,
+            "cache_write_tokens": group.cache_write_tokens,
+            "cache_hit_rate": group.cache_hit_rate(),
             "providers": sorted(group.providers),
             "models": sorted(group.models),
             "pairs": dict(group.pairs),

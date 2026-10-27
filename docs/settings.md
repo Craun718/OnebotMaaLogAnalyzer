@@ -186,13 +186,20 @@ MaaFramework 的日志按大小轮转：写满当前 `maafw.log` 后把它改名
 | --- | --- | --- |
 | `system_prompt` | 空 | 自定义系统提示词；空 = 按项目名生成默认人设 |
 | `ai_stage_timeout_seconds` | `300` | 整个 AI 阶段（含工具循环与收敛）的总时长上限 |
-| `max_context_tokens` | `0` | 上下文 token 预算；`0` = 用 `llm.defaults.max_context_tokens` |
+| `max_context_tokens` | `0` | 上下文窗口；`0` = 候选模型优先，再回退 `llm.defaults.max_context_tokens`。输入预算 = 窗口 − 输出 token − 安全余量 |
+| `context_compact_enabled` | `true` | 估算输入超过阈值时自动压缩历史；端点返回超限时也会强制压缩并重试 |
+| `context_compact_ratio` | `0.8` | 触发压缩的预算占比（0.5–0.95） |
+| `context_retain_ratio` | `0.25` | 压缩后保留最近对话的 token 占比（0.1–0.5） |
+| `context_prune_tool_result_tokens` | `512` | 压缩时把历史工具结果裁剪到的 token 上限；`0` = 不裁剪 |
+| `context_summary_tokens` | `1500` | 压缩摘要本身的目标 token 上限 |
 | `digest_timeout_seconds` | `0` | 摘要提取超时，`0` = 不限制 |
 | `analysis_cache_hours` | `0` | 分析结果缓存小时数（进程内，按 file_id 命中，重载即清空）；`0` = 关闭 |
 | `circuit_breaker_enabled` | `true` | 连续失败时熔断端点并降级为模板报告（冷却时长见 `llm.circuit_breaker`） |
 
 > 模型选择与温度已下移到 `bot.configs.<名称>.llm`，见
 > [配置 · LLM](configuration.md#llm端点与候选模型)。
+>
+> 上下文压缩与提示词缓存的组织方式见 [上下文与缓存](context.md)。
 
 ## 并发
 
