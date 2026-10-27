@@ -63,6 +63,11 @@ _FIELD_LABELS: dict[str, str] = {
     "max_prompt_chars": "摘要字符上限（token 预算的兜底）",
     "ai_stage_timeout_seconds": "整个 AI 阶段超时（秒）",
     "max_context_tokens": "上下文 token 预算（0=用全局默认）",
+    "context_compact_enabled": "上下文超限时自动压缩历史",
+    "context_compact_ratio": "触发压缩的预算占比（默认 0.8）",
+    "context_retain_ratio": "压缩后保留最近对话的比例（默认 0.25）",
+    "context_prune_tool_result_tokens": "历史工具结果裁剪的 token 上限（0=不裁剪）",
+    "context_summary_tokens": "压缩摘要的 token 上限",
     "analysis_concurrency": "同时分析的任务数",
     "analysis_cache_hours": "分析结果缓存小时数（0=关闭）",
     "circuit_breaker_enabled": "连续失败时熔断端点",
@@ -384,10 +389,16 @@ class CommandHandler:
             lines.append(title)
             status = f"失败 {item.failed} 次" if item.failed else "全部成功"
             lines.append(f"  {item.phase_split()} · {status}")
+            cache_note = (
+                f" · 缓存命中 {item.cache_hit_rate() * 100:.0f}%"
+                if item.cache_read_tokens or item.cache_write_tokens
+                else ""
+            )
             lines.append(
                 f"  输入 {format_tokens(item.prompt_tokens)}"
                 f" · 输出 {format_tokens(item.completion_tokens)}"
                 f" · 合计 {format_tokens(item.total())} tokens"
+                f"{cache_note}"
                 f" · 用时 {item.elapsed_ms / 1000:.1f}s"
             )
             lines.append(f"  {item.pair_label()}")

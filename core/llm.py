@@ -30,6 +30,7 @@ _CONTEXT_ERROR = re.compile(
     r"|maximum context"
     r"|too many tokens"
     r"|prompt is too long"
+    r"|(request|payload|entity) (is )?too large"
     r"|exceeds? the (maximum|max) (context|token)",
     re.IGNORECASE,
 )
@@ -81,6 +82,68 @@ class ContextOverflowError(LLMError):
 
     def __init__(self, message: str, status: int = 400):
         super().__init__(message, status=status, kind="context")
+
+
+def normalize_usage(usage: Optional[dict]) -> dict[str, int]:
+    """
+    把不同厂商的 usage 归一化为互不重叠的四个桶。
+
+    兼容：
+      - DeepSeek：prompt_tokens（含命中）+ prompt_cache_hit_tokens
+      - OpenAI：prompt_tokens + prompt_tokens_details.cached_tokens
+      - Anthropic 风格：input_tokens / cache_read_input_tokens /
+        cache_creation_input_tokens
+
+    返回：prompt_tokens（计费输入总数）、uncached_prompt_tokens、
+    cache_read_tokens、cache_write_tokens、completion_tokens、total_tokens。
+    """
+    data = usage if isinstance(usage, dict) else {}
+    details = data.get("prompt_tokens_details")
+    details = details if isinstance(details, dict) else {}
+
+    def _int(value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    prompt = _int(data.get("prompt_tokens"))
+    input_tokens = _int(data.get("input_tokens"))
+    completion = _int(data.get("completion_tokens")) or _int(data.get("output_tokens"))
+
+    cache_read = (
+        _int(data.get("prompt_cache_hit_tokens"))
+        or _int(details.get("cached_tokens"))
+        or _int(data.get("cache_read_input_tokens"))
+    )
+    cache_write = _int(data.get("cache_creation_input_tokens"))
+
+    if prompt > 0:
+        # OpenAI / DeepSeek：prompt_tokens 已包含缓存命中部分
+        billed = prompt
+        uncached = max(0, prompt - cache_read - cache_write)
+    else:
+        # Anthropic 风格：input_tokens 只是未命中缓存的部分
+        uncached = input_tokens
+        billed = uncached + cache_read + cache_write
+
+    total = _int(data.get("total_tokens")) or (billed + completion)
+    return {
+        "prompt_tokens": billed,
+        "uncached_prompt_tokens": uncached,
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
+        "completion_tokens": completion,
+        "total_tokens": total,
+    }
+
+
+def cache_hit_rate(uncached: int, cache_read: int, cache_write: int = 0) -> float:
+    """缓存命中率：命中读取 / 计费输入（未命中 + 读取 + 写入）。"""
+    billed = max(0, int(uncached)) + max(0, int(cache_read)) + max(0, int(cache_write))
+    if billed <= 0:
+        return 0.0
+    return max(0, int(cache_read)) / billed
 
 
 @dataclass
@@ -296,8 +359,11 @@ class LLMClient:
             quota = bool(_QUOTA_ERROR.search(body or ""))
             return LLMError(f"HTTP 429: {snippet}", status, "rate",
                             retry_after, quota=quota)
-        if status == 400 and _CONTEXT_ERROR.search(body or ""):
-            return ContextOverflowError(f"HTTP 400（上下文超限）: {snippet}", status)
+        # 不同实现用 400 / 413 / 422 表示输入超限，统一归一化为上下文超限
+        if status in (400, 413, 422) and _CONTEXT_ERROR.search(body or ""):
+            return ContextOverflowError(
+                f"HTTP {status}（上下文超限）: {snippet}", status
+            )
         if status >= 500:
             return LLMError(f"HTTP {status}: {snippet}", status, "server")
         return LLMError(f"HTTP {status}: {snippet}", status, "other")

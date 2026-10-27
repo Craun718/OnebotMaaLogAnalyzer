@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import shutil
@@ -26,6 +27,12 @@ from core.models import (
     VisionConfig,
 )
 from core.ai_usage import format_tokens
+from core.compaction import (
+    COMPACT_SYSTEM_PROMPT,
+    CompactionPolicy,
+    ConversationCompactor,
+    render_messages,
+)
 from core.llm_pool import current_session_id, new_session_id, session_context
 from core.log_context import config_log_context
 from core.tokens import (
@@ -429,7 +436,66 @@ class MaaAnalyzer:
     @staticmethod
     def _context_budget(settings: AnalysisSettings, llm: LLMPool,
                         config_llm: ConfigLLM) -> int:
-        return llm.context_budget(config_llm, int(settings.max_context_tokens or 0))
+        """输入侧预算：上下文窗口预留输出 token 后的可用空间。"""
+        override = int(settings.max_context_tokens or 0)
+        budget_fn = getattr(llm, "input_budget", None)
+        if callable(budget_fn):
+            return int(budget_fn(config_llm, override))
+        return llm.context_budget(config_llm, override)
+
+    @staticmethod
+    def _compaction_policy(settings: AnalysisSettings) -> CompactionPolicy:
+        def _ratio(value: float, lower: float, upper: float) -> float:
+            return max(lower, min(upper, float(value or lower)))
+
+        return CompactionPolicy(
+            trigger_ratio=_ratio(
+                getattr(settings, "context_compact_ratio", 0.8), 0.5, 0.95
+            ),
+            retain_ratio=_ratio(
+                getattr(settings, "context_retain_ratio", 0.25), 0.1, 0.5
+            ),
+            tool_result_tokens=max(
+                0, int(getattr(settings, "context_prune_tool_result_tokens", 512) or 0)
+            ),
+            summary_tokens=max(
+                256, int(getattr(settings, "context_summary_tokens", 1500) or 1500)
+            ),
+        )
+
+    def _compactor(self, config_name: str, settings: AnalysisSettings,
+                   phase: str, budget: int) -> ConversationCompactor:
+        """构造带摘要回调的压缩器（关闭时只裁剪工具结果）。"""
+        policy = self._compaction_policy(settings)
+        enabled = bool(getattr(settings, "context_compact_enabled", True))
+        if not enabled:
+            # 关闭时连工具结果裁剪也不做，完全交由旧的兜底逻辑
+            policy.tool_result_tokens = 0
+        summarize = None
+        if enabled:
+            config_llm = self._llm_cfg(config_name)
+
+            async def _summarize(head: list[dict]) -> str:
+                payload = [
+                    {"role": "system", "content": COMPACT_SYSTEM_PROMPT},
+                    {"role": "user", "content": render_messages(head)},
+                ]
+                reply = await self.llm.chat(
+                    config_llm, payload,
+                    config_name=config_name,
+                    # 摘要输出不能超过预算的 1/4，避免压缩调用自己超限
+                    max_tokens=max(
+                        256, min(policy.summary_tokens, max(256, budget // 4))
+                    ),
+                    phase=f"{phase}-compact",
+                    use_breaker=bool(settings.circuit_breaker_enabled),
+                )
+                return reply.content if reply is not None else ""
+
+            summarize = _summarize
+        return ConversationCompactor(
+            budget=budget, policy=policy, summarize=summarize
+        )
 
     # ════════════════════════════════════════════════════════════
     # 主流程
@@ -1141,6 +1207,21 @@ class MaaAnalyzer:
         ])
         return "\n".join(lines)
 
+    @staticmethod
+    def _content_has_image(content: Any) -> bool:
+        return isinstance(content, list) and any(
+            isinstance(part, dict) and part.get("type") == "image_url"
+            for part in content
+        )
+
+    @classmethod
+    def _messages_have_images(cls, messages: list[dict]) -> bool:
+        return any(
+            isinstance(message, dict)
+            and cls._content_has_image(message.get("content"))
+            for message in messages
+        )
+
     def _vision_state(self, config_name: str, digest: Optional[DigestResult]) -> dict:
         """本次分析可用的看图状态（模型能力 / 张数 / 失败计数）。"""
         vision = self._vision_cfg(config_name)
@@ -1470,10 +1551,19 @@ class MaaAnalyzer:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
+        budget = self._context_budget(settings, self.llm, config_llm)
+        # 单轮调用没有历史可压缩：首轮按「预算 − 系统提示词」稳定裁剪一次，
+        # 避免依赖端点返回 400 后再改提示词（那会浪费一次请求）。
+        system_tokens = estimate_tokens(system_prompt)
+        ratio = max(0.2, min(1.0, (budget - system_tokens - 256) / max(1, budget)))
+        messages = ConversationCompactor(
+            budget=budget, policy=self._compaction_policy(settings)
+        ).prepare(messages, first_user_ratio=ratio)
         try:
             reply = await self.llm.chat(
                 config_llm, messages,
                 config_name=config_name,
+                need=(("vision",) if self._messages_have_images(messages) else ()),
                 max_context_tokens=int(settings.max_context_tokens or 0),
                 max_tokens=None,
                 phase="analysis",
@@ -1507,7 +1597,8 @@ class MaaAnalyzer:
     async def _retry_truncated(self, config_llm: ConfigLLM,
                                messages: list[dict], text: Optional[str],
                                config_name: str, settings: AnalysisSettings,
-                               phase: str) -> Optional[str]:
+                               phase: str, *, tools: Optional[list[dict]] = None,
+                               tool_choice: str = "auto") -> Optional[str]:
         """输出被 max_tokens 截断时，要求模型在相同预算内重新给出完整报告。"""
         logger.warning(f"[分析] {phase} 输出被截断（finish_reason=length），重试一次")
         retry_messages = list(messages) + [
@@ -1518,9 +1609,15 @@ class MaaAnalyzer:
             )},
         ]
         try:
+            need: tuple[str, ...] = ("tools",) if tools else ()
+            if self._messages_have_images(retry_messages):
+                need = need + ("vision",)
             reply = await self.llm.chat(
                 config_llm, retry_messages,
                 config_name=config_name,
+                need=need,
+                tools=tools or None,
+                tool_choice=tool_choice,
                 max_context_tokens=int(settings.max_context_tokens or 0),
                 phase=f"{phase}-truncated-retry",
                 use_breaker=bool(settings.circuit_breaker_enabled),
@@ -1671,33 +1768,19 @@ class MaaAnalyzer:
         """
         构造追问会话的首轮上下文。
 
-        包含日志摘要与代码参考，使后续追问无需重新上传日志。
-        两部分各有字符预算，避免摘要过长把代码参考挤成 0 字符。
+        **顺序很重要**：把日志摘要原样放在最前面，使其与分析阶段的首条
+        user 消息共享前缀，从而命中 provider 的提示词缓存；文件名等
+        本次分析独有的信息放在末尾，避免开头就发生分歧。
         """
-        total_limit = 120000
-        head = ["以下是一次已完成的 MaaFramework 日志分析，请基于它回答后续追问。", ""]
-        head.append(f"【日志包】{file_name}")
-        head.append("")
-
-        repo_budget = int(total_limit * 0.35) if repo_context else 0
-        prompt_budget = max(20000, total_limit - repo_budget)
-
-        parts = list(head)
-        if len(prompt) <= prompt_budget:
-            parts.append("【日志摘要】")
-            parts.append(prompt)
-        else:
-            parts.append("【日志摘要】（已截断）")
-            parts.append(prompt[:prompt_budget] + "\n...[摘要已截断]")
-
-        if repo_context:
-            parts.append("")
-            parts.append("【项目代码参考】")
-            if len(repo_context) <= repo_budget:
-                parts.append(repo_context)
-            else:
-                parts.append(repo_context[:repo_budget] + "\n...[代码参考已截断]")
-
+        parts = [prompt]
+        # analyze() 传入的 prompt 已经拼接了代码参考；只有确实缺失时才补
+        if repo_context and repo_context.strip() and repo_context.strip() not in prompt:
+            parts.extend(["", repo_context])
+        parts.extend([
+            "",
+            f"【本次分析信息】日志包：{file_name}。"
+            "以上内容是分析时提供的原始摘要，可直接引用，无需重新上传日志。",
+        ])
         return "\n".join(parts)
 
     async def answer_followup(self, *, settings: AnalysisSettings,
@@ -1783,8 +1866,34 @@ class MaaAnalyzer:
             for item in tools if isinstance(item, dict)
         ]
 
-        followup_system = (
-            f"{system_prompt}\n\n"
+        # 系统提示词与工具说明保持与分析阶段一致，追问指令放到末尾的
+        # user 消息里。否则 system 开头就不同，整段历史无法复用前缀缓存。
+        base = [{
+            "role": "system",
+            "content": system_prompt + build_tool_hint(tool_names),
+        }] + list(messages)
+        schema_tokens = (
+            estimate_tokens(json.dumps(tools, ensure_ascii=False)) if tools else 0
+        )
+        compactor = self._compactor(
+            config_name, settings, "followup",
+            max(2048, self._context_budget(settings, self.llm, config_llm)
+                - schema_tokens),
+        )
+        base = compactor.prepare(
+            base,
+            first_user_ratio=(
+                0.7 if getattr(settings, "context_compact_enabled", True) else 1.0
+            ),
+        )
+        if compactor.needs_compaction(base):
+            base = await compactor.compact(base)
+        # 把裁剪/压缩结果写回会话历史，避免下一轮重复处理同一个区段
+        prepared_tail = [m for m in base if m.get("role") != "system"]
+        if prepared_tail != messages:
+            messages[:] = prepared_tail
+
+        followup_note = (
             "【追问答疑模式】\n"
             "用户正在就上面那次分析继续提问。请基于已提供的日志摘要与代码参考回答，"
             "不要要求用户重新上传日志。"
@@ -1792,12 +1901,12 @@ class MaaAnalyzer:
             "追问时同样可以声明附件，必须指定来源与相对路径："
             "`[附件@日志: on_error/xxx.png]`、`[附件@项目: assets/.../PVP.json]`。"
             "图片与文件由 Bot 按后缀自动区分；如果确实找不到，直接说明找不到，不要编造路径。"
-            + build_tool_hint(tool_names, followup=True)
         )
-
-        payload: list[dict] = [{"role": "system", "content": followup_system}]
-        payload.extend(messages)
-        payload.append({"role": "user", "content": question})
+        payload: list[dict] = list(base)
+        payload.append({
+            "role": "user",
+            "content": f"{followup_note}\n\n【用户追问】\n{question}",
+        })
 
         try:
             if tools:
@@ -1814,15 +1923,30 @@ class MaaAnalyzer:
                     convergence_prompt=(
                         "已达到检索轮次上限，请立即基于现有信息作答，不要再调用工具。"
                     ),
+                    compactor=compactor,
                 )
             else:
-                reply = await self.llm.chat(
-                    config_llm, payload,
-                    config_name=config_name,
-                    max_context_tokens=int(settings.max_context_tokens or 0),
-                    phase="followup",
-                    use_breaker=bool(settings.circuit_breaker_enabled),
-                )
+                try:
+                    reply = await self.llm.chat(
+                        config_llm, payload,
+                        config_name=config_name,
+                        need=(("vision",) if self._messages_have_images(payload) else ()),
+                        max_context_tokens=int(settings.max_context_tokens or 0),
+                        phase="followup",
+                        use_breaker=bool(settings.circuit_breaker_enabled),
+                    )
+                except ContextOverflowError:
+                    logger.warning("[追问] 上下文超限，自动压缩历史后重试")
+                    payload = await compactor.force_compact(payload)
+                    messages[:] = [m for m in payload if m.get("role") != "system"]
+                    reply = await self.llm.chat(
+                        config_llm, payload,
+                        config_name=config_name,
+                        need=(("vision",) if self._messages_have_images(payload) else ()),
+                        max_context_tokens=int(settings.max_context_tokens or 0),
+                        phase="followup-compacted",
+                        use_breaker=bool(settings.circuit_breaker_enabled),
+                    )
                 raw = reply.content if reply is not None else None
                 if reply is not None and reply.truncated:
                     raw = await self._retry_truncated(
@@ -1882,6 +2006,7 @@ class MaaAnalyzer:
         phase: str = "analysis",
         convergence_prompt: str = "",
         vision_state: Optional[dict] = None,
+        compactor: Optional[ConversationCompactor] = None,
     ) -> Optional[str]:
         """
         统一的工具循环（分析与追问共用）。
@@ -1893,7 +2018,14 @@ class MaaAnalyzer:
         max_rounds = max(1, int(repo_cfg.max_tool_rounds or 8))
         deadline = time.monotonic() + max(60, int(repo_cfg.agent_deadline_seconds or 600))
         per_round = max(1, int(repo_cfg.max_tool_calls_per_round or 6))
-        context_budget = self._context_budget(settings, self.llm, config_llm)
+        # 工具 schema 也占用输入 token，必须从预算中预留
+        tool_schema_tokens = (
+            estimate_tokens(json.dumps(tools, ensure_ascii=False)) if tools else 0
+        )
+        context_budget = max(
+            2048,
+            self._context_budget(settings, self.llm, config_llm) - tool_schema_tokens,
+        )
         tool_token_budget = max(
             512,
             int(repo_cfg.max_tool_context_tokens or 0)
@@ -1904,18 +2036,24 @@ class MaaAnalyzer:
         tool_calls_total = 0
         overflow_retries = 0
         round_index = 0
-
-        def enforce_budget() -> None:
-            nonlocal messages
-            messages = self._enforce_context_budget(
-                messages, context_budget, tool_token_budget
-            )
+        compactor = compactor or self._compactor(
+            config_name, settings, phase, context_budget
+        )
+        # 首轮输入按预算稳定裁剪一次；之后历史只追加，不改写前缀
+        first_user_ratio = (
+            0.6 if getattr(settings, "context_compact_enabled", True) else 1.0
+        )
+        messages = compactor.prepare(
+            messages, first_user_ratio=first_user_ratio
+        )
 
         while round_index < max_rounds:
             if time.monotonic() > deadline:
                 logger.warning(f"[{phase}] 工具循环达到时长上限，使用已有内容")
                 break
             round_index += 1
+            if compactor.needs_compaction(messages):
+                messages = await compactor.compact(messages)
             try:
                 reply = await self.llm.chat(
                     config_llm, messages,
@@ -1931,9 +2069,19 @@ class MaaAnalyzer:
                     logger.error(f"[{phase}] 上下文仍然超限，放弃本轮工具调用")
                     break
                 overflow_retries += 1
-                logger.warning(f"[{phase}] 上下文超限，压缩历史后重试（第 {overflow_retries} 次）")
-                enforce_budget()
-                messages = self._shrink_tool_results(messages, aggressive=True)
+                logger.warning(
+                    f"[{phase}] 上下文超限，自动压缩历史后重试"
+                    f"（第 {overflow_retries} 次）"
+                )
+                compacted = await compactor.force_compact(messages)
+                if compactor.tokens(compacted) < compactor.tokens(messages):
+                    messages = compacted
+                else:
+                    # 无法摘要（例如中间没有可压缩区段）：退回激进裁剪
+                    messages = self._enforce_context_budget(
+                        messages, context_budget, tool_token_budget
+                    )
+                    messages = self._shrink_tool_results(messages, aggressive=True)
                 continue
 
             if reply is None:
@@ -1953,7 +2101,8 @@ class MaaAnalyzer:
             if not reply.wants_tools:
                 if reply.truncated:
                     return await self._retry_truncated(
-                        config_llm, messages, last_text, config_name, settings, phase
+                        config_llm, messages, last_text, config_name, settings, phase,
+                        tools=tools, tool_choice="none",
                     )
                 return content or last_text or None
 
@@ -2016,8 +2165,6 @@ class MaaAnalyzer:
             if image_messages:
                 messages.extend(image_messages)
 
-            enforce_budget()
-
         if tool_calls_total == 0:
             return last_text or None
 
@@ -2031,10 +2178,19 @@ class MaaAnalyzer:
                 "不要再请求调用工具。格式与之前一致。"
             ),
         })
+        if compactor.needs_compaction(messages):
+            messages = await compactor.compact(messages)
         try:
+            # 保留 tools 定义、仅禁止调用：工具 schema 属于提示词前缀的一部分，
+            # 收敛时移除会让整段前缀缓存失效。
             final = await self.llm.chat(
                 config_llm, messages,
                 config_name=config_name,
+                need=(("tools", "vision")
+                      if self._messages_have_images(messages)
+                      else ("tools",)),
+                tools=tools or None,
+                tool_choice="none",
                 max_context_tokens=int(settings.max_context_tokens or 0),
                 phase=f"{phase}-converge",
                 use_breaker=bool(settings.circuit_breaker_enabled),
@@ -2044,6 +2200,7 @@ class MaaAnalyzer:
                     return await self._retry_truncated(
                         config_llm, messages, final.content,
                         config_name, settings, phase,
+                        tools=tools, tool_choice="none",
                     )
                 return final.content
         except Exception as exc:

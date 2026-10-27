@@ -145,6 +145,7 @@ MaaFwApp 取 `device_info.txt` 的 `Version` / `MaaFwApp` / `Framework`。未知
 | [分析历史](docs/history.md) | 日志包归档、周期保留策略、手动管理 |
 | [项目代码参考](docs/repo.md) | inject / agent 两种模式与全部设置项 |
 | [AI 工具](docs/tools.md) | 日志包工具与仓库工具、沙箱安全、调用限制 |
+| [上下文与缓存](docs/context.md) | 提示词前缀缓存、自动压缩、命中率观测 |
 | [调试](docs/debugging.md) | CLI REPL、HTTP 端点、JSON 批量测试与断言 |
 | [架构](docs/architecture.md) | 分层设计、目录结构、事件订阅 |
 | [发布](docs/releasing.md) | 自动发布流程、普通包 / 精简包（light）、发布包白名单、提交信息规范 |

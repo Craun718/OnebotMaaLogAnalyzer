@@ -4,6 +4,10 @@ AI 用量记录 — JSONL 追加写入 + 读取查询。
 记录字段：
   ts / session_id / config / file / provider / model / phase / ok / error_kind
   prompt_tokens / completion_tokens / total_tokens / elapsed_ms
+  uncached_prompt_tokens / cache_read_tokens / cache_write_tokens
+
+缓存字段来自 provider 的 usage（DeepSeek / OpenAI / Anthropic 风格），
+用于计算提示词缓存命中率；provider 未报告时保持 0。
 
 会话（session）= 一次日志分析 + 它后续的全部追问，共用同一个 `session_id`。
 `/maa ai` 按会话聚合，而不是按单次模型调用罗列。
@@ -42,6 +46,10 @@ class UsageRecord:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    # 提示词缓存（provider 报告时才有值）
+    uncached_prompt_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     elapsed_ms: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -62,6 +70,9 @@ class SessionUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    uncached_prompt_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     elapsed_ms: int = 0
     providers: dict[str, int] = field(default_factory=dict)   # 名称 → 调用次数
     models: dict[str, int] = field(default_factory=dict)
@@ -72,6 +83,13 @@ class SessionUsage:
         if self.total_tokens:
             return self.total_tokens
         return int(self.prompt_tokens + self.completion_tokens)
+
+    def cache_hit_rate(self) -> float:
+        """缓存命中率（0~1）；provider 未报告缓存字段时返回 0。"""
+        billed = self.uncached_prompt_tokens + self.cache_read_tokens + self.cache_write_tokens
+        if billed <= 0:
+            return 0.0
+        return max(0.0, min(1.0, self.cache_read_tokens / billed))
 
     def add(self, record: UsageRecord) -> None:
         """把一条调用记录并入本会话。"""
@@ -87,6 +105,9 @@ class SessionUsage:
             record.total_tokens
             or (int(record.prompt_tokens or 0) + int(record.completion_tokens or 0))
         )
+        self.uncached_prompt_tokens += int(record.uncached_prompt_tokens or 0)
+        self.cache_read_tokens += int(record.cache_read_tokens or 0)
+        self.cache_write_tokens += int(record.cache_write_tokens or 0)
         self.elapsed_ms += int(record.elapsed_ms or 0)
         if record.provider:
             self.providers[record.provider] = self.providers.get(record.provider, 0) + 1

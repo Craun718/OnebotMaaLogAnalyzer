@@ -288,6 +288,10 @@ class DebugLLMClient:
         self.system_prompts: list[str] = []
         self.tool_rounds: list[list[dict]] = []   # 每轮收到的 tools 定义
         self.tool_results: list[str] = []         # 收到的工具执行结果
+        # 上下文压缩调用（phase 以 -compact 结尾），供测试断言
+        self.compaction_calls: list[list[dict]] = []
+        # 每次调用的 (phase, messages) 快照，用于断言提示词前缀稳定
+        self.message_snapshots: list[tuple[str, list[dict]]] = []
         # 可覆盖的模拟报告（测试可注入含特定附件指令的报告）
         self.report_override: str = ""
         # 工具循环行为：normal=首轮调工具后收敛；always=每轮都调工具直到上限。
@@ -313,6 +317,12 @@ class DebugLLMClient:
     def context_budget(self, config_llm=None, override: int = 0) -> int:
         return int(override or 48000)
 
+    def input_budget(self, config_llm=None, override: int = 0,
+                     *, margin: int = 512) -> int:
+        """与 LLMPool 一致：预留输出空间后的输入预算。"""
+        window = int(override or 48000)
+        return max(1024, window - 8192 - int(margin))
+
     def failure_summary(self, config_llm=None, need=()) -> str:
         return ""
 
@@ -325,6 +335,8 @@ class DebugLLMClient:
             "calls": 0, "failed": 0,
             "prompt_tokens": 0, "completion_tokens": 0,
             "total_tokens": 0, "elapsed_ms": 0,
+            "cache_read_tokens": 0, "cache_write_tokens": 0,
+            "cache_hit_rate": 0.0,
             "providers": [], "models": [], "pairs": {},
         }
 
@@ -336,9 +348,22 @@ class DebugLLMClient:
                    tool_choice: str = "auto", phase: str = "",
                    **kwargs) -> Optional[ChatMessage]:
         """模拟一轮工具调用，然后给出最终报告。"""
-        return self._simulate(messages, tools)
+        self.message_snapshots.append(
+            (str(phase or ""), [dict(m) for m in messages])
+        )
+        if str(phase or "").endswith("-compact"):
+            self.compaction_calls.append([dict(m) for m in messages])
+            return ChatMessage(
+                content=(
+                    "压缩摘要：用户要求分析一份日志；已确认存在 ERROR 记录；"
+                    "涉及文件 on_error/example.png；尚未解决的问题是根因定位。"
+                ),
+                finish_reason="stop",
+            )
+        return self._simulate(messages, tools, tool_choice=tool_choice)
 
-    def _simulate(self, messages: list[dict], tools) -> Optional[ChatMessage]:
+    def _simulate(self, messages: list[dict], tools,
+                  *, tool_choice: str = "auto") -> Optional[ChatMessage]:
         self.tool_rounds.append(list(tools or []))
 
         # 收集本轮之前已产生的工具结果
@@ -359,7 +384,7 @@ class DebugLLMClient:
         # 第一轮且工具可用：请求一组检索，验证完整工具链路。
         # 日志工具与仓库工具都会调用（若可用），这样测试既能断言
         # 「工具被提供」，也能断言「工具真的读到了内容」。
-        if tools and not self.tool_results:
+        if tools and tool_choice != "none" and not self.tool_results:
             names = {t.get("function", {}).get("name") for t in tools}
             calls: list[ToolCall] = []
             if "log_search" in names:
@@ -392,7 +417,7 @@ class DebugLLMClient:
 
         # always 模式：每轮都请求工具，直到上层用尽轮次。
         # 复现「模型全程只检索、从不输出正文」——真实模型常见行为。
-        if tools and self.tool_behavior == "always":
+        if tools and tool_choice != "none" and self.tool_behavior == "always":
             call = ToolCall(
                 id=f"debug_call_loop_{len(self.tool_rounds)}",
                 name="log_search",
@@ -405,8 +430,8 @@ class DebugLLMClient:
                 finish_reason="tool_calls",
             )
 
-        # 收敛阶段（上层已用尽轮次、不再传 tools）：可模拟空正文
-        if self.converge_empty and not tools:
+        # 收敛阶段（上层已用尽轮次、禁止再调工具）：可模拟空正文
+        if self.converge_empty and (not tools or tool_choice == "none"):
             return ChatMessage(content="", finish_reason="stop")
 
         # 之后直接给结论

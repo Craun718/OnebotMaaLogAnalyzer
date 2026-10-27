@@ -41,7 +41,7 @@
   `bot.configs.<名称>.llm.models[]` 后 `/maa reload`
 - `/maa ai [n]` 读取 `data/ai_usage.jsonl`，按**会话**聚合：同一份日志的分析与它后续的
   追问（引用的任意消息）算作一个会话，显示该会话的调用次数、分析/追问拆分、
-  输入/输出/合计 token、耗时与用到的 `provider/model`；不包含任何密钥
+  输入/输出/合计 token、缓存命中率、耗时与用到的 `provider/model`；不包含任何密钥
 
 ## 权限等级
 

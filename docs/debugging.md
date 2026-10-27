@@ -190,6 +190,8 @@ python -c "import asyncio;from debug.runner import run_test_file;from debug impo
 | `tools_include` / `tools_exclude` | 向模型提供的工具名包含 / 不包含（如 `search_repo`） |
 | `tool_results_contains` | 工具**执行结果**中包含指定文本（证明工具真读到了内容） |
 | `no_error` | 无异常（`true` / `false`） |
+| `compaction_count` | 上下文压缩调用次数（整数或 `{"min":..,"max":..}`） |
+| `first_user_stable` | 首条 user 消息在会话中保持不变（提示词前缀缓存稳定的前提） |
 | `history_count` / `history_zips` / `history_no_zips` / `history_message_ids` | 历史归档状态 |
 | `files_exist` / `files_missing` | 相对 `data_dir` 的文件存在性（验证 `repos/` 缓存未被清理） |
 
