@@ -52,8 +52,10 @@ def resolve_repo_path(root: Path, raw: str) -> tuple[Path | None, str]:
         actual = resolved.relative_to(root_real).as_posix()
     except ValueError:
         return None, f"路径非法（越出仓库范围），已拒绝：{raw}"
-    except (OSError, RuntimeError) as exc:
-        return None, f"路径无法解析，已拒绝：{exc}"
+    except FileNotFoundError:
+        return None, f"路径不存在：{rel}"
+    except (OSError, RuntimeError):
+        return None, f"路径无法解析，已拒绝：{rel}"
     for name in (rel, actual):
         if is_sensitive_path(name):
             return None, describe_rejection(name)

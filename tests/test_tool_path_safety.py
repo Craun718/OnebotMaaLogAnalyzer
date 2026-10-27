@@ -4,6 +4,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from core.models import RepoConfig
 from features.maa.attachments import normalize_rel_path, parse_attachments
@@ -45,6 +46,33 @@ class NormalizeToolPathTests(unittest.TestCase):
                 self.assertIsNone(normalize_rel_path(path))
                 for source in ("项目", "日志"):
                     self.assertEqual(parse_attachments(f"[附件@{source}: {path}]"), [])
+
+
+class RepoPathErrorTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "repo"
+        self.root.mkdir()
+        self.tools = RepoTools(SimpleNamespace(root=self.root), RepoConfig())
+
+    async def test_missing_paths_are_reported_without_host_paths(self):
+        for name in ("read_file", "list_dir", "search_repo"):
+            with self.subTest(tool=name):
+                result = await self.tools.execute(name, {"path": "missing/file.txt", "pattern": "."})
+                self.assertEqual(result, "路径不存在：missing/file.txt")
+
+    def test_missing_root_is_reported_without_host_paths(self):
+        resolved, error = resolve_repo_path(self.root / "missing", "file.txt")
+        self.assertIsNone(resolved)
+        self.assertEqual(error, "路径不存在：file.txt")
+
+    def test_resolution_errors_do_not_expose_exception_paths(self):
+        for exc in (PermissionError(f"denied: {self.root}"), RuntimeError(f"loop: {self.root}")):
+            with self.subTest(error=type(exc).__name__), patch.object(Path, "resolve", side_effect=exc):
+                resolved, error = resolve_repo_path(self.root, "file.txt")
+                self.assertIsNone(resolved)
+                self.assertEqual(error, "路径无法解析，已拒绝：file.txt")
 
 
 class RepoToolPathTests(unittest.IsolatedAsyncioTestCase):
