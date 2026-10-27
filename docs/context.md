@@ -15,12 +15,25 @@ provider 直接复用已计算的 KV，只按缓存读取价计费。
 - 新增内容只能**追加**在末尾；
 - 任何在开头附近的改动（哪怕只改一个字符）都会让之后的缓存全部失效。
 
-DeepSeek 以 64 token 为缓存块，并返回：
+支持两种协议，缓存组织方式一致：
+
+- `kind: openai` → `/v1/chat/completions`
+- `kind: anthropic` → `/v1/messages`（官方 Anthropic 或 DeepSeek 的 anthropic 端点）
+
+DeepSeek 以 64 token 为缓存块，OpenAI 风格返回：
 
 ```json
 { "usage": { "prompt_tokens": 12000,
              "prompt_cache_hit_tokens": 11000,
              "prompt_cache_miss_tokens": 1000 } }
+```
+
+Anthropic 风格返回（`input_tokens` 只算未命中部分）：
+
+```json
+{ "usage": { "input_tokens": 1000, "output_tokens": 200,
+             "cache_read_input_tokens": 11000,
+             "cache_creation_input_tokens": 0 } }
 ```
 
 ## Bot 的缓存友好做法

@@ -90,7 +90,10 @@ RENDER_MODES = (
     ("text", "text — 纯文本"),
 )
 VISION_DETAILS = (("high", "high"), ("low", "low"), ("auto", "auto"))
-PROVIDER_KINDS = (("openai", "openai — OpenAI 兼容 /chat/completions"),)
+PROVIDER_KINDS = (
+    ("openai", "openai — OpenAI 兼容 /chat/completions"),
+    ("anthropic", "anthropic — Anthropic Messages /v1/messages"),
+)
 LOG_LEVELS = (("DEBUG", "DEBUG"), ("INFO", "INFO"), ("WARNING", "WARNING"), ("ERROR", "ERROR"))
 UI_KEYS = ("mxu", "mfaa", "maafwapp", "auto")
 
@@ -1048,7 +1051,7 @@ const LABELS = {
   'circuit_breaker.rate_cooldown_seconds': '限流/配额冷却（秒）',
   'circuit_breaker.auth_cooldown_seconds': '鉴权失败冷却（秒）',
   'provider.name': '端点名称',
-  'provider.kind': '协议类型',
+  'provider.kind': '协议类型（openai / anthropic）',
   'provider.base_url': 'Base URL',
   'provider.api_key': 'API Key',
   'provider.max_concurrency': '并发上限',
@@ -1096,7 +1099,7 @@ const HELP = {
   'settings.max_log_chars': '进入提示词的日志字符上限，越大越贵。',
   'commands.read_level': '0 任何人 / 1 管理员 / 2 超管。',
   'llm.models': '按顺序尝试：前面的失败（401 除外）会顺延到下一个候选。',
-  'provider.base_url': 'OpenAI 兼容端点，例如 https://api.deepseek.com/v1。',
+  'provider.base_url': 'openai 填 …/v1；anthropic 填 …（自动补 /v1/messages），例如 https://api.deepseek.com/anthropic。',
   'provider.api_key': '明文保存在 config.json 中，注意不要提交到公开仓库。',
   'model.supports.tools': '分析默认使用工具循环，关闭后该模型无法承担带工具的调用。',
   'model.max_tokens': '0 = 使用 llm.defaults.max_tokens。',

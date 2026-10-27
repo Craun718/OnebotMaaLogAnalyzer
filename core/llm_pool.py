@@ -30,7 +30,9 @@ from core.llm import (
     RequestParams,
     backoff_seconds,
     cache_hit_rate,
+    create_llm_client,
     normalize_usage,
+    provider_kind,
 )
 from core.models import (
     ConfigLLM,
@@ -121,6 +123,14 @@ def validate_llm_config(llm_cfg: dict, configs_cfg: dict) -> list[str]:
             errors.append(f"llm.providers 中端点名重复：{name}")
             continue
         providers[name] = provider
+        raw_kind = str(provider.kind or "").strip().lower()
+        if raw_kind and raw_kind not in (
+            "openai", "anthropic", "anthropic-messages", "claude", "messages",
+        ):
+            errors.append(
+                f"端点 {name} 的 kind 不受支持：{provider.kind!r}"
+                f"（可选 openai / anthropic）"
+            )
         if not str(provider.base_url or "").strip():
             errors.append(f"端点 {name} 缺少 base_url")
         model_names = [str(m.model or "").strip() for m in provider.models]
@@ -281,7 +291,7 @@ class LLMPool:
             if not name:
                 continue
             self.providers[name] = provider
-            self.clients[name] = LLMClient(provider)
+            self.clients[name] = create_llm_client(provider)
             self._breakers[name] = _BreakerState()
 
     # ── 描述 ──
@@ -302,7 +312,8 @@ class LLMPool:
                 for spec in provider.models
             ) or "（无模型）"
             lines.append(
-                f"端点 {name}: {provider.base_url or '（未配置）'}"
+                f"端点 {name}（{provider_kind(provider)}）: "
+                f"{provider.base_url or '（未配置）'}"
                 f" · 密钥指纹 {client.key_fingerprint} · {models}"
             )
         return lines

@@ -113,7 +113,8 @@
 | `onebot.api_timeout_seconds` | API 调用超时（秒），默认 30 |
 | `bot.data_dir` | 数据目录 |
 | `bot.configs` | **多群配置**：配置名 → 监听群 / 通知群 / 设置覆盖 / 指令设置 |
-| `llm.providers[]` | **端点与密钥**（OpenAI 兼容），每个端点声明自己的 `models[]` 与能力 |
+| `llm.providers[]` | **端点与密钥**，每个端点声明自己的 `kind`、`models[]` 与能力 |
+| `llm.providers[].kind` | 协议类型：`openai`（`/v1/chat/completions`，默认）或 `anthropic`（`/v1/messages`） |
 | `llm.defaults` | 全局参数兜底：`temperature` / `top_p` / `max_tokens` / `max_context_tokens` |
 | `llm.circuit_breaker` | 端点级熔断：`failure_threshold` / `cooldown_seconds` / `rate_cooldown_seconds` / `auth_cooldown_seconds` |
 | `bot.configs.<名称>.llm.models[]` | 该配置按优先级尝试的候选 `{name, model}` 列表 |
@@ -153,6 +154,34 @@
 ```
 
 - 参数优先级（低 → 高）：`llm.defaults` → `providers[].models[]` → `bot.configs.<名称>.llm`
+- `kind` 决定协议：`openai` 走 `/v1/chat/completions`；`anthropic` 走 `/v1/messages`
+  （请求/响应、tool_use / tool_result、图片与 usage 都自动转换）。同一配置可以混用两种端点，
+  失败转移照常工作。
+
+```jsonc
+// Anthropic Messages 端点（官方 Anthropic 或 DeepSeek 的 anthropic 兼容端点）
+{
+  "name": "anthropic",
+  "kind": "anthropic",
+  "base_url": "https://api.deepseek.com/anthropic",   // 自动补 /v1/messages
+  "api_key": "sk-...",
+  "models": [
+    {
+      "model": "deepseek-v4-flash",
+      "supports": { "tools": true, "vision": true },
+      "max_tokens": 8192,
+      "max_context_tokens": 128000
+    }
+  ]
+}
+```
+
+> Anthropic 协议强制要求 `max_tokens`，Bot 会用 `models[].max_tokens` 或
+> `llm.defaults.max_tokens` 填充；`temperature` 会被限制在 0–1，`top_p` 仅在非默认值时发送。
+> 若端点要求显式 `thinking`，Bot 会自动补上 `{"type":"disabled"}` 后重试。
+> OpenAI 端点遇到新模型参数差异时也会自动降级一次：
+> `max_tokens` → `max_completion_tokens`、丢弃不支持的 `temperature` / `top_p` / `tool_choice`。
+> 两个协议都支持提示词缓存，`/maa ai` 的缓存命中率对两者一视同仁。
 - `supports.tools` / `supports.vision` 决定候选能否满足带工具 / 带图调用：
   过滤在**原列表顺序**上进行；过滤后为空则该能力降级（不提供工具 / 不注入图片），
   并在报告中注明，而不是整体失败

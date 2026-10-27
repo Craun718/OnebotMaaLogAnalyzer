@@ -25,7 +25,7 @@
 
 ## 快速开始
 
-**前置要求**：Python 3.10+、任意 OneBot v11 实现（NapCat / LLOneBot / Lagrange / OpenShamrock 等）、一个 OpenAI 兼容的 Chat Completions 接口。
+**前置要求**：Python 3.10+、任意 OneBot v11 实现（NapCat / LLOneBot / Lagrange / OpenShamrock 等）、一个 OpenAI 兼容的 Chat Completions 接口或 Anthropic Messages 接口（`kind: openai` / `anthropic`）。
 
 ```bash
 python -m venv .venv

@@ -107,10 +107,12 @@ class ModelSpec(BaseModel):
 
 
 class LLMProviderConfig(BaseModel):
-    """全局 `llm.providers[]`：一个 OpenAI 兼容端点。"""
+    """全局 `llm.providers[]`：一个 LLM 端点（OpenAI 兼容或 Anthropic Messages）。"""
 
     name: str = ""
-    kind: str = "openai"          # 首版只实现 openai
+    # openai = /v1/chat/completions；anthropic = /v1/messages
+    # （DeepSeek 的 anthropic 兼容端点同样用 anthropic）
+    kind: str = "openai"
     base_url: str = ""
     api_key: str = ""
     max_concurrency: int = 2
