@@ -76,6 +76,12 @@ class RepoPathErrorTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RepoToolPathTests(unittest.IsolatedAsyncioTestCase):
+    def _symlink(self, link, target, *, target_is_directory=False):
+        try:
+            link.symlink_to(target, target_is_directory=target_is_directory)
+        except OSError as exc:
+            self.skipTest(f"当前环境无法创建符号链接：{exc}")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -84,16 +90,16 @@ class RepoToolPathTests(unittest.IsolatedAsyncioTestCase):
         self.root.mkdir()
         (base / "outside.txt").write_text("OUTSIDE_MARKER\n")
         (self.root / "normal.txt").write_bytes(b"NORMAL_MARKER\n")
-        (self.root / "linked.txt").symlink_to(base / "outside.txt")
-        (self.root / "internal.txt").symlink_to(self.root / "normal.txt")
-        (self.root / "external_dir").symlink_to(base, target_is_directory=True)
+        self._symlink(self.root / "linked.txt", base / "outside.txt")
+        self._symlink(self.root / "internal.txt", self.root / "normal.txt")
+        self._symlink(self.root / "external_dir", base, target_is_directory=True)
         (self.root / "secrets.json").write_text("SECRET_MARKER\n")
-        (self.root / "alias.txt").symlink_to(self.root / "secrets.json")
+        self._symlink(self.root / "alias.txt", self.root / "secrets.json")
         (self.root / ".env").write_text("SECRET_MARKER\n")
         (self.root / ".aws").mkdir()
         (self.root / ".aws" / "settings.txt").write_text("SECRET_MARKER\n")
         # The requested name and resolved target must both pass the policy.
-        (self.root / "credentials.txt").symlink_to(self.root / "normal.txt")
+        self._symlink(self.root / "credentials.txt", self.root / "normal.txt")
         self.tools = RepoTools(SimpleNamespace(root=self.root), RepoConfig(extensions=[]))
 
     async def test_rejects_invalid_arguments_for_all_path_tools(self):
@@ -141,7 +147,7 @@ class RepoToolPathTests(unittest.IsolatedAsyncioTestCase):
         sub = self.root / "sub"
         (sub / "deep").mkdir(parents=True)
         (sub / "normal.txt").write_text("ACTUAL_TARGET\n")
-        (self.root / "dir_link").symlink_to(sub / "deep", target_is_directory=True)
+        self._symlink(self.root / "dir_link", sub / "deep", target_is_directory=True)
         for path in ("sub/deep/../normal.txt", "dir_link/../normal.txt"):
             with self.subTest(path=path):
                 result = await self.tools.execute("read_file", {"path": path})
@@ -156,8 +162,8 @@ class RepoToolPathTests(unittest.IsolatedAsyncioTestCase):
         sibling = self.root.with_name("repo-backup")
         sibling.mkdir()
         (sibling / "normal.txt").write_text("OUTSIDE_MARKER")
-        (self.root / "sibling").symlink_to(sibling, target_is_directory=True)
-        (self.root / "loop").symlink_to("loop")
+        self._symlink(self.root / "sibling", sibling, target_is_directory=True)
+        self._symlink(self.root / "loop", "loop")
         for path in ("sibling/normal.txt", "loop"):
             with self.subTest(path=path):
                 resolved, error = resolve_repo_path(self.root, path)
@@ -182,6 +188,15 @@ class RepoToolPathTests(unittest.IsolatedAsyncioTestCase):
         provider = RepoProvider(RepoConfig(path=str(self.root)), self.root.parent)
         self.assertEqual(provider.find_files(["sub/../normal.txt"]), [])
         self.assertIsNone(provider._read_line(self.root, "sub/../normal.txt", 1))
+
+
+class SymlinkSupportTests(unittest.TestCase):
+    def test_symlink_permission_failure_skips_instead_of_errors(self):
+        case = RepoToolPathTests("test_listing_hides_rejected_entries")
+        self.addCleanup(case.doCleanups)
+        with patch.object(Path, "symlink_to", side_effect=OSError("symlink privilege unavailable")):
+            with self.assertRaisesRegex(unittest.SkipTest, "无法创建符号链接"):
+                case.setUp()
 
 
 class DigestProfilePathTests(unittest.TestCase):
