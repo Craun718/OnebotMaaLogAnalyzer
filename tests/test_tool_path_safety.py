@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from core.models import RepoConfig
 from features.maa.attachments import normalize_rel_path, parse_attachments
-from features.maa.log_digest import read_zip_member
+from features.maa.log_digest import build_log_digest, describe_zip, read_zip_member
 from features.maa.log_tools import LogArchiveTools
 from features.maa.repo import RepoProvider
 from features.maa.repo_tools import RepoTools
@@ -182,6 +182,29 @@ class RepoToolPathTests(unittest.IsolatedAsyncioTestCase):
         provider = RepoProvider(RepoConfig(path=str(self.root)), self.root.parent)
         self.assertEqual(provider.find_files(["sub/../normal.txt"]), [])
         self.assertIsNone(provider._read_line(self.root, "sub/../normal.txt", 1))
+
+
+class DigestProfilePathTests(unittest.TestCase):
+    def test_profile_ignores_unsafe_members_with_and_without_safe_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            zip_path = Path(directory) / "logs.zip"
+            for safe_log in (False, True):
+                with self.subTest(safe_log=safe_log):
+                    with zipfile.ZipFile(zip_path, "w") as archive:
+                        for name in ("../maafw.log", "/maafw.log", "C:/maafw.log", ".aws/maafw.log"):
+                            archive.writestr(name, "Version v9.9.9-evil\n")
+                        archive.writestr("../mxu-agent-evil.log", "unsafe layout")
+                        if safe_log:
+                            archive.writestr("debug/maafw.log", "Version v1.2.3\n")
+                    for result in (
+                        build_log_digest(str(zip_path), original_file_name="logs.zip"),
+                        describe_zip(str(zip_path)),
+                    ):
+                        self.assertIsNotNone(result)
+                        self.assertEqual(result.profile.framework_version, "v1.2.3" if safe_log else "")
+                        self.assertEqual(result.profile.layout_detected, safe_log)
+                        self.assertEqual(result.all_members, ["debug/maafw.log"] if safe_log else [])
+                        self.assertNotIn("v9.9.9-evil", result.prompt)
 
 
 class LogToolPathTests(unittest.IsolatedAsyncioTestCase):

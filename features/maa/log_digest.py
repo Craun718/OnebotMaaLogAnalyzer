@@ -138,7 +138,7 @@ def build_log_digest(
             zip_path,
             file_name=original_file_name,
             archive=archive,
-            infos=infos,
+            infos=safe_infos,
         )
         notes.extend(profile.notes)
 
@@ -222,15 +222,15 @@ def describe_zip(zip_path: str,
     try:
         with zipfile.ZipFile(zip_path) as archive:
             infos = [info for info in archive.infolist() if not info.is_dir()]
+            safe_infos = [info for info in infos if _is_safe_member(info.filename)]
             profile = detect_archive_profile(
                 zip_path,
                 archive=archive,
-                infos=infos,
+                infos=safe_infos,
             )
     except (zipfile.BadZipFile, OSError, RuntimeError):
         return None
 
-    safe_infos = [info for info in infos if _is_safe_member(info.filename)]
     notes: list[str] = []
     log_infos = _select_log_infos(safe_infos, opts, profile, notes)
     error_images = _select_error_images(safe_infos, opts.max_error_images)
