@@ -371,7 +371,7 @@ data/
 | `max_tool_rounds` | `int` / `8` | **agent** 工具调用最大轮次 | `"max_tool_rounds": 6` |
 | `max_tool_calls_per_round` | `int` / `6` | **agent** 单轮最多执行的工具数 | `"max_tool_calls_per_round": 4` |
 | `max_tool_result_chars` | `int` / `30000` | **agent** 单次工具结果字符上限 | `"max_tool_result_chars": 12000` |
-| `max_tool_result_tokens` | `int` / `0` | **agent** 单次工具结果 token 上限；`0` = 由 `max_tool_result_chars` 估算 | `"max_tool_result_tokens": 4000` |
+| `max_tool_result_tokens` | `int` / `0` | **agent** 单次工具结果 token 上限；`0` = 由 `max_tool_result_chars` 估算，非 0 时最小 64 | `"max_tool_result_tokens": 4000` |
 | `max_tool_context_tokens` | `int` / `0` | 工具结果累计 token 预算；`0` = 不超过本次上下文预算的 50% | `"max_tool_context_tokens": 16000` |
 | `agent_deadline_seconds` | `int` / `600` | **agent** 循环总时长上限 | `"agent_deadline_seconds": 900` |
 | `extensions` | `string[]` / `json/jsonc/yaml/yml/toml/md/txt` | 参与扫描的文件扩展名 | `"extensions": [".json", ".yaml"]` |
@@ -572,11 +572,11 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `send_summary` | `bool` / `true` | 是否发送分析结果 | `"send_summary": true` |
 | `reply_chunk_chars` | `int` / `3500` | 回复分段字符数（最小 1000） | `"reply_chunk_chars": 2000` |
 | `send_images` | `bool` / `true` | 是否允许模型附图 | `"send_images": false` |
-| `max_report_images` | `int` / `4` | 最多附带图片数 | `"max_report_images": 6` |
+| `max_report_images` | `int` / `4` | 最多附带图片数；`0` = 不发图片（与文件上限分别计数） | `"max_report_images": 6` |
 | `send_repo_images` | `bool` / `true` | 是否允许从仓库取模板图 | `"send_repo_images": false` |
 | `send_files` | `bool` / `true` | 是否允许附带任意文件（如配置、pipeline JSON） | `"send_files": false` |
-| `max_report_files` | `int` / `2` | 最多附带文件数 | `"max_report_files": 4` |
-| `max_file_attachment_mb` | `int` / `20` | 单个非图片附件大小上限 MB | `"max_file_attachment_mb": 50` |
+| `max_report_files` | `int` / `2` | 最多附带文件数；`0` = 不发文件（与图片上限分别计数） | `"max_report_files": 4` |
+| `max_file_attachment_mb` | `int` / `20` | 单个非图片附件大小上限 MB；`0` = 关闭文件附件 | `"max_file_attachment_mb": 50` |
 | `inline_attachments` | `bool` / `true` | 旧配置兼容项：附件位置由渲染流程决定，当前版本不读取该字段 | `"inline_attachments": false` |
 | `followup_enabled` | `bool` / `true` | 是否允许分析后追问答疑 | `"followup_enabled": false` |
 | `followup_window_minutes` | `int` / `0` | 追问会话有效分钟数；`0` = 跟随历史保留期 | `"followup_window_minutes": 120` |
@@ -586,7 +586,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `history_period_hours` | `int` / `24` | 历史保留周期（小时） | `"history_period_hours": 12` |
 | `history_keep_periods` | `int` / `2` | 保留周期数，超出即删除 | `"history_keep_periods": 3` |
 | `history_max_records` | `int` / `200` | 每配置历史记录条数上限；`0` = 不限 | `"history_max_records": 100` |
-| `history_max_total_mb` | `int` / `4096` | 历史目录总大小上限 MB；`0` = 不限 | `"history_max_total_mb": 2048` |
+| `history_max_total_mb` | `int` / `4096` | 历史目录总大小上限 MB；按记录目录实际占用现算（含追问阶段补解压的 `extracted/`）；`0` = 不限 | `"history_max_total_mb": 2048` |
 | `analysis_concurrency` | `int` / `2` | 同时进行的 AI 分析数（仓库状态相关的配置仍串行） | `"analysis_concurrency": 3` |
 | `download_concurrency` | `int` / `2` | 同时进行的下载数 | `"download_concurrency": 4` |
 | `download_timeout_seconds` | `int` / `120` | 下载超时秒数 | `"download_timeout_seconds": 300` |
@@ -605,7 +605,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `cleanup_after_done` | `bool` / `true` | 分析完成后清理临时文件 | `"cleanup_after_done": false` |
 | `save_digest_debug` | `bool` / `false` | 把实际发送给 AI 的摘要保存到 `data/debug_digests` | `"save_digest_debug": true` |
 | `max_zip_size_mb` | `int` / `100` | zip 下载大小上限 MB | `"max_zip_size_mb": 200` |
-| `max_total_uncompressed_mb` | `int` / `120` | 解压总大小上限 MB | `"max_total_uncompressed_mb": 250` |
+| `max_total_uncompressed_mb` | `int` / `1024` | **解压后总大小上限 MB**：下载后只读 zip 目录求和，超限直接跳过整次分析；通过后下游不再比对总量 | `"max_total_uncompressed_mb": 2048` |
 | `max_prompt_chars` | `int` / `200000` | 摘要字符上限（token 预算的兜底，按优先级裁剪） | `"max_prompt_chars": 150000` |
 | `max_zip_members` | `int` / `300` | 压缩包内成员数上限 | `"max_zip_members": 500` |
 | `max_log_files` | `int` / `6` | 最多处理日志文件数（按 UI 布局优先选框架日志 / UI 日志 / 运行记录） | `"max_log_files": 8` |
@@ -613,7 +613,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `max_maafw_bak_mb` | `int` / `64` | 单个 `maafw.bak` 大小上限 MB；`0` = 不限制 | `"max_maafw_bak_mb": 32` |
 | `merge_archive_parts` | `bool` / `true` | 自动合并 `*-partNN.zip` 分卷日志包 | `"merge_archive_parts": false` |
 | `archive_part_settle_seconds` | `float` / `30` | 分卷静默期：连续该秒数无新分卷才开始分析；`0` = 首个分卷立即分析 | `"archive_part_settle_seconds": 60` |
-| `max_log_file_read_kb` | `int` / `512` | 普通模式单文件读取上限 KB | `"max_log_file_read_kb": 1024` |
+| `max_log_file_read_kb` | `int` / `512` | 日志包单文件读取/工具返回窗口上限 KB（`log_search` 流式全量扫描，不受此限） | `"max_log_file_read_kb": 1024` |
 | `small_log_full_read_mb` | `int` / `5` | 小于该值完整读取（MB） | `"small_log_full_read_mb": 3` |
 | `stream_medium_logs` | `bool` / `true` | 流式扫描中等日志 | `"stream_medium_logs": false` |
 | `large_log_threshold_mb` | `int` / `50` | 巨型日志判定阈值 MB | `"large_log_threshold_mb": 100` |
