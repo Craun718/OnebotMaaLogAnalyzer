@@ -9,63 +9,116 @@ git push origin v0.3.1
 
 工作流会：
 
-1. 用 [git-cliff](https://git-cliff.org/) 依据提交记录自动生成 Release Notes（分组规则见 `.github/cliff.toml`）
-2. 打包**普通包**与**精简包**两个压缩包（**白名单式**，仅含运行必需文件）
-3. 创建 GitHub Release；版本号含 `alpha` / `beta` / `rc` / `dev` / `preview` 时自动标记为预发布
+1. 用 [git-cliff](https://git-cliff.org/) 依据提交记录自动生成 Release Notes
+   （分组规则见 `.github/cliff.toml`）。
+2. 生成裸 OneBot 普通包、裸 OneBot 精简包和 AstrBot 插件包三个压缩包。
+3. 在压缩前执行白名单、必需文件和禁止文件校验，任一失败即中止发布。
+4. 创建 GitHub Release；版本号含 `alpha` / `beta` / `rc` / `dev` / `preview`
+   时自动标记为预发布。
 
-## 两种发布包
+## 三种发布包
 
-| 压缩包 | 顶层目录 | 内容差异 |
+| 压缩包 | 顶层目录 | 用途 |
 | --- | --- | --- |
-| `OnebotMaaLogAnalyzer-<版本>.zip` | `OnebotMaaLogAnalyzer/` | **普通包**：含 `tools/`（模板编辑器、config.json 编辑器）与 `templates/` 下全部主题 |
-| `OnebotMaaLogAnalyzer-<版本>-light.zip` | `OnebotMaaLogAnalyzer-light/` | **精简包**：不含 `tools/`，`templates/` 只保留 `default` |
+| `OnebotMaaLogAnalyzer-<版本>.zip` | `OnebotMaaLogAnalyzer/` | 裸 OneBot 普通包，含编辑工具和全部报告主题 |
+| `OnebotMaaLogAnalyzer-<版本>-light.zip` | `OnebotMaaLogAnalyzer-light/` | 裸 OneBot 精简包，不含编辑工具，只含 `default` 主题 |
+| `OnebotMaaLogAnalyzer-<版本>-astrbot.zip` | `OnebotMaaLogAnalyzer/` | AstrBot AIOCQHTTP 插件包 |
 
-> Bot 本体运行不需要 `tools/`，两个包都能直接 `pip install -r requirements.txt` 后启动。
-> 精简包体积更小、暴露面更少，普通包额外附带可视化工具与可选主题。
->
-> 精简包只带 `default` 主题。若 `report.template` 指向其它主题（如 `default-dark`），
-> 运行时记一条 warning 并回退 `default`，功能不受影响；需要其它主题就换普通包，
-> 或把自己的主题目录放进 `templates/`。
+两个裸模式包都从 `main.py` 启动，并包含完整的 `maa_analyzer/` 共享内核。AstrBot 包中的
+`main.py` 是插件入口，安装到 AstrBot 插件目录后不需要再启动裸 OneBot 进程。
 
-## 发布包内容（白名单）
+## 普通包
 
 ```text
-OnebotMaaLogAnalyzer/        # 精简包顶层目录名为 OnebotMaaLogAnalyzer-light，且没有 tools/、templates/ 只有 default/
+OnebotMaaLogAnalyzer/
 ├── main.py
 ├── requirements.txt
 ├── README.md
 ├── LICENSE
-├── docs/         # 详细文档
-├── bot/          # OneBot v11 协议层
-├── core/         # 基础设施（models / service / llm / data_manager）
-├── features/     # 业务功能（maa/）
-├── templates/    # 报告图片模板：普通包含全部主题，精简包只有 default/
-└── tools/        # 【仅普通包】templates/editor.py、config/editor.py
+├── docs/
+├── maa_analyzer/
+├── templates/
+└── tools/
 ```
 
-**不打包**（开发期专用，发布包中会被校验拦截）：
+`tools/` 包含模板编辑器和 `config.json` 编辑器，`templates/` 包含全部内置报告主题。
+该包运行时不依赖 `tools/`，但保留它供用户编辑模板与配置。
+
+## 精简包
+
+```text
+OnebotMaaLogAnalyzer-light/
+├── main.py
+├── requirements.txt
+├── README.md
+├── LICENSE
+├── docs/
+├── maa_analyzer/
+└── templates/
+    └── default/
+```
+
+精简包不含 `tools/`，并删除 `templates/` 下除 `default/` 外的所有主题。若配置中的
+`report.template` 指向其它主题，运行时会记录 warning 并回退到 `default/`；日志分析和
+纯文本报告不受影响。
+
+## AstrBot 插件包
+
+```text
+OnebotMaaLogAnalyzer/
+├── main.py
+├── metadata.yaml
+├── _conf_schema.json
+├── requirements.txt
+├── maa_analyzer/
+└── templates/
+```
+
+解压后必须直接得到 `OnebotMaaLogAnalyzer/main.py`，不能再多套一层同名目录。插件包包含
+与裸模式相同的 `maa_analyzer/` 和报告模板；配置、数据目录及安装步骤见
+[AstrBot 部署](astrbot.md)。
+
+## 白名单与禁止项
+
+三个包在压缩前分别检查必需文件。裸模式包必须包含启动器、共享内核和
+`templates/default/page.html`；普通包还必须包含两个编辑器：
+
+- `tools/templates/editor.py`
+- `tools/config/editor.py`
+
+AstrBot 包必须包含插件壳、面板 schema、共享内核和
+`maa_analyzer/platforms/astrbot/adapter.py`。插件包不得只在顶层放 `maa_analyzer/` 而
+遗漏插件入口。
+
+以下内容不得进入任何发布包：
 
 | 排除项 | 原因 |
 | --- | --- |
-| `debug/`（含 `examples/*.json`） | 调试工具与测试用例 |
+| `debug/` | 开发调试工具和录音事件 |
+| `tests/`、`test_*.py` | 单元测试 |
 | `.github/` | CI 配置 |
-| `.gitignore` / `config.json` | 开发与本地配置（`config.json` 含密钥） |
-| `__pycache__/`、`*.pyc` | 字节码缓存 |
-| `test_*.py`、`tests/` | 单元测试 |
+| `config.json`、`config.local.json`、`.env` | 本地配置和密钥 |
+| `.gitignore` | 开发元数据 |
+| `__pycache__/`、`*.pyc`、`*.pyo`、`*.pyd` | 字节码缓存 |
 | `*.log` | 运行日志 |
-| `tools/` | 仅在精简包中排除；普通包保留 |
-| `templates/<其它主题>/` | 仅在精简包中排除，只保留 `default/` |
+| `astrbot_plugin/` 作为裸包内目录 | AstrBot 源码目录不进入裸模式包 |
+| 顶层 `bot/`、`core/`、`features/` | 旧命名空间，迁移后不允许回归 |
 
-打包脚本在生成压缩包前会**双重校验**（两个包分别校验）：既检查禁止文件不存在，也检查必需文件齐全，任一不满足即让构建失败，避免把测试文件误发到发布包。此外还有包归属校验：
+精简包额外要求 `tools/` 不存在，且 `templates/` 顶层只能有 `default/`。工作流在
+ZIP 生成前打印每个包的完整文件列表，便于在 Release 日志中审计内容。
 
-- 普通包缺 `tools/templates/editor.py` 或 `tools/config/editor.py` → 构建失败
-- 精简包里出现 `tools/` → 构建失败
-- 精简包的 `templates/` 除了 `default/` 还有别的主题 → 构建失败
+## 发布前验收
 
-（`templates/default/page.html` 属于通用必需文件，两个包都缺则构建失败。）
+自动构建不能替代部署联调。发布前至少执行仓库全量测试、导入边界检查和裸模式配置模板
+启动检查；AstrBot 侧还需要在 AstrBot 4.29.x + AIOCQHTTP 环境分别验证 NapCat 与
+Lagrange 的上传触发、分卷汇总、引用追问、附件、历史清理、多配置以及停用/启用/热重载。
+
+真实 AstrBot 与 NapCat / Lagrange 联调不由当前仓库 CI 执行，未在部署环境完成验证时不得
+把该组合写成“已联调通过”。详细验证边界见[AstrBot 部署](astrbot.md#验证边界)。
 
 ## 提交信息规范
 
-Release Notes 由提交记录自动生成，无需手工维护版本历史文件。
-
-推荐使用[约定式提交](https://www.conventionalcommits.org/)（`feat:` / `fix:` / `docs:` / `refactor:` 等），也支持中文前缀（`新增` / `修复` / `优化` 等）兜底分组。提交信息若含 `[skip changelog]` 则不会出现在 Release Notes 中。
+Release Notes 由提交记录自动生成，无需手工维护版本历史文件。推荐使用
+[约定式提交](https://www.conventionalcommits.org/)（`feat:` / `fix:` / `docs:` /
+`refactor:` 等），也支持中文前缀（`新增` / `修复` / `优化` 等）兜底分组。提交信息若含
+`[skip changelog]` 则不会出现在 Release Notes 中。

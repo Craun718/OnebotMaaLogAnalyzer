@@ -1,6 +1,6 @@
 # 配置
 
-`config.json` 放在工程根目录，是 Bot 唯一的配置文件。首次运行 `python main.py` 会自动生成一份可直接启动的默认配置；`python main.py --print-config-template` 可随时把当前版本的模板打印到标准输出。
+`config.json` 是两个入口共用的完整配置格式。裸模式默认读取工程根目录的 `config.json`；AstrBot 插件默认读取 `data/plugin_data/OnebotMaaLogAnalyzer/config.json`，也可在面板中指定现有文件。首次运行 `python main.py` 会自动生成一份可直接启动的默认配置；`python main.py --print-config-template` 可随时把当前版本的模板打印到标准输出。
 
 本页**按 `config.json` 的字段顺序**（`onebot` → `bot` → `llm` → `debug` → `log`）逐字段说明：每个字段都给出类型 / 默认值、作用，以及可直接粘贴的示例。
 
@@ -15,6 +15,47 @@
 | `llm` | 全局端点、密钥、模型能力与兜底参数 | [LLM](#llm端点与候选模型) |
 | `debug` | 离线调试模式（不连接协议端） | [debug](#debug离线调试) |
 | `log` | 控制台 / 文件日志 | [log](#log日志) |
+
+## 部署入口与面板覆盖
+
+同一个文件可以继续供裸 OneBot 使用，也可以在 AstrBot 中复用。两种入口的差异只在事件和
+发送通道：
+
+- **裸 OneBot**：读取并使用 `onebot` 段，按 `ws` / `http_ws` / `ws_reverse` /
+  `http_ws_reverse` 建立连接。
+- **AstrBot AIOCQHTTP**：忽略 `onebot` 段，由 AstrBot 接收事件和调用协议 API；`bot`、`llm`、
+  `log` 及配置档案语义保持不变。
+
+AstrBot 面板只映射常用字段：
+
+| 面板字段 | 临时覆盖的 JSON 位置 | 留空时 |
+| --- | --- | --- |
+| `enabled_mode` | 所选档案的 `settings.enabled` | `inherit` 保持原值 |
+| `config_file` | 配置文件路径本身 | 插件数据目录下的 `config.json` |
+| `data_dir` | `bot.data_dir` | 保持 JSON 值 |
+| `default_config` | 选择要修改的档案，不写入 JSON | 第一个档案 |
+| `listen_groups` | 所选档案的 `listen_groups` | 保持原值 |
+| `notify_group` | 所选档案的 `notify_group` | 保持原值 |
+| `command_prefix` | 所选档案的 `commands.prefix` | 保持原值 |
+| `owners` / `admins` | 所选档案的 `commands.owners` / `admins` | 保持原值 |
+| `report_mode` | 所选档案的 `report.render` | 保持原值 |
+| `project_name` | 所选档案的 `project.name` | 保持原值 |
+| `archive_match_mode` | 所选档案的 `project.archive_match_mode` | 保持原值 |
+| `repo_mode` | 所选档案的 `project.repo.enabled` | `inherit` 保持原值 |
+| `llm_provider` / `llm_model` | 所选档案 `llm.models[0].name` / `.model` | 保持原值 |
+| `vision_mode` | 所选档案的 `vision.enabled` | `inherit` 保持原值 |
+| `followup_mode` | 所选档案的 `settings.followup_enabled` | `inherit` 保持原值 |
+| `history_mode` | 所选档案的 `settings.history_enabled` | `inherit` 保持原值 |
+| `commands_mode` | 所选档案的 `commands.enabled` | `inherit` 保持原值 |
+| `log_level` | `log.log_level` | 保持原值 |
+
+空字符串、空列表和各 `*_mode: inherit` 都是继承标记。面板覆盖不会回写 `config.json`，
+未选中的配置档案以及端点、密钥、模型清单、仓库细节和自定义高级字段保持不变。`llm_provider`
+与 `llm_model` 只负责选择 JSON 中已声明的首选候选，不会创建或修改 LLM 端点。
+
+复用裸模式配置时，建议在 AstrBot 面板中同时填写绝对 `config_file` 与绝对 `data_dir`。
+若只写相对 `bot.data_dir`，插件会按自己的数据目录解析，不一定等于裸进程的启动目录。
+完整安装、迁移和故障排查见 [AstrBot 部署](astrbot.md)。
 
 ## 完整示例：默认 config.json
 
@@ -163,7 +204,9 @@
 
 > `config.json` 含 API 密钥与 `access_token`，已被 `.gitignore` 排除，**不要提交到仓库**。
 
-## onebot：OneBot 连接
+## onebot：OneBot 连接（仅裸模式）
+
+本段只由 `python main.py` 使用。AstrBot AIOCQHTTP 插件不读取此段。
 
 ### onebot 示例
 
@@ -260,7 +303,7 @@
 
 | 字段 | 类型 / 默认 | 说明 | 示例 |
 | --- | --- | --- | --- |
-| `data_dir` | `string` / `"data"` | 数据根目录（相对启动时的工作目录）。设置、历史、仓库缓存、用量都写在下面；调试模式下不生效 | `"data_dir": "data"` |
+| `data_dir` | `string` / `"data"` | 数据根目录。裸模式相对启动工作目录，AstrBot 相对插件数据目录；调试模式下不生效 | `"data_dir": "data"` |
 | `configs` | `object` / — | 多群配置：键是**配置名**，值是下面这组字段。配置名同时用于日志前缀 `[配置名]` 与数据子目录 `data/<配置名>/`，改名等于换一套数据 | `"configs": { "官服": { "listen_groups": ["111111111"] } }` |
 | `configs.<名称>.listen_groups` | `string[]` / `[]` | 要监听的群号（字符串）。为空则该配置不接收任何群 | `"listen_groups": ["111111111"]` |
 | `configs.<名称>.notify_group` | `string` / `null` | 分析结果额外推送的群号；`null` / 空串 = 只发回原群 | `"notify_group": "111111111"` |
