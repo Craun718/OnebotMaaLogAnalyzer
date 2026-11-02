@@ -32,6 +32,17 @@ class PanelOverrideTests(unittest.TestCase):
             {"name": "beta", "model": "beta-model"},
             {"name": "backup", "model": "backup-model"},
         ]
+        cfg["llm"]["providers"].append(
+            {
+                "name": "beta",
+                "kind": "openai",
+                "base_url": "https://beta.example/v1",
+                "api_key": "old-key",
+                "models": [
+                    {"model": "beta-model", "supports": {"tools": False}}
+                ],
+            }
+        )
         configs["Beta"]["settings"]["send_files"] = False
         return cfg
 
@@ -177,6 +188,113 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertIs(profile["report"]["render_followup"], False)
         self.assertEqual(profile["commands"]["reply_chunk_chars"], 2000)
         self.assertEqual(profile["commands"]["max_list_items"], 20)
+
+    def test_llm_endpoint_model_defaults_and_profile_fields_are_overridable(self):
+        result = apply_panel_overrides(
+            self._config(),
+            {
+                "default_config": "Beta",
+                "llm_fallback_models": ["backup:backup-model"],
+                "llm_profile_temperature": "0.3",
+                "llm_profile_max_tokens": 4096,
+                "llm_profile_top_p": "0.9",
+                "llm_endpoint_selector": "beta",
+                "llm_endpoint_kind": "anthropic",
+                "llm_endpoint_base_url": "https://beta.example/anthropic",
+                "llm_endpoint_api_key": "new-key",
+                "llm_endpoint_max_concurrency": 4,
+                "llm_endpoint_timeout_seconds": 300,
+                "llm_endpoint_connect_timeout_seconds": 5,
+                "llm_endpoint_max_retries": 1,
+                "llm_endpoint_model": "beta-model",
+                "llm_model_support_tools_mode": "enabled",
+                "llm_model_support_vision_mode": "enabled",
+                "llm_model_support_json_mode_mode": "disabled",
+                "llm_model_max_tokens": 8192,
+                "llm_model_max_context_tokens": 128000,
+                "llm_model_temperature": "0.1",
+                "llm_model_top_p": "0.95",
+                "llm_defaults_temperature": "0.25",
+                "llm_defaults_top_p": "0.9",
+                "llm_defaults_max_tokens": 4096,
+                "llm_defaults_max_context_tokens": 96000,
+                "llm_circuit_failure_threshold": 5,
+                "llm_circuit_cooldown_seconds": 120,
+                "llm_circuit_rate_cooldown_seconds": 30,
+                "llm_circuit_auth_cooldown_seconds": 600,
+            },
+        )
+        beta = next(
+            item for item in result["llm"]["providers"] if item["name"] == "beta"
+        )
+        self.assertEqual(beta["kind"], "anthropic")
+        self.assertEqual(beta["base_url"], "https://beta.example/anthropic")
+        self.assertEqual(beta["api_key"], "new-key")
+        self.assertEqual(beta["max_concurrency"], 4)
+        self.assertEqual(beta["timeout_seconds"], 300)
+        self.assertEqual(beta["connect_timeout_seconds"], 5)
+        self.assertEqual(beta["max_retries"], 1)
+        model = beta["models"][0]
+        self.assertEqual(model["supports"], {"tools": True, "vision": True, "json_mode": False})
+        self.assertEqual(model["max_tokens"], 8192)
+        self.assertEqual(model["max_context_tokens"], 128000)
+        self.assertEqual(model["temperature"], 0.1)
+        self.assertEqual(model["top_p"], 0.95)
+        self.assertEqual(
+            result["llm"]["defaults"],
+            {
+                "temperature": 0.25,
+                "top_p": 0.9,
+                "max_tokens": 4096,
+                "max_context_tokens": 96000,
+            },
+        )
+        self.assertEqual(
+            result["llm"]["circuit_breaker"],
+            {
+                "failure_threshold": 5,
+                "cooldown_seconds": 120,
+                "rate_cooldown_seconds": 30,
+                "auth_cooldown_seconds": 600,
+            },
+        )
+        profile_llm = result["bot"]["configs"]["Beta"]["llm"]
+        self.assertEqual(
+            profile_llm["models"],
+            [
+                {"name": "beta", "model": "beta-model"},
+                {"name": "backup", "model": "backup-model"},
+            ],
+        )
+        self.assertEqual(profile_llm["temperature"], 0.3)
+        self.assertEqual(profile_llm["max_tokens"], 4096)
+        self.assertEqual(profile_llm["top_p"], 0.9)
+
+    def test_llm_endpoint_rename_updates_profile_references(self):
+        result = apply_panel_overrides(
+            self._config(),
+            {
+                "llm_endpoint_selector": "beta",
+                "llm_endpoint_name": "renamed-beta",
+            },
+        )
+        provider_names = [item["name"] for item in result["llm"]["providers"]]
+        self.assertIn("renamed-beta", provider_names)
+        self.assertEqual(
+            result["bot"]["configs"]["Beta"]["llm"]["models"][0]["name"],
+            "renamed-beta",
+        )
+
+    def test_invalid_llm_panel_fields_are_rejected(self):
+        for panel, message in (
+            ({"llm_endpoint_selector": "missing"}, "端点不存在"),
+            ({"llm_endpoint_kind": "grpc"}, "llm_endpoint_kind"),
+            ({"llm_model_temperature": "hot"}, "llm_model_temperature"),
+            ({"llm_fallback_models": ["bad"]}, "llm_fallback_models"),
+        ):
+            with self.subTest(panel=panel):
+                with self.assertRaisesRegex(ValueError, message):
+                    apply_panel_overrides(self._config(), panel)
 
     def test_all_remaining_analysis_settings_have_panel_fields(self):
         mapping_groups = (

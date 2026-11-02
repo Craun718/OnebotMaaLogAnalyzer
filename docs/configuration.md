@@ -54,7 +54,12 @@ AstrBot 面板只映射常用字段：
 | `repo_max_tool_*` / `repo_agent_deadline_seconds` | agent 模式轮次、调用数、结果、上下文与超时限制 | `-1` 保持原值 |
 | `repo_extensions` / `repo_max_file_kb` / `repo_max_scan_files` / `repo_max_files` | 仓库扫描扩展名、大小、文件数与注入文件数 | 空列表 / `-1` 保持原值 |
 | `repo_max_identifiers` / `repo_context_lines` / `repo_max_block_lines` / `repo_max_chars` | inject 模式标识符、上下文、JSON 块与字符限制 | `-1` 保持原值 |
-| `llm_provider` / `llm_model` | 所选档案 `llm.models[0].name` / `.model` | 保持原值 |
+| `llm_provider` / `llm_model` / `llm_fallback_models` | 所选档案首选候选与备用候选链；备用项格式为 `端点名:模型名` | 保持原值 |
+| `llm_profile_temperature` / `llm_profile_max_tokens` / `llm_profile_top_p` | 所选档案的模型调用参数 | 继承标记保持原值 |
+| `llm_endpoint_selector` / `llm_endpoint_name` / `llm_endpoint_kind` / `llm_endpoint_base_url` / `llm_endpoint_api_key` | 选择并编辑一个全局 LLM 端点 | 留空保持原值 |
+| `llm_endpoint_max_*` / `llm_endpoint_timeout_seconds` / `llm_endpoint_connect_timeout_seconds` / `llm_endpoint_max_retries` | 端点并发、超时与重试 | `-1` 保持原值 |
+| `llm_endpoint_model` / `llm_model_*` | 选择并编辑该端点的一个模型能力、输出、上下文与采样参数 | 继承标记保持原值 |
+| `llm_defaults_*` / `llm_circuit_*` | 全局模型兜底参数与端点熔断参数 | 继承标记保持原值 |
 | `vision_mode` / `vision_max_images` / `vision_max_image_kb` | 所选档案的看图开关与数量、大小上限 | `inherit` 标记保持原值 |
 | `vision_detail` / `vision_*_mode` | 看图细节、错误截图、项目模板图与模型索图 | `inherit` 标记保持原值 |
 | `send_images_mode` / `send_repo_images_mode` / `send_files_mode` | 所选档案的对应 `settings.send_*` | `inherit` 保持原值 |
@@ -73,8 +78,9 @@ AstrBot 面板只映射常用字段：
 | `log_level` | `log.log_level` | 保持原值 |
 
 空字符串、空列表、数值 `-1` 和各 `*_mode: inherit` 都是继承标记。面板覆盖不会回写 `config.json`，
-未选中的配置档案以及端点、密钥、模型清单和自定义高级字段保持原值。`llm_provider`
-与 `llm_model` 只负责选择 JSON 中已声明的首选候选，不会创建或修改 LLM 端点。
+未选中的配置档案、未被 `llm_endpoint_selector` / `llm_endpoint_model`
+选中的端点与模型、Provider/Model 数组顺序和自定义高级字段保持原值。`llm_provider`
+与 `llm_model` 负责首选候选；`llm_endpoint_*` 与 `llm_model_*` 只编辑选中的一个端点和模型。
 
 复用裸模式配置时，建议在 AstrBot 面板中同时填写绝对 `config_file` 与绝对 `data_dir`。
 若只写相对 `bot.data_dir`，插件会按自己的数据目录解析，不一定等于裸进程的启动目录。

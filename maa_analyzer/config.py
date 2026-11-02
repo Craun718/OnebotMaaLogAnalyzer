@@ -35,6 +35,9 @@ PANEL_BASE_TRISTATE_MODE_FIELDS = {
     "history_mode",
     "commands_mode",
     "log_to_file_mode",
+    "llm_model_support_tools_mode",
+    "llm_model_support_vision_mode",
+    "llm_model_support_json_mode_mode",
 }
 PANEL_NONNEGATIVE_INT_FIELDS = {
     "followup_window_minutes",
@@ -66,6 +69,8 @@ PANEL_PROFILE_FLOAT_OVERRIDES: dict[str, tuple[str, ...]] = {
         "settings", "context_compact_ratio"
     ),
     "settings_context_retain_ratio": ("settings", "context_retain_ratio"),
+    "llm_profile_temperature": ("llm", "temperature"),
+    "llm_profile_top_p": ("llm", "top_p"),
 }
 PANEL_PROFILE_INT_OVERRIDES: dict[str, tuple[str, ...]] = {
     "vision_max_images": ("vision", "max_images"),
@@ -136,6 +141,7 @@ PANEL_PROFILE_INT_OVERRIDES: dict[str, tuple[str, ...]] = {
     "settings_context_before_lines": ("settings", "context_before_lines"),
     "settings_context_after_lines": ("settings", "context_after_lines"),
     "settings_duplicate_window_seconds": ("settings", "duplicate_window_seconds"),
+    "llm_profile_max_tokens": ("llm", "max_tokens"),
 }
 PANEL_PROFILE_LIST_OVERRIDES: dict[str, tuple[str, ...]] = {
     "repo_mirrors": ("project", "repo", "mirrors"),
@@ -192,10 +198,60 @@ PANEL_PROFILE_OPTION_VALUES: dict[str, set[str]] = {
     "vision_detail": {"", "low", "high", "auto"},
     "repo_search_mode": {"", "inject", "agent"},
 }
+PANEL_LLM_ENDPOINT_FIELDS = {
+    "llm_endpoint_selector",
+    "llm_endpoint_name",
+    "llm_endpoint_kind",
+    "llm_endpoint_base_url",
+    "llm_endpoint_api_key",
+    "llm_endpoint_max_concurrency",
+    "llm_endpoint_timeout_seconds",
+    "llm_endpoint_connect_timeout_seconds",
+    "llm_endpoint_max_retries",
+}
+PANEL_LLM_ENDPOINT_INT_FIELDS = {
+    "llm_endpoint_max_concurrency",
+    "llm_endpoint_timeout_seconds",
+    "llm_endpoint_connect_timeout_seconds",
+    "llm_endpoint_max_retries",
+}
+PANEL_LLM_MODEL_FIELDS = {
+    "llm_endpoint_model",
+    "llm_model_support_tools_mode",
+    "llm_model_support_vision_mode",
+    "llm_model_support_json_mode_mode",
+    "llm_model_max_tokens",
+    "llm_model_max_context_tokens",
+    "llm_model_temperature",
+    "llm_model_top_p",
+}
+PANEL_LLM_GLOBAL_FIELDS = {
+    "llm_defaults_temperature",
+    "llm_defaults_top_p",
+    "llm_defaults_max_tokens",
+    "llm_defaults_max_context_tokens",
+    "llm_circuit_failure_threshold",
+    "llm_circuit_cooldown_seconds",
+    "llm_circuit_rate_cooldown_seconds",
+    "llm_circuit_auth_cooldown_seconds",
+}
 PANEL_TRISTATE_MODE_FIELDS = (
     PANEL_BASE_TRISTATE_MODE_FIELDS | set(PANEL_PROFILE_MODE_OVERRIDES)
 )
 PANEL_NONNEGATIVE_INT_FIELDS |= set(PANEL_PROFILE_INT_OVERRIDES)
+PANEL_NONNEGATIVE_INT_FIELDS |= (
+    PANEL_LLM_ENDPOINT_INT_FIELDS
+    | {
+        "llm_model_max_tokens",
+        "llm_model_max_context_tokens",
+        "llm_defaults_max_tokens",
+        "llm_defaults_max_context_tokens",
+        "llm_circuit_failure_threshold",
+        "llm_circuit_cooldown_seconds",
+        "llm_circuit_rate_cooldown_seconds",
+        "llm_circuit_auth_cooldown_seconds",
+    }
+)
 
 PANEL_DEFAULTS: dict[str, Any] = {
     "enabled_mode": "inherit",
@@ -220,6 +276,35 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "repo_mode": "inherit",
     "llm_provider": "",
     "llm_model": "",
+    "llm_fallback_models": [],
+    "llm_profile_temperature": "",
+    "llm_profile_max_tokens": -1,
+    "llm_profile_top_p": "",
+    "llm_endpoint_selector": "",
+    "llm_endpoint_name": "",
+    "llm_endpoint_kind": "",
+    "llm_endpoint_base_url": "",
+    "llm_endpoint_api_key": "",
+    "llm_endpoint_max_concurrency": -1,
+    "llm_endpoint_timeout_seconds": -1,
+    "llm_endpoint_connect_timeout_seconds": -1,
+    "llm_endpoint_max_retries": -1,
+    "llm_endpoint_model": "",
+    "llm_model_support_tools_mode": "inherit",
+    "llm_model_support_vision_mode": "inherit",
+    "llm_model_support_json_mode_mode": "inherit",
+    "llm_model_max_tokens": -1,
+    "llm_model_max_context_tokens": -1,
+    "llm_model_temperature": "",
+    "llm_model_top_p": "",
+    "llm_defaults_temperature": "",
+    "llm_defaults_top_p": "",
+    "llm_defaults_max_tokens": -1,
+    "llm_defaults_max_context_tokens": -1,
+    "llm_circuit_failure_threshold": -1,
+    "llm_circuit_cooldown_seconds": -1,
+    "llm_circuit_rate_cooldown_seconds": -1,
+    "llm_circuit_auth_cooldown_seconds": -1,
     "vision_mode": "inherit",
     "send_images_mode": "inherit",
     "send_repo_images_mode": "inherit",
@@ -363,6 +448,7 @@ PANEL_PROFILE_FIELDS = (
         "repo_mode",
         "llm_provider",
         "llm_model",
+        "llm_fallback_models",
         "vision_mode",
         "send_images_mode",
         "send_repo_images_mode",
@@ -801,6 +887,196 @@ def _apply_profile_field_mappings(
         _set_path(profile, path, value)
 
 
+def _apply_llm_panel_overrides(result: dict, panel: Mapping[str, Any]) -> None:
+    """Apply flat dashboard fields to global LLM endpoint/model declarations."""
+    if not any(
+        _changed(panel, key)
+        for key in PANEL_LLM_ENDPOINT_FIELDS | PANEL_LLM_MODEL_FIELDS | PANEL_LLM_GLOBAL_FIELDS
+    ):
+        return
+
+    llm_cfg = _ensure_dict(result, "llm")
+    providers = llm_cfg.get("providers")
+    if not isinstance(providers, list):
+        providers = []
+        llm_cfg["providers"] = providers
+
+    selector = str(_panel_value(panel, "llm_endpoint_selector") or "").strip()
+    provider = next(
+        (
+            item
+            for item in providers
+            if isinstance(item, dict)
+            and str(item.get("name") or "").strip() == selector
+        ),
+        None,
+    )
+    if not selector:
+        provider = next(
+            (item for item in providers if isinstance(item, dict)), None
+        )
+
+    if provider is None:
+        endpoint_payload_changed = any(
+            _changed(panel, key)
+            for key in PANEL_LLM_ENDPOINT_FIELDS - {
+                "llm_endpoint_selector", "llm_endpoint_name"
+            }
+        )
+        new_name = selector or (
+            str(_panel_value(panel, "llm_endpoint_name") or "").strip()
+            if _changed(panel, "llm_endpoint_name")
+            else ""
+        )
+        if not new_name or not endpoint_payload_changed:
+            raise ValueError("llm_endpoint_selector 对应的端点不存在。")
+        provider = {"name": new_name}
+        providers.append(provider)
+
+    if _changed(panel, "llm_endpoint_name"):
+        new_name = str(_panel_value(panel, "llm_endpoint_name") or "").strip()
+        old_name = str(provider.get("name") or "").strip()
+        if any(
+            isinstance(item, dict)
+            and item is not provider
+            and str(item.get("name") or "").strip() == new_name
+            for item in providers
+        ):
+            raise ValueError(f"LLM 端点名已存在：{new_name}")
+        provider["name"] = new_name
+        for profile in result.get("bot", {}).get("configs", {}).values():
+            if not isinstance(profile, dict):
+                continue
+            profile_llm = profile.get("llm")
+            if not isinstance(profile_llm, dict):
+                continue
+            candidates = profile_llm.get("models")
+            if not isinstance(candidates, list):
+                continue
+            for candidate in candidates:
+                if (
+                    isinstance(candidate, dict)
+                    and str(candidate.get("name") or "").strip() == old_name
+                ):
+                    candidate["name"] = new_name
+
+    if _changed(panel, "llm_endpoint_kind"):
+        kind = str(_panel_value(panel, "llm_endpoint_kind") or "").strip().lower()
+        if kind not in {"openai", "anthropic"}:
+            raise ValueError("llm_endpoint_kind 必须是 openai 或 anthropic。")
+        provider["kind"] = kind
+    if _changed(panel, "llm_endpoint_base_url"):
+        provider["base_url"] = str(
+            _panel_value(panel, "llm_endpoint_base_url")
+        ).strip()
+    if _changed(panel, "llm_endpoint_api_key"):
+        provider["api_key"] = str(
+            _panel_value(panel, "llm_endpoint_api_key")
+        ).strip()
+    for key, setting in (
+        ("llm_endpoint_max_concurrency", "max_concurrency"),
+        ("llm_endpoint_timeout_seconds", "timeout_seconds"),
+        ("llm_endpoint_connect_timeout_seconds", "connect_timeout_seconds"),
+        ("llm_endpoint_max_retries", "max_retries"),
+    ):
+        if _changed(panel, key):
+            provider[setting] = _nonnegative_int(panel, key)
+
+    if any(_changed(panel, key) for key in PANEL_LLM_MODEL_FIELDS):
+        models = provider.get("models")
+        if not isinstance(models, list):
+            models = []
+            provider["models"] = models
+        selected_name = str(
+            _panel_value(panel, "llm_endpoint_model") or ""
+        ).strip()
+        model = next(
+            (
+                item
+                for item in models
+                if isinstance(item, dict)
+                and str(item.get("model") or "").strip() == selected_name
+            ),
+            None,
+        )
+        if not selected_name:
+            model = next(
+                (item for item in models if isinstance(item, dict)), None
+            )
+        if model is None:
+            if not selected_name:
+                raise ValueError(
+                    "所选 LLM 端点未声明模型，无法应用模型高级配置。"
+                )
+            model = {"model": selected_name}
+            models.append(model)
+
+        supports = model.get("supports")
+        if not isinstance(supports, dict):
+            supports = {}
+            model["supports"] = supports
+        for key, setting in (
+            ("llm_model_support_tools_mode", "tools"),
+            ("llm_model_support_vision_mode", "vision"),
+            ("llm_model_support_json_mode_mode", "json_mode"),
+        ):
+            if _changed(panel, key):
+                supports[setting] = _mode_value(panel, key) == "enabled"
+        for key, setting in (
+            ("llm_model_max_tokens", "max_tokens"),
+            ("llm_model_max_context_tokens", "max_context_tokens"),
+        ):
+            if _changed(panel, key):
+                model[setting] = _nonnegative_int(panel, key)
+        for key, setting in (
+            ("llm_model_temperature", "temperature"),
+            ("llm_model_top_p", "top_p"),
+        ):
+            if _changed(panel, key):
+                model[setting] = _float(panel, key)
+
+    if any(_changed(panel, key) for key in PANEL_LLM_GLOBAL_FIELDS):
+        defaults = _ensure_dict(llm_cfg, "defaults")
+        circuit = _ensure_dict(llm_cfg, "circuit_breaker")
+        for key, setting in (
+            ("llm_defaults_temperature", "temperature"),
+            ("llm_defaults_top_p", "top_p"),
+        ):
+            if _changed(panel, key):
+                defaults[setting] = _float(panel, key)
+        for key, setting in (
+            ("llm_defaults_max_tokens", "max_tokens"),
+            ("llm_defaults_max_context_tokens", "max_context_tokens"),
+        ):
+            if _changed(panel, key):
+                defaults[setting] = _nonnegative_int(panel, key)
+        for key, setting in (
+            ("llm_circuit_failure_threshold", "failure_threshold"),
+            ("llm_circuit_cooldown_seconds", "cooldown_seconds"),
+            ("llm_circuit_rate_cooldown_seconds", "rate_cooldown_seconds"),
+            ("llm_circuit_auth_cooldown_seconds", "auth_cooldown_seconds"),
+        ):
+            if _changed(panel, key):
+                circuit[setting] = _nonnegative_int(panel, key)
+
+
+def _parse_llm_fallback_models(value: Any) -> list[dict[str, str]]:
+    candidates: list[dict[str, str]] = []
+    for raw in value or []:
+        text = str(raw).strip()
+        if not text:
+            continue
+        provider, separator, model = text.partition(":")
+        provider = provider.strip()
+        model = model.strip()
+        if not separator or not provider or not model:
+            raise ValueError(
+                "llm_fallback_models 每项格式必须是 端点名:模型名。"
+            )
+        candidates.append({"name": provider, "model": model})
+    return candidates
+
+
 def _apply_ui_mode(
     panel: Mapping[str, Any],
     key: str,
@@ -849,6 +1125,8 @@ def apply_panel_overrides(
     if _changed(panel, "log_dir"):
         log_cfg = _ensure_dict(result, "log")
         log_cfg["log_dir"] = str(_panel_value(panel, "log_dir")).strip()
+
+    _apply_llm_panel_overrides(result, panel)
 
     if _has_profile_changes(panel):
         target = _target_profile(result, panel)
@@ -950,25 +1228,39 @@ def apply_panel_overrides(
             repo = _ensure_dict(project, "repo")
             _apply_mode(panel, "repo_mode", repo, "enabled")
 
-        if _changed(panel, "llm_provider") or _changed(panel, "llm_model"):
+        if any(
+            _changed(panel, key)
+            for key in ("llm_provider", "llm_model", "llm_fallback_models")
+        ):
             llm = _ensure_dict(profile, "llm")
             models = llm.get("models")
             if not isinstance(models, list):
                 models = []
-            if not models:
-                models.append({})
-            first = models[0]
-            if not isinstance(first, dict):
-                first = {}
-                models[0] = first
-            if _changed(panel, "llm_provider"):
-                first["name"] = str(
-                    _panel_value(panel, "llm_provider")
-                ).strip()
-            if _changed(panel, "llm_model"):
-                first["model"] = str(
-                    _panel_value(panel, "llm_model")
-                ).strip()
+            if _changed(panel, "llm_provider") or _changed(panel, "llm_model"):
+                if not models:
+                    models.append({})
+                first = models[0]
+                if not isinstance(first, dict):
+                    first = {}
+                    models[0] = first
+                if _changed(panel, "llm_provider"):
+                    first["name"] = str(
+                        _panel_value(panel, "llm_provider")
+                    ).strip()
+                if _changed(panel, "llm_model"):
+                    first["model"] = str(
+                        _panel_value(panel, "llm_model")
+                    ).strip()
+            if _changed(panel, "llm_fallback_models"):
+                fallbacks = _parse_llm_fallback_models(
+                    _panel_value(panel, "llm_fallback_models")
+                )
+                first = (
+                    models[0]
+                    if models and isinstance(models[0], dict)
+                    else None
+                )
+                models = ([first] if first is not None else []) + fallbacks
             llm["models"] = models
 
         if _changed(panel, "vision_mode"):
