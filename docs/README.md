@@ -2,6 +2,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [AstrBot 部署](astrbot.md) | AIOCQHTTP 插件安装、配置迁移、面板覆盖、重载回滚与故障排查 |
 | [配置](configuration.md) | `config.json` 全部字段（按文件顺序逐项说明 + 示例）、`project` / `repo` 项目配置、多群配置、模型端点与协议、调试与日志 |
 | [分析设置](settings.md) | 全部设置项（触发 / 附件 / 追问 / 历史 / 摘要 / 并发 / 模型） |
 | [上下文与提示词缓存](context.md) | 提示词前缀缓存、缓存命中率观测、上下文自动压缩的触发条件与代价 |
@@ -13,5 +14,5 @@
 | [项目代码参考](repo.md) | 让 AI 对照源码：inject / agent 两种模式与全部设置项 |
 | [AI 工具](tools.md) | 日志包工具与仓库工具清单、沙箱安全、调用限制 |
 | [调试](debugging.md) | 离线调试模式：CLI REPL、HTTP 端点、JSON 批量测试与断言 |
-| [架构](architecture.md) | 分层设计、目录结构、事件订阅 |
-| [发布](releasing.md) | 自动发布流程、普通包 / 精简包（light）、发布包白名单、提交信息规范 |
+| [架构](architecture.md) | 双入口分层设计、共享内核、平台适配器、目录结构与事件订阅 |
+| [发布](releasing.md) | 自动发布流程、裸 OneBot 普通包 / 精简包、AstrBot 插件包与白名单 |

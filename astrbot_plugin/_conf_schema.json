@@ -1,0 +1,161 @@
+{
+  "enabled_mode": {
+    "description": "插件开关；inherit 使用高级 JSON 中的 settings.enabled",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "config_file": {
+    "description": "完整 config.json 路径；留空使用插件数据目录下的 config.json",
+    "type": "string",
+    "default": ""
+  },
+  "data_dir": {
+    "description": "运行数据目录；留空沿用 config.json 的 bot.data_dir",
+    "type": "string",
+    "default": ""
+  },
+  "default_config": {
+    "description": "面板字段写入的配置档案；留空使用第一个档案",
+    "type": "string",
+    "default": ""
+  },
+  "listen_groups": {
+    "description": "监听群号；留空沿用当前配置档案",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "notify_group": {
+    "description": "通知群号；留空沿用当前配置档案",
+    "type": "string",
+    "default": ""
+  },
+  "command_prefix": {
+    "description": "管理指令前缀；留空沿用当前配置档案",
+    "type": "string",
+    "default": ""
+  },
+  "owners": {
+    "description": "超管 QQ 号；留空沿用当前配置档案",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "admins": {
+    "description": "管理员 QQ 号；留空沿用当前配置档案",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "report_mode": {
+    "description": "报告模式 auto/text/image；留空沿用当前配置档案",
+    "type": "string",
+    "default": "",
+    "options": [
+      "",
+      "auto",
+      "text",
+      "image"
+    ]
+  },
+  "project_name": {
+    "description": "项目显示名；留空沿用当前配置档案",
+    "type": "string",
+    "default": ""
+  },
+  "archive_match_mode": {
+    "description": "日志包识别模式；留空沿用当前配置档案",
+    "type": "string",
+    "default": "",
+    "options": [
+      "",
+      "auto",
+      "known",
+      "prefix",
+      "any"
+    ]
+  },
+  "repo_mode": {
+    "description": "项目代码仓库开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "llm_provider": {
+    "description": "首选 LLM 端点名；仍需在高级 JSON 中声明端点和密钥",
+    "type": "string",
+    "default": ""
+  },
+  "llm_model": {
+    "description": "首选 LLM 模型名；必须存在于所选端点的模型清单",
+    "type": "string",
+    "default": ""
+  },
+  "vision_mode": {
+    "description": "多模态看图开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "followup_mode": {
+    "description": "报告追问开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "history_mode": {
+    "description": "分析历史开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "commands_mode": {
+    "description": "管理指令开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "log_level": {
+    "description": "日志级别；留空沿用 config.json",
+    "type": "string",
+    "default": "",
+    "options": [
+      "",
+      "DEBUG",
+      "INFO",
+      "WARNING",
+      "ERROR"
+    ]
+  }
+}

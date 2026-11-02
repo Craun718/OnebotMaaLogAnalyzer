@@ -1,6 +1,6 @@
 # OnebotMaaLogAnalyzer
 
-基于 **[OneBot v11 标准协议](https://github.com/botuniverse/onebot-11)** 的 MaaXXX 日志分析 Bot。纯 Python 实现，不依赖任何 Bot 框架。
+基于 **[OneBot v11 标准协议](https://github.com/botuniverse/onebot-11)** 的 MaaXXX 日志分析 Bot。同一套分析、LLM、配置、历史、追问与报告内核支持两种部署形态：裸 OneBot 进程，或 AstrBot 的 AIOCQHTTP 插件。
 
 监听群内上传的日志压缩包，自动下载并提取错误片段、配置摘要与错误截图列表，再用专用的日志诊断提示词调用 AI 分析，把结论与相关图片发回群内。
 
@@ -10,6 +10,7 @@
 
 ## 功能特性
 
+- **双入口部署** — `python main.py` 可继续作为裸 OneBot Bot 运行；也可安装为 AstrBot 插件，由 AstrBot 的 AIOCQHTTP 适配器收发消息，不需要再启动一个裸 Bot 进程
 - **自动分析** — 匹配到日志包立即下载分析，无需任何人操作
 - **多 UI 适配** — 自动识别 MXU / MFAAvalonia / MaaFwApp 日志包布局与命名，解析 UI 类型、软件版本、资源版本、MaaFramework 版本；**无需配置文件名前缀**，下载后校验布局避免误判；自动合并分卷包
 - **智能摘要** — 按 UI 布局选择框架日志 / UI 日志 / 运行记录，提取错误/警告/失败/异常/OCR 识别失败片段与配置摘要；大日志流式扫描，按签名去重只保留关键片段
@@ -25,7 +26,11 @@
 
 ## 快速开始
 
-**前置要求**：Python 3.10+、任意 OneBot v11 实现（NapCat / LLOneBot / Lagrange / OpenShamrock 等）、一个 OpenAI 兼容的 Chat Completions 接口或 Anthropic Messages 接口（`kind: openai` / `anthropic`）。
+**共同要求**：Python 3.10+、一个 OpenAI 兼容的 Chat Completions 接口或 Anthropic Messages 接口（`kind: openai` / `anthropic`）。
+
+### 裸 OneBot
+
+**前置要求**：任意 OneBot v11 实现（NapCat / LLOneBot / Lagrange / OpenShamrock 等）。
 
 ```bash
 python -m venv .venv
@@ -105,6 +110,19 @@ python main.py               # 首次运行生成 config.json
 
 > 也可使用 [uv](https://github.com/astral-sh/uv)：`uv venv && uv pip install -r requirements.txt`
 
+### AstrBot 插件
+
+适用于 **AstrBot 4.29.x** 与 **AIOCQHTTP** 适配器。插件包不包含 AstrBot 本身，也不需要额外启动裸 OneBot 进程。
+
+1. 下载发布页的 `OnebotMaaLogAnalyzer-<版本>-astrbot.zip`。
+2. 解压到 AstrBot 的 `data/plugins/`，确认路径为 `data/plugins/OnebotMaaLogAnalyzer/main.py`。
+3. 在 AstrBot 插件管理中重载或重启 AstrBot，并启用 OnebotMaaLogAnalyzer。
+4. 在插件面板填写监听群、项目识别、LLM 首选模型等常用配置，或通过“配置文件位置”复用现有 `config.json`。
+
+插件默认把首次生成的 `config.json` 与运行数据放在 AstrBot 的 `data/plugin_data/OnebotMaaLogAnalyzer/`。复用裸模式数据时，建议在面板中把 `config_file` 填为原 `config.json` 的绝对路径，并把 `data_dir` 填为原数据目录的绝对路径；面板留空字段会继承 JSON 中的值。`onebot` 连接段在插件模式下不使用，消息和群文件操作由 AstrBot 的 AIOCQHTTP 适配器提供。
+
+> 当前首版仅支持 AIOCQHTTP，不覆盖 QQ 官方机器人或其他 AstrBot 平台适配器。仓库内单元测试覆盖适配器与生命周期，但尚未在真实 AstrBot 4.29.4 + NapCat / Lagrange 环境中完成联调。
+
 ## 触发条件
 
 Bot 只在**同时满足**以下条件时才会分析：
@@ -147,8 +165,9 @@ MaaFwApp 取 `device_info.txt` 的 `Version` / `MaaFwApp` / `Framework`。未知
 | [AI 工具](docs/tools.md) | 日志包工具与仓库工具、沙箱安全、调用限制 |
 | [上下文与缓存](docs/context.md) | 提示词前缀缓存、自动压缩、命中率观测 |
 | [调试](docs/debugging.md) | CLI REPL、HTTP 端点、JSON 批量测试与断言 |
-| [架构](docs/architecture.md) | 分层设计、目录结构、事件订阅 |
-| [发布](docs/releasing.md) | 自动发布流程、普通包 / 精简包（light）、发布包白名单、提交信息规范 |
+| [AstrBot 部署](docs/astrbot.md) | AIOCQHTTP 安装、配置迁移、面板覆盖、重载与故障排查 |
+| [架构](docs/architecture.md) | 双入口分层设计、共享内核、平台适配器与事件订阅 |
+| [发布](docs/releasing.md) | 自动发布流程、裸 OneBot 普通包 / 精简包、AstrBot 插件包与白名单 |
 
 ## 安全设计
 

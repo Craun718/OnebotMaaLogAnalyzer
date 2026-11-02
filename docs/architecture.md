@@ -1,101 +1,147 @@
 # 架构
 
-## 分层
+## 双入口
+
+项目保留两种部署入口，但分析链路只有一套：
 
 ```text
-功能模块（features/）    ← 只依赖 service，不直接引用 bot/
-        │
-        ▼
-core/service.py         ← Bot 能力 API + 配置管理 + 事件分发
-        │
-        ▼
-bot/ (api.py, client.py) ← OneBot v11 协议封装（对功能模块透明）
+裸 OneBot                          AstrBot
+python main.py                     astrbot_plugin/main.py
+    │                                   │
+    ▼                                   ▼
+OneBotPlatformAdapter              AstrBotPlatformAdapter
+    │                                   │
+    └──────────── PlatformPort ─────────┘
+                         │
+                         ▼
+                 MaaWorkflowRuntime
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+maa_analyzer/core  maa_analyzer/features/maa  LLM / history / render
 ```
 
-分层严格：`core` 不 import `features`；`features` 不 import `bot`。
+- **裸 OneBot**：`main.py` 负责读取 `config.json`、建立 OneBot HTTP/WS 连接并处理四种通信模式。
+- **AstrBot**：`astrbot_plugin/main.py` 是 AIOCQHTTP 插件壳，由 AstrBot 提供事件与协议 API。
 
-功能模块通过 `service.register_event()` 订阅事件，无需修改框架代码。`MaaService` 提供统一的 `send_message()` / `send_image()` / 群文件查询 / `download_url()` 等语义化 API 封装底层协议细节。
+两个入口都通过 `MaaWorkflowRuntime` 装配相同的服务、LLM、历史、追问、仓库、附件和报告组件。
+插件模式不需要另起裸 OneBot 进程。
+
+## 分层与导入边界
+
+```text
+入口 / 平台适配器
+        │  PlatformEvent + PlatformPort
+        ▼
+maa_analyzer/runtime.py       共享运行时装配
+        │
+        ├── maa_analyzer/core/       配置、数据、模型、LLM、token、视觉
+        └── maa_analyzer/features/   日志分析、指令、追问、历史、渲染、仓库
+```
+
+约束：
+
+- 共享内核只能依赖 `maa_analyzer.platform` 中的 DTO 与 `PlatformPort`，不得 import
+  `OneBotPlatformAdapter`、`AstrBotPlatformAdapter`、AstrBot `event/Context` 或 `aiocqhttp`。
+- 平台适配器负责把原生事件转换为 `GroupMessageEvent` / `GroupUploadNotice`，并把发送、
+  群文件和下载操作转换为 `PlatformPort` 方法。
+- `MaaService` 通过注入的端口发送消息和访问群文件，不持有具体 Bot API。
+- 所有消息发送结果统一为 `message_id: str | None`；文件上传结果为 `bool`。
 
 ## 目录结构
 
 ```text
 OnebotMaaLogAnalyzer/
-├── main.py              # 入口（asyncio）+ 模块装配注册
-├── config.json          # 配置文件（首次运行自动生成，含密钥不提交）
-├── requirements.txt     # Python 依赖
-├── README.md            # 项目说明
-├── docs/                # 详细文档（本目录）
-├── .github/             # CI 配置
-│   ├── cliff.toml       #   git-cliff 变更日志配置
-│   └── workflows/
-│       └── release.yml  #   打 tag 自动发布
-├── bot/                 # [框架] 通信层 — 协议实现，功能模块不可见
-│   ├── api.py           #   HTTP/WS API 封装（含文件下载）
-│   ├── client.py        #   WebSocket 客户端/服务端
-│   └── handler.py       #   原始事件 → service 桥接
-├── core/                # [框架] 基础设施 — 功能模块的唯一依赖入口
-│   ├── models.py        #   Pydantic 数据模型（配置 / 设置 / 任务记录 / LLM / 报告）
-│   ├── archive_names.py #   日志包命名识别（MXU / MFAA / MaaFwApp / 分卷）
-│   ├── data_manager.py  #   JSON 持久化（多配置 + .tmp 原子写）
-│   ├── tokens.py        #   token 估算 / 裁剪 / 折叠（零第三方依赖）
-│   ├── llm.py           #   单端点执行器（连接池 + 错误分类）
-│   ├── llm_pool.py      #   候选编排（顺序失败转移 / 能力过滤 / 熔断）
-│   ├── vision.py        #   多模态图片选取与 data URL 构造
-│   ├── ai_usage.py      #   模型用量 JSONL 记录（/maa ai）
-│   └── service.py       #   Bot 能力 API + 配置管理 + 事件分发
-├── features/            # [功能] 所有业务功能
-│   └── maa/             #   [日志分析]
-│       ├── watcher.py          # 日志包监听（主要触发入口）
-│       ├── analyzer.py         # 下载 → 摘要 → 仓库检索 → LLM → 报告 流程编排
-│       ├── archive_profile.py  # 日志包 UI 类型 / 软件版本 / MaaFramework 版本识别
-│       ├── log_digest.py       # 日志摘要提取（核心算法，按 UI 布局选择日志）
-│       ├── repo.py             # 项目代码检索（仓库/版本/tag 管理）
-│       ├── repo_tools.py       # agent 模式的仓库工具集（含路径沙箱）
-│       ├── log_tools.py        # 日志包工具（AI 自主读压缩包内原始文件）
-│       ├── attachments.py      # 结果附件（来源限定 + 相对路径沙箱 + 看图指令）
-│       ├── render/             # 图片化报告（Markdown → 无头浏览器 → 分页截图）
-│       ├── safety.py           # 路径安全策略（凭据/密钥类文件禁止外发）
-│       ├── followup.py         # 追问答疑会话管理（内存 + 落盘，重启后可续）
-│       ├── history.py          # 分析历史归档（日志包 / 消息 ID / 会话状态 / 周期清理）
-│       ├── commands.py         # QQ 指令解析与执行（含权限）
-│       ├── message_handler.py  # 文本消息路由（指令 / 追问）
-│       ├── onebot_files.py     # 群文件递归列出 / 查找 / 下载
-│       ├── prompts.py          # 日志诊断提示词
-│       └── text_utils.py       # 字节格式化、文本分段
-├── debug/               # 调试工具（模拟事件注入，不随发布包分发）
-│   ├── __init__.py      #   DebugAPI + DebugManager 核心引擎
-│   ├── cli.py           #   CLI 交互式 REPL
-│   ├── http_server.py   #   HTTP 调试端点
-│   ├── runner.py        #   JSON 批量测试运行器
-│   ├── worker.py        #   子进程事件注入器（支撑真实重启测试）
-│   └── examples/        #   测试套件
-├── data/                # 运行时数据
-│   ├── settings.json    # 全局分析设置（默认值）
-│   ├── repos/           # 克隆的仓库缓存（按 url+branch 哈希命名，**永不清理**）
-│   └── <配置名>/         # 各配置独立目录
-│       ├── groups.json       # 监听群 + 通知群
-│       ├── settings.json     # 分析设置覆盖（/maa set）
-│       ├── project.json      # 项目配置覆盖（/maa project set）
-│       ├── commands.json     # 指令与权限设置
-│       ├── history/          # 分析历史（日志包 + 追问上下文 + 会话状态，按周期自动清理）
-│       └── jobs/records.json # 分析任务记录
-├── templates/           # 图片化报告模板（发布包必须包含）
-│   └── default/         #   内置模板：page.html / header.html / footer.html / style.css
-└── logs/                # 日志文件（时间命名）
+├── main.py                         # 裸 OneBot 启动器
+├── astrbot_plugin/                 # AstrBot 插件壳
+│   ├── main.py                     # Star 生命周期、事件过滤器、AIOCQHTTP 监听
+│   ├── metadata.yaml
+│   ├── _conf_schema.json           # 面板常用配置
+│   └── requirements.txt
+├── maa_analyzer/                   # 两个入口共享的唯一内核命名空间
+│   ├── platform.py                 # PlatformPort、事件 DTO、发送者与文件元数据
+│   ├── runtime.py                  # 共享运行时生命周期
+│   ├── config.py                   # 配置加载、校验、面板覆盖、日志
+│   ├── astrbot/
+│   │   └── plugin_runtime.py       # 与 AstrBot 框架解耦的插件生命周期桥
+│   ├── platforms/
+│   │   ├── onebot/                 # HTTP/WS、适配器、事件桥
+│   │   └── astrbot/                # AIOCQHTTP 事件与 API 适配器
+│   ├── core/                       # models、service、data、LLM 等基础设施
+│   └── features/maa/               # 分析、指令、历史、追问、渲染、仓库等业务
+├── templates/                      # 图片报告模板，两个发布形态共用
+├── debug/                          # 源码调试工具，不进入发布包
+├── docs/
+└── tools/                          # 编辑器工具，只进入裸模式普通包
 ```
 
-> `data/ai_usage.jsonl` 记录每次模型调用的端点、token 用量与会话 ID
-> （`/maa ai` 按会话聚合读取：一次分析 + 其追问算同一会话）；
-> `data/_browser_profile*` 是渲染浏览器的独立配置目录，可安全删除。
+`config.json` 不在源码仓库中提交，首次运行自动生成。运行时数据默认位于 `data/`；
+AstrBot 默认使用 `data/plugin_data/OnebotMaaLogAnalyzer/`。
 
-## 事件订阅
+## 平台端口
 
-| 事件 | 监听器 | 用途 |
+`PlatformPort` 提供：
+
+- 文本、消息段、图片和文件发送
+- 群文件根目录/子目录列表、下载 URL 和上传
+- 任意 URL 下载
+- 协议端版本与群成员信息查询
+- 运行时关闭/会话清理
+
+共享 DTO 覆盖群上传通知、群消息、文件段、引用目标、发送者群角色和文件元数据。DTO 的
+`to_service_payload()` 生成现有业务层可读的兼容结构，因此迁移不需要改写历史文件格式。
+
+## 事件流转
+
+| 平台事件 | 适配器输出 | 共享服务路由 |
 | --- | --- | --- |
-| `notice.group_upload` | `LogWatcher.on_group_upload` | 群文件上传自动分析（主要触发路径） |
-| `message.file` | `LogWatcher.on_message_file` | 消息中的文件段（部分实现以此上报） |
-| `message.text` | `MessageHandler.on_message_text` | 文本消息 → `/maa` 指令 / 引用式追问 |
+| OneBot `message/group` | `GroupMessageEvent` | `message.file` 或 `message.text` |
+| OneBot `notice/group_upload` | `GroupUploadNotice` | `notice.group_upload` |
+| AIOCQHTTP 群文本 | `GroupMessageEvent` | 指令或引用追问 |
+| AIOCQHTTP 文件段 | `GroupMessageEvent` + 文件元数据 | 日志包分析 |
+| AIOCQHTTP 群上传通知 | `GroupUploadNotice` | 日志包分析 |
+
+AstrBot 在监听器执行前会先判断事件是否值得唤醒。`MaaEventFilter` 同步解析群号、命令、
+文件名和引用消息，只让当前插件可能消费的事件通过；实际的监听群、启用状态和日志内容校验
+仍由共享服务完成。
+
+## 生命周期
+
+`MaaWorkflowRuntime.start()` 幂等创建数据目录、LLM、服务、历史、分析器、追问存储、
+监听器和后台任务。`stop()` 会：
+
+1. 取消待处理的分卷计时和后台任务；
+2. 保存服务配置、历史与任务状态；
+3. 关闭运行时拥有的 LLM/HTTP 会话；
+4. 关闭渲染浏览器；
+5. 在入口拥有端口时关闭平台适配器。
+
+AstrBot 插件额外负责隔离日志句柄、角色缓存和配置重载回滚。插件停用后再次启用会创建新的
+运行时，不复用已取消的任务集合。
 
 ## 数据兼容
 
-采用 `.tmp` 原子写入防止数据损坏，加载失败时自动尝试 `.tmp` 恢复。
+JSON 数据文件沿用原格式，并使用 `.tmp` 原子写入与恢复：
+
+```text
+data/
+├── settings.json
+├── ai_usage.jsonl
+├── repo/
+└── <配置名>/
+    ├── groups.json
+    ├── settings.json
+    ├── project.json
+    ├── commands.json
+    ├── jobs/records.json
+    └── history/
+```
+
+`config.json` 的 `bot.configs`、`llm`、`log` 等高级字段在两种入口中保持同一语义；
+`onebot` 段只由裸入口消费。AstrBot 面板覆盖只在内存中修改有效配置，不回写原始文件。
+
+## 真实联调边界
+
+自动化测试覆盖端口转换、配置优先级、生命周期、发送/上传回退和裸 OneBot 四种通信模式的
+配置兼容。真实 AstrBot 4.29.4 与 NapCat / Lagrange 的端到端安装、上传、分卷汇总、追问、
+附件、历史清理和热重载仍需在部署环境联调。
