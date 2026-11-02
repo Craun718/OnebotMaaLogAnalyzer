@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from core.models import (
+from maa_analyzer.core.models import (
     AnalysisSettings,
     CommandConfig,
     ConfigInfo,
@@ -53,7 +53,7 @@ from core.models import (
     ReportConfig,
     VisionConfig,
 )
-from core.service import _build_model
+from maa_analyzer.core.service import _build_model
 
 if TYPE_CHECKING:
     from debug import DebugManager

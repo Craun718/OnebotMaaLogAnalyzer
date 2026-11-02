@@ -6,13 +6,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.models import RepoConfig
-from features.maa.attachments import normalize_rel_path, parse_attachments
-from features.maa.log_digest import build_log_digest, describe_zip, read_zip_member
-from features.maa.log_tools import LogArchiveTools
-from features.maa.repo import RepoProvider
-from features.maa.repo_tools import RepoTools
-from features.maa.safety import normalize_tool_path, resolve_repo_path
+from maa_analyzer.core.models import RepoConfig
+from maa_analyzer.features.maa.attachments import normalize_rel_path, parse_attachments
+from maa_analyzer.features.maa.log_digest import build_log_digest, describe_zip, read_zip_member
+from maa_analyzer.features.maa.log_tools import LogArchiveTools
+from maa_analyzer.features.maa.repo import RepoProvider
+from maa_analyzer.features.maa.repo_tools import RepoTools
+from maa_analyzer.features.maa.safety import normalize_tool_path, resolve_repo_path
 
 
 INVALID_PATHS = (
