@@ -36,7 +36,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 try:
-    from core.models import (
+    from maa_analyzer.core.models import (
         AnalysisSettings,
         CircuitBreakerConfig,
         CommandConfig,
@@ -56,12 +56,12 @@ except ImportError as exc:  # pragma: no cover - 启动期环境问题
     raise SystemExit(1)
 
 try:
-    from core.llm_pool import validate_llm_config
+    from maa_analyzer.core.llm_pool import validate_llm_config
 except Exception:  # pragma: no cover - 缺少 aiohttp 等运行依赖时降级
     validate_llm_config = None  # type: ignore[assignment]
 
 try:
-    from features.maa.render.browser import find_browser
+    from maa_analyzer.features.maa.render.browser import find_browser
 except Exception:  # pragma: no cover
     find_browser = None  # type: ignore[assignment]
 

@@ -1,0 +1,643 @@
+"""Shared configuration loading, defaults, validation, and panel overlays."""
+from __future__ import annotations
+
+import copy
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Mapping
+from urllib.parse import urlsplit
+
+from maa_analyzer.core.llm_pool import detect_legacy_llm, validate_llm_config
+from maa_analyzer.core.log_context import ConfigNameFormatter
+
+logger = logging.getLogger("Maa")
+
+LOG_FORMAT = "%(asctime)s [%(levelname)s]%(config_prefix)s %(name)s: %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+BOOTSTRAP_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+ONEBOT_MODES = ("ws", "http_ws", "ws_reverse", "http_ws_reverse")
+
+PANEL_DEFAULTS: dict[str, Any] = {
+    "enabled_mode": "inherit",
+    "config_file": "",
+    "data_dir": "",
+    "default_config": "",
+    "listen_groups": [],
+    "notify_group": "",
+    "command_prefix": "",
+    "owners": [],
+    "admins": [],
+    "report_mode": "",
+    "project_name": "",
+    "archive_match_mode": "",
+    "repo_mode": "inherit",
+    "llm_provider": "",
+    "llm_model": "",
+    "vision_mode": "inherit",
+    "followup_mode": "inherit",
+    "history_mode": "inherit",
+    "commands_mode": "inherit",
+    "log_level": "",
+}
+
+
+def default_config() -> dict:
+    """Return a fresh copy of the first-run configuration."""
+    return {
+        "onebot": {
+            "mode": "http_ws",
+            "http_url": "http://127.0.0.1:3000",
+            "ws_url": "ws://127.0.0.1:3001",
+            "ws_reverse_port": 8080,
+            "ws_reverse_host": "127.0.0.1",
+            "access_token": "",
+            "api_timeout_seconds": 30,
+        },
+        "bot": {
+            "data_dir": "data",
+            "configs": {
+                "默认": {
+                    "listen_groups": ["123456789"],
+                    "notify_group": "123456789",
+                    "project": {
+                        "name": "MaaXXX",
+                        "archive_match_mode": "auto",
+                        "require_log_layout": True,
+                        "repo": {
+                            "enabled": False,
+                            "mode": "inject",
+                            "path": "",
+                            "url": "https://github.com/MAAXYZ/MaaXXX",
+                            "mirrors": [],
+                            "branch": "",
+                            "preload_enabled": True,
+                            "preload_retries": 3,
+                            "update_on_analyze": False,
+                            "allow_ai_update": True,
+                            "auto_checkout_version": True,
+                            "allow_ai_switch_tag": True,
+                            "restore_latest_after_analyze": True,
+                        },
+                    },
+                    "llm": {
+                        "models": [
+                            {"name": "default", "model": "gpt-4o-mini"},
+                        ],
+                    },
+                    "vision": {
+                        "enabled": True,
+                        "max_images": 4,
+                        "max_image_kb": 800,
+                        "detail": "high",
+                        "attach_error_screenshots": True,
+                        "attach_repo_templates": True,
+                        "allow_model_request": True,
+                    },
+                    "report": {
+                        "render": "auto",
+                        "template": "default",
+                        "max_width_px": 1080,
+                        "max_height_px": 4096,
+                        "max_pages": 6,
+                        "device_scale_factor": 1,
+                        "font_family": "",
+                        "browser_path": "",
+                        "reuse_browser": True,
+                        "render_timeout_ms": 8000,
+                        "embed_attachments": True,
+                        "attach_markdown": False,
+                        "fallback_to_text": True,
+                        "render_followup": True,
+                    },
+                    "settings": {
+                        "send_images": True,
+                        "max_report_images": 4,
+                        "send_repo_images": True,
+                        "send_files": True,
+                        "max_report_files": 2,
+                        "max_file_attachment_mb": 20,
+                        "followup_enabled": True,
+                        "followup_window_minutes": 0,
+                        "history_enabled": True,
+                        "history_period_hours": 24,
+                        "history_keep_periods": 2,
+                        "ai_stage_timeout_seconds": 300,
+                        "max_context_tokens": 0,
+                        "analysis_concurrency": 2,
+                    },
+                    "commands": {
+                        "enabled": True,
+                        "prefix": "/maa",
+                        "owners": [],
+                        "admins": [],
+                        "read_level": 0,
+                        "write_level": 2,
+                        "followup_level": 0,
+                    },
+                }
+            },
+        },
+        "llm": {
+            "providers": [
+                {
+                    "name": "default",
+                    "kind": "openai",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": "",
+                    "max_concurrency": 2,
+                    "timeout_seconds": 180,
+                    "connect_timeout_seconds": 10,
+                    "max_retries": 2,
+                    "models": [
+                        {
+                            "model": "gpt-4o-mini",
+                            "supports": {
+                                "tools": True,
+                                "vision": True,
+                                "json_mode": True,
+                            },
+                            "max_tokens": 8192,
+                            "max_context_tokens": 48000,
+                        }
+                    ],
+                }
+            ],
+            "defaults": {
+                "temperature": 0.2,
+                "top_p": 1.0,
+                "max_tokens": 8192,
+                "max_context_tokens": 48000,
+            },
+            "circuit_breaker": {
+                "failure_threshold": 3,
+                "cooldown_seconds": 300,
+                "rate_cooldown_seconds": 60,
+                "auth_cooldown_seconds": 1800,
+            },
+        },
+        "debug": {
+            "enabled": False,
+            "http_port": 8765,
+            "data_dir": "data/test",
+        },
+        "log": {
+            "log_to_file": True,
+            "log_level": "INFO",
+            "log_dir": "logs",
+        },
+    }
+
+
+def write_default_config(path: str | Path) -> Path:
+    """Create a complete default config if it does not already exist."""
+    target = Path(path)
+    if target.exists():
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(default_config(), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return target
+
+
+def load_config_file(path: str | Path) -> dict:
+    """Load a JSON object and reject malformed top-level values."""
+    target = Path(path)
+    data = json.loads(target.read_text(encoding="utf-8-sig"))
+    if not isinstance(data, dict):
+        raise ValueError("config.json 顶层必须是对象。")
+    return data
+
+
+def validate_common_config(cfg: Mapping[str, Any]) -> list[str]:
+    """Validate transport-neutral fields shared by both entry points."""
+    errors: list[str] = []
+    bot_cfg = cfg.get("bot")
+    if not isinstance(bot_cfg, dict):
+        errors.append("bot 段必须是对象。")
+        bot_cfg = {}
+    if not str(bot_cfg.get("data_dir", "data") or "").strip():
+        errors.append("bot.data_dir 不能为空。")
+    configs = bot_cfg.get("configs")
+    if configs is None:
+        configs = {}
+    if not isinstance(configs, dict):
+        errors.append("bot.configs 必须是对象。")
+        configs = {}
+    legacy = detect_legacy_llm(cfg.get("llm") or {})
+    if legacy:
+        errors.append(legacy)
+    else:
+        errors.extend(validate_llm_config(cfg.get("llm") or {}, configs))
+    return errors
+
+
+def validate_onebot_config(cfg: Mapping[str, Any]) -> str:
+    """Validate a bare OneBot connection block and return its mode."""
+    ob = cfg.get("onebot") or {}
+    if not isinstance(ob, dict):
+        raise ValueError("onebot 段必须是对象。")
+    mode = str(ob.get("mode", "http_ws"))
+    if mode not in ONEBOT_MODES:
+        raise ValueError(
+            f"未知模式: {mode}，可选: {', '.join(ONEBOT_MODES)}"
+        )
+
+    def check_url(key: str, schemes: tuple[str, ...], required: bool) -> str:
+        raw = str(ob.get(key, "") or "").strip()
+        if not raw:
+            if required:
+                raise ValueError(f"onebot.mode={mode} 需要设置 onebot.{key}")
+            return ""
+        parts = urlsplit(raw)
+        if parts.scheme not in schemes or not parts.hostname:
+            raise ValueError(
+                f"onebot.{key} 不是合法的 {schemes[0]} 地址: {raw!r}"
+            )
+        try:
+            parts.port
+        except ValueError as exc:
+            raise ValueError(f"onebot.{key} 端口非法: {raw!r}") from exc
+        return raw
+
+    if mode in ("http_ws", "http_ws_reverse"):
+        check_url("http_url", ("http", "https"), True)
+    if mode in ("ws", "http_ws"):
+        check_url("ws_url", ("ws", "wss"), True)
+    if mode in ("ws_reverse", "http_ws_reverse"):
+        try:
+            port = int(ob.get("ws_reverse_port", 0) or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("onebot.ws_reverse_port 必须是整数") from exc
+        if not 1 <= port <= 65535:
+            raise ValueError(
+                f"onebot.mode={mode} 需要 1-65535 的 ws_reverse_port，"
+                f"当前为 {port}"
+            )
+        if not str(ob.get("ws_reverse_host", "127.0.0.1") or "").strip():
+            raise ValueError("onebot.ws_reverse_host 不能为空")
+    return mode
+
+
+def resolve_data_dir(
+    cfg: Mapping[str, Any],
+    *,
+    base_dir: str | Path | None = None,
+    override: str | Path | None = None,
+) -> Path:
+    """Resolve the configured data directory against an optional base."""
+    bot_cfg = cfg.get("bot") or {}
+    raw = override or bot_cfg.get("data_dir", "data")
+    path = Path(str(raw or "data")).expanduser()
+    if not path.is_absolute():
+        path = Path(base_dir or ".") / path
+    return path.resolve()
+
+
+def _panel_value(panel: Mapping[str, Any], key: str) -> Any:
+    return panel.get(key, PANEL_DEFAULTS[key])
+
+
+def _is_inherit_value(key: str, value: Any) -> bool:
+    """Return whether a panel value means "keep the advanced JSON value"."""
+    if key == "enabled_mode":
+        return str(value or "inherit").strip().lower() == "inherit"
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple, set, dict)):
+        return not value
+    return value is None
+
+
+def _changed(panel: Mapping[str, Any], key: str) -> bool:
+    return not _is_inherit_value(key, _panel_value(panel, key))
+
+
+def _target_profile(cfg: dict, panel: Mapping[str, Any]) -> str:
+    bot_cfg = cfg.setdefault("bot", {})
+    configs = bot_cfg.setdefault("configs", {})
+    if not isinstance(configs, dict):
+        configs = {}
+        bot_cfg["configs"] = configs
+    requested = str(_panel_value(panel, "default_config") or "").strip()
+    if requested:
+        if requested in configs:
+            return requested
+        if not configs:
+            configs[requested] = {}
+            return requested
+        raise ValueError(
+            f"指定配置不存在：{requested}。"
+            f"可选配置：{', '.join(str(name) for name in configs)}"
+        )
+    if configs:
+        return next(iter(configs))
+    target = "默认"
+    configs[target] = {}
+    return target
+
+
+def _has_panel_changes(panel: Mapping[str, Any]) -> bool:
+    return any(
+        _changed(panel, key)
+        for key in PANEL_DEFAULTS
+        if key != "config_file"
+    )
+
+
+def _has_profile_changes(panel: Mapping[str, Any]) -> bool:
+    return any(
+        _changed(panel, key)
+        for key in (
+            "enabled_mode",
+            "default_config",
+            "listen_groups",
+            "notify_group",
+            "command_prefix",
+            "owners",
+            "admins",
+            "report_mode",
+            "project_name",
+            "archive_match_mode",
+            "repo_mode",
+            "llm_provider",
+            "llm_model",
+            "vision_mode",
+            "followup_mode",
+            "history_mode",
+            "commands_mode",
+        )
+    )
+
+
+def _enabled_mode(panel: Mapping[str, Any]) -> str:
+    return _mode_value(panel, "enabled_mode")
+
+
+def _mode_value(panel: Mapping[str, Any], key: str) -> str:
+    mode = str(_panel_value(panel, key) or "inherit").strip().lower()
+    if mode not in {"inherit", "enabled", "disabled"}:
+        raise ValueError(
+            f"{key} 必须是 inherit、enabled 或 disabled。"
+        )
+    return mode
+
+
+def _apply_mode(
+    panel: Mapping[str, Any],
+    key: str,
+    parent: dict,
+    setting: str,
+) -> None:
+    mode = _mode_value(panel, key)
+    if mode != "inherit":
+        parent[setting] = mode == "enabled"
+
+
+def _ensure_dict(parent: dict, key: str) -> dict:
+    value = parent.get(key)
+    if not isinstance(value, dict):
+        value = {}
+        parent[key] = value
+    return value
+
+
+def apply_panel_overrides(
+    cfg: Mapping[str, Any],
+    panel: Mapping[str, Any] | None,
+) -> dict:
+    """
+    Apply changed dashboard values to one profile without replacing advanced JSON.
+
+    Empty strings and empty lists are inheritance markers. This is necessary
+    because AstrBot materializes every schema default before a plugin sees it.
+    """
+    result = copy.deepcopy(dict(cfg))
+    if not panel:
+        return result
+    enabled_mode = _enabled_mode(panel)
+    if not _has_panel_changes(panel):
+        return result
+    bot_cfg = _ensure_dict(result, "bot")
+
+    if _changed(panel, "data_dir"):
+        bot_cfg["data_dir"] = str(_panel_value(panel, "data_dir")).strip()
+    if _changed(panel, "log_level"):
+        log_cfg = _ensure_dict(result, "log")
+        log_cfg["log_level"] = str(_panel_value(panel, "log_level")).upper()
+
+    if _has_profile_changes(panel):
+        target = _target_profile(result, panel)
+        configs = _ensure_dict(bot_cfg, "configs")
+        profile = configs.get(target)
+        if not isinstance(profile, dict):
+            profile = {}
+            configs[target] = profile
+
+        if _changed(panel, "listen_groups"):
+            profile["listen_groups"] = [
+                str(item).strip()
+                for item in (_panel_value(panel, "listen_groups") or [])
+                if str(item).strip()
+            ]
+        if _changed(panel, "notify_group"):
+            profile["notify_group"] = str(
+                _panel_value(panel, "notify_group") or ""
+            ).strip()
+        if enabled_mode != "inherit":
+            settings = _ensure_dict(profile, "settings")
+            settings["enabled"] = enabled_mode == "enabled"
+
+        if _changed(panel, "command_prefix"):
+            commands = _ensure_dict(profile, "commands")
+            commands["prefix"] = str(
+                _panel_value(panel, "command_prefix")
+            ).strip()
+        if _changed(panel, "owners"):
+            commands = _ensure_dict(profile, "commands")
+            commands["owners"] = [
+                str(item).strip()
+                for item in (_panel_value(panel, "owners") or [])
+                if str(item).strip()
+            ]
+        if _changed(panel, "admins"):
+            commands = _ensure_dict(profile, "commands")
+            commands["admins"] = [
+                str(item).strip()
+                for item in (_panel_value(panel, "admins") or [])
+                if str(item).strip()
+            ]
+        if _changed(panel, "report_mode"):
+            report = _ensure_dict(profile, "report")
+            report["render"] = str(
+                _panel_value(panel, "report_mode")
+            ).lower()
+
+        if _changed(panel, "project_name"):
+            project = _ensure_dict(profile, "project")
+            project["name"] = str(
+                _panel_value(panel, "project_name")
+            ).strip()
+        if _changed(panel, "archive_match_mode"):
+            project = _ensure_dict(profile, "project")
+            mode = str(
+                _panel_value(panel, "archive_match_mode")
+            ).strip().lower()
+            if mode not in {"auto", "known", "prefix", "any"}:
+                raise ValueError(
+                    "archive_match_mode 必须是 auto、known、prefix 或 any。"
+                )
+            project["archive_match_mode"] = mode
+        if _changed(panel, "repo_mode"):
+            project = _ensure_dict(profile, "project")
+            repo = _ensure_dict(project, "repo")
+            _apply_mode(panel, "repo_mode", repo, "enabled")
+
+        if _changed(panel, "llm_provider") or _changed(panel, "llm_model"):
+            llm = _ensure_dict(profile, "llm")
+            models = llm.get("models")
+            if not isinstance(models, list):
+                models = []
+            if not models:
+                models.append({})
+            first = models[0]
+            if not isinstance(first, dict):
+                first = {}
+                models[0] = first
+            if _changed(panel, "llm_provider"):
+                first["name"] = str(
+                    _panel_value(panel, "llm_provider")
+                ).strip()
+            if _changed(panel, "llm_model"):
+                first["model"] = str(
+                    _panel_value(panel, "llm_model")
+                ).strip()
+            llm["models"] = models
+
+        if _changed(panel, "vision_mode"):
+            vision = _ensure_dict(profile, "vision")
+            _apply_mode(panel, "vision_mode", vision, "enabled")
+        if _changed(panel, "followup_mode"):
+            settings = _ensure_dict(profile, "settings")
+            _apply_mode(panel, "followup_mode", settings, "followup_enabled")
+        if _changed(panel, "history_mode"):
+            settings = _ensure_dict(profile, "settings")
+            _apply_mode(panel, "history_mode", settings, "history_enabled")
+        if _changed(panel, "commands_mode"):
+            commands = _ensure_dict(profile, "commands")
+            _apply_mode(panel, "commands_mode", commands, "enabled")
+    return result
+
+
+def load_effective_config(
+    panel: Mapping[str, Any] | None,
+    *,
+    plugin_data_dir: str | Path,
+) -> tuple[dict, Path, Path]:
+    """Load advanced JSON, apply panel overrides, and resolve runtime paths."""
+    panel = panel or {}
+    plugin_dir = Path(plugin_data_dir).resolve()
+    configured_path = str(_panel_value(panel, "config_file") or "").strip()
+    config_path = Path(configured_path).expanduser()
+    if not config_path.is_absolute():
+        config_path = plugin_dir / config_path
+    config_path = config_path.resolve()
+    created = not config_path.exists()
+    write_default_config(config_path)
+    raw = load_config_file(config_path)
+    effective = apply_panel_overrides(raw, panel)
+    errors = validate_common_config(effective)
+    if errors:
+        raise ValueError("\n".join(errors))
+    data_dir = resolve_data_dir(
+        effective,
+        base_dir=plugin_dir,
+        override=(
+            str(_panel_value(panel, "data_dir")).strip()
+            if _changed(panel, "data_dir")
+            else None
+        ),
+    )
+    if created:
+        logger.info("已生成 AstrBot 插件默认配置：%s", config_path)
+    return effective, config_path, data_dir
+
+
+def _unique_log_file(log_dir: Path) -> Path:
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    path = log_dir / f"{stamp}.log"
+    index = 2
+    while path.exists():
+        path = log_dir / f"{stamp}_{index}.log"
+        index += 1
+    return path
+
+
+def setup_logging(
+    log_cfg: Mapping[str, Any],
+    *,
+    isolated: bool = False,
+    base_dir: str | Path | None = None,
+) -> None:
+    """Configure bare-process logging or an isolated plugin logger."""
+    level = getattr(
+        logging, str(log_cfg.get("log_level", "INFO")).upper(), logging.INFO
+    )
+    log_to_file = bool(log_cfg.get("log_to_file", True))
+    log_dir = Path(str(log_cfg.get("log_dir", "logs"))).expanduser()
+    if not log_dir.is_absolute():
+        log_dir = Path(base_dir or ".") / log_dir
+    target = logging.getLogger("Maa") if isolated else logging.getLogger()
+
+    for handler in list(target.handlers):
+        if not isolated or getattr(handler, "_maa_plugin_handler", False):
+            target.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass
+    target.setLevel(level)
+    target.propagate = not isolated
+
+    console = logging.StreamHandler()
+    console.setLevel(level)
+    console.setFormatter(ConfigNameFormatter(LOG_FORMAT, LOG_DATE_FORMAT))
+    if isolated:
+        console._maa_plugin_handler = True
+    target.addHandler(console)
+
+    if log_to_file:
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            file_handler = logging.FileHandler(
+                _unique_log_file(log_dir), encoding="utf-8"
+            )
+            file_handler.setLevel(level)
+            file_handler.setFormatter(
+                ConfigNameFormatter(LOG_FORMAT, LOG_DATE_FORMAT)
+            )
+            if isolated:
+                file_handler._maa_plugin_handler = True
+            target.addHandler(file_handler)
+            logger.info(
+                "日志输出到文件: %s (level=%s)",
+                file_handler.baseFilename,
+                logging.getLevelName(level),
+            )
+        except OSError as exc:
+            logger.warning("无法创建日志文件：%s", exc)
+
+
+def teardown_logging(*, isolated: bool = False) -> None:
+    """Close handlers installed by :func:`setup_logging`."""
+    target = logging.getLogger("Maa") if isolated else logging.getLogger()
+    for handler in list(target.handlers):
+        if not isolated or getattr(handler, "_maa_plugin_handler", False):
+            target.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass

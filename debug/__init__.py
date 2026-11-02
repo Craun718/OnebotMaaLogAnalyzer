@@ -23,15 +23,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from bot.handler import EventHandler
-from core.data_manager import DataManager
-from core.llm import ChatMessage, ToolCall
-from core.service import MaaService
-from features.maa.analyzer import MaaAnalyzer
-from features.maa.followup import FollowupStore
-from features.maa.history import HistoryStore
-from features.maa.message_handler import MessageHandler
-from features.maa.watcher import LogWatcher
+from maa_analyzer.platforms.onebot.handler import EventHandler
+from maa_analyzer.platforms.onebot.adapter import OneBotPlatformAdapter
+from maa_analyzer.core.data_manager import DataManager
+from maa_analyzer.core.llm import ChatMessage, ToolCall
+from maa_analyzer.core.service import MaaService
+from maa_analyzer.features.maa.analyzer import MaaAnalyzer
+from maa_analyzer.features.maa.followup import FollowupStore
+from maa_analyzer.features.maa.history import HistoryStore
+from maa_analyzer.features.maa.message_handler import MessageHandler
+from maa_analyzer.features.maa.watcher import LogWatcher
 
 logger = logging.getLogger("Maa.Debug")
 
@@ -266,6 +267,14 @@ class DebugAPI:
     async def get_version_info(self) -> Optional[dict]:
         return self._record("get_version_info", {}, dict(self.version_info))
 
+    async def get_group_member_info(self, group_id: int,
+                                    user_id: int) -> Optional[dict]:
+        return self._record(
+            "get_group_member_info",
+            {"group_id": group_id, "user_id": user_id},
+            {"user_id": user_id, "role": "member"},
+        )
+
     async def close(self):
         return None
 
@@ -481,9 +490,10 @@ class DebugManager:
         target_dir = data_dir or (cfg.get("debug") or {}).get("data_dir") or "data/test"
 
         api = DebugAPI()
+        adapter = OneBotPlatformAdapter(api, Path(target_dir) / "_outbox")
         dm = DataManager(target_dir)
 
-        service = MaaService(api=api, dm=dm)  # type: ignore[arg-type]
+        service = MaaService(port=adapter, dm=dm)
         service.load()
         service.sync_from_config(bot_cfg.get("configs") or {})
         # 调试场景默认走纯文本：避免测试夹具依赖本机浏览器；
@@ -509,7 +519,7 @@ class DebugManager:
         service.register_event("message.file", watcher.on_message_file)
         service.register_event("message.text", messages.on_message_text)
 
-        handler = EventHandler(api, service)  # type: ignore[arg-type]
+        handler = EventHandler(adapter, service)
 
         manager = cls(api=api, service=service, handler=handler, llm=llm)
         manager.watcher = watcher
