@@ -38,8 +38,9 @@ AstrBot 面板只映射常用字段：
 | `notify_group` | 所选档案的 `notify_group` | 保持原值 |
 | `command_prefix` | 所选档案的 `commands.prefix` | 保持原值 |
 | `owners` / `admins` | 所选档案的 `commands.owners` / `admins` | 保持原值 |
-| `report_mode` | 所选档案的 `report.render` | 保持原值 |
-| `report_template` | 所选档案的 `report.template` | 保持原值 |
+| `report_mode` / `report_template` | 所选档案的 `report.render` / `template` | 保持原值 |
+| `report_max_*` / `report_device_scale_factor` / `report_font_family` / `report_browser_path` | 报告尺寸、页数、渲染倍率、字体与浏览器 | 继承标记保持原值 |
+| `report_reuse_browser_mode` / `report_render_timeout_ms` / `report_*_mode` | 报告浏览器复用、超时、嵌入附件、Markdown、文本回退与追问渲染 | `inherit` 标记保持原值 |
 | `project_name` | 所选档案的 `project.name` | 保持原值 |
 | `archive_match_mode` | 所选档案的 `project.archive_match_mode` | 保持原值 |
 | `file_prefix` | 所选档案的 `project.file_prefix` | 保持原值 |
@@ -47,15 +48,16 @@ AstrBot 面板只映射常用字段：
 | `ui_mxu_mode` / `ui_mfaa_mode` / `ui_maafwapp_mode` / `ui_auto_mode` | 所选档案的 `project.ui.<名称>.enabled` | `inherit` 保持原值 |
 | `repo_mode` | 所选档案的 `project.repo.enabled` | `inherit` 保持原值 |
 | `llm_provider` / `llm_model` | 所选档案 `llm.models[0].name` / `.model` | 保持原值 |
-| `vision_mode` | 所选档案的 `vision.enabled` | `inherit` 保持原值 |
+| `vision_mode` / `vision_max_images` / `vision_max_image_kb` | 所选档案的看图开关与数量、大小上限 | `inherit` 标记保持原值 |
+| `vision_detail` / `vision_*_mode` | 看图细节、错误截图、项目模板图与模型索图 | `inherit` 标记保持原值 |
 | `send_images_mode` / `send_repo_images_mode` / `send_files_mode` | 所选档案的对应 `settings.send_*` | `inherit` 保持原值 |
 | `followup_mode` | 所选档案的 `settings.followup_enabled` | `inherit` 保持原值 |
 | `followup_window_minutes` | 所选档案的 `settings.followup_window_minutes` | `-1` 保持原值 |
 | `history_mode` | 所选档案的 `settings.history_enabled` | `inherit` 保持原值 |
 | `history_period_hours` | 所选档案的 `settings.history_period_hours` | `-1` 保持原值 |
 | `history_keep_periods` | 所选档案的 `settings.history_keep_periods` | `-1` 保持原值 |
-| `commands_mode` | 所选档案的 `commands.enabled` | `inherit` 保持原值 |
-| `commands_read_level` / `commands_write_level` / `commands_followup_level` | 所选档案的 `commands.read_level` / `write_level` / `followup_level` | `-1` 保持原值 |
+| `commands_mode` / `commands_*_level` | 所选档案的 `commands.enabled` 与权限等级 | `-1` / `inherit` 保持原值 |
+| `commands_reply_chunk_chars` / `commands_max_list_items` | 指令回复分段与任务列表条数 | `-1` 保持原值 |
 | `log_to_file_mode` | `log.log_to_file` | `inherit` 保持原值 |
 | `log_dir` | `log.log_dir` | 保持原值 |
 | `log_level` | `log.log_level` | 保持原值 |
