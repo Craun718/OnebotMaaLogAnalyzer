@@ -18,6 +18,31 @@ LOG_FORMAT = "%(asctime)s [%(levelname)s]%(config_prefix)s %(name)s: %(message)s
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 BOOTSTRAP_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 ONEBOT_MODES = ("ws", "http_ws", "ws_reverse", "http_ws_reverse")
+PANEL_TRISTATE_MODE_FIELDS = {
+    "enabled_mode",
+    "require_log_layout_mode",
+    "ui_mxu_mode",
+    "ui_mfaa_mode",
+    "ui_maafwapp_mode",
+    "ui_auto_mode",
+    "repo_mode",
+    "vision_mode",
+    "send_images_mode",
+    "send_repo_images_mode",
+    "send_files_mode",
+    "followup_mode",
+    "history_mode",
+    "commands_mode",
+    "log_to_file_mode",
+}
+PANEL_NONNEGATIVE_INT_FIELDS = {
+    "followup_window_minutes",
+    "history_period_hours",
+    "history_keep_periods",
+    "commands_read_level",
+    "commands_write_level",
+    "commands_followup_level",
+}
 
 PANEL_DEFAULTS: dict[str, Any] = {
     "enabled_mode": "inherit",
@@ -30,15 +55,33 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "owners": [],
     "admins": [],
     "report_mode": "",
+    "report_template": "",
     "project_name": "",
     "archive_match_mode": "",
+    "file_prefix": "",
+    "require_log_layout_mode": "inherit",
+    "ui_mxu_mode": "inherit",
+    "ui_mfaa_mode": "inherit",
+    "ui_maafwapp_mode": "inherit",
+    "ui_auto_mode": "inherit",
     "repo_mode": "inherit",
     "llm_provider": "",
     "llm_model": "",
     "vision_mode": "inherit",
+    "send_images_mode": "inherit",
+    "send_repo_images_mode": "inherit",
+    "send_files_mode": "inherit",
     "followup_mode": "inherit",
+    "followup_window_minutes": -1,
     "history_mode": "inherit",
+    "history_period_hours": -1,
+    "history_keep_periods": -1,
     "commands_mode": "inherit",
+    "commands_read_level": -1,
+    "commands_write_level": -1,
+    "commands_followup_level": -1,
+    "log_to_file_mode": "inherit",
+    "log_dir": "",
     "log_level": "",
 }
 
@@ -303,7 +346,14 @@ def _panel_value(panel: Mapping[str, Any], key: str) -> Any:
 
 def _is_inherit_value(key: str, value: Any) -> bool:
     """Return whether a panel value means "keep the advanced JSON value"."""
-    if key == "enabled_mode":
+    if key in PANEL_NONNEGATIVE_INT_FIELDS:
+        if value is None or value == "":
+            return True
+        try:
+            return int(value) == -1
+        except (TypeError, ValueError):
+            return False
+    if key in PANEL_TRISTATE_MODE_FIELDS:
         return str(value or "inherit").strip().lower() == "inherit"
     if isinstance(value, str):
         return not value.strip()
@@ -360,15 +410,31 @@ def _has_profile_changes(panel: Mapping[str, Any]) -> bool:
             "owners",
             "admins",
             "report_mode",
+            "report_template",
             "project_name",
             "archive_match_mode",
+            "file_prefix",
+            "require_log_layout_mode",
+            "ui_mxu_mode",
+            "ui_mfaa_mode",
+            "ui_maafwapp_mode",
+            "ui_auto_mode",
             "repo_mode",
             "llm_provider",
             "llm_model",
             "vision_mode",
+            "send_images_mode",
+            "send_repo_images_mode",
+            "send_files_mode",
             "followup_mode",
+            "followup_window_minutes",
             "history_mode",
+            "history_period_hours",
+            "history_keep_periods",
             "commands_mode",
+            "commands_read_level",
+            "commands_write_level",
+            "commands_followup_level",
         )
     )
 
@@ -395,6 +461,38 @@ def _apply_mode(
     mode = _mode_value(panel, key)
     if mode != "inherit":
         parent[setting] = mode == "enabled"
+
+
+def _nonnegative_int(panel: Mapping[str, Any], key: str) -> int:
+    raw = _panel_value(panel, key)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} 必须是不小于 0 的整数。") from exc
+    if value < 0:
+        raise ValueError(f"{key} 必须是不小于 0 的整数。")
+    return value
+
+
+def _apply_nonnegative_int(
+    panel: Mapping[str, Any],
+    key: str,
+    parent: dict,
+    setting: str,
+) -> None:
+    if _changed(panel, key):
+        parent[setting] = _nonnegative_int(panel, key)
+
+
+def _apply_ui_mode(
+    panel: Mapping[str, Any],
+    key: str,
+    ui: dict,
+    ui_name: str,
+) -> None:
+    if _changed(panel, key):
+        target = _ensure_dict(ui, ui_name)
+        _apply_mode(panel, key, target, "enabled")
 
 
 def _ensure_dict(parent: dict, key: str) -> dict:
@@ -428,6 +526,12 @@ def apply_panel_overrides(
     if _changed(panel, "log_level"):
         log_cfg = _ensure_dict(result, "log")
         log_cfg["log_level"] = str(_panel_value(panel, "log_level")).upper()
+    if _changed(panel, "log_to_file_mode"):
+        log_cfg = _ensure_dict(result, "log")
+        _apply_mode(panel, "log_to_file_mode", log_cfg, "log_to_file")
+    if _changed(panel, "log_dir"):
+        log_cfg = _ensure_dict(result, "log")
+        log_cfg["log_dir"] = str(_panel_value(panel, "log_dir")).strip()
 
     if _has_profile_changes(panel):
         target = _target_profile(result, panel)
@@ -475,6 +579,11 @@ def apply_panel_overrides(
             report["render"] = str(
                 _panel_value(panel, "report_mode")
             ).lower()
+        if _changed(panel, "report_template"):
+            report = _ensure_dict(profile, "report")
+            report["template"] = str(
+                _panel_value(panel, "report_template")
+            ).strip()
 
         if _changed(panel, "project_name"):
             project = _ensure_dict(profile, "project")
@@ -491,6 +600,34 @@ def apply_panel_overrides(
                     "archive_match_mode 必须是 auto、known、prefix 或 any。"
                 )
             project["archive_match_mode"] = mode
+        if _changed(panel, "file_prefix"):
+            project = _ensure_dict(profile, "project")
+            project["file_prefix"] = str(
+                _panel_value(panel, "file_prefix")
+            ).strip()
+        if _changed(panel, "require_log_layout_mode"):
+            project = _ensure_dict(profile, "project")
+            _apply_mode(
+                panel,
+                "require_log_layout_mode",
+                project,
+                "require_log_layout",
+            )
+        if any(
+            _changed(panel, key)
+            for key in (
+                "ui_mxu_mode",
+                "ui_mfaa_mode",
+                "ui_maafwapp_mode",
+                "ui_auto_mode",
+            )
+        ):
+            project = _ensure_dict(profile, "project")
+            ui = _ensure_dict(project, "ui")
+            _apply_ui_mode(panel, "ui_mxu_mode", ui, "mxu")
+            _apply_ui_mode(panel, "ui_mfaa_mode", ui, "mfaa")
+            _apply_ui_mode(panel, "ui_maafwapp_mode", ui, "maafwapp")
+            _apply_ui_mode(panel, "ui_auto_mode", ui, "auto")
         if _changed(panel, "repo_mode"):
             project = _ensure_dict(profile, "project")
             repo = _ensure_dict(project, "repo")
@@ -520,15 +657,65 @@ def apply_panel_overrides(
         if _changed(panel, "vision_mode"):
             vision = _ensure_dict(profile, "vision")
             _apply_mode(panel, "vision_mode", vision, "enabled")
-        if _changed(panel, "followup_mode"):
+        if any(
+            _changed(panel, key)
+            for key in (
+                "send_images_mode",
+                "send_repo_images_mode",
+                "send_files_mode",
+                "followup_mode",
+                "followup_window_minutes",
+                "history_mode",
+                "history_period_hours",
+                "history_keep_periods",
+            )
+        ):
             settings = _ensure_dict(profile, "settings")
+            _apply_mode(panel, "send_images_mode", settings, "send_images")
+            _apply_mode(
+                panel, "send_repo_images_mode", settings, "send_repo_images"
+            )
+            _apply_mode(panel, "send_files_mode", settings, "send_files")
             _apply_mode(panel, "followup_mode", settings, "followup_enabled")
-        if _changed(panel, "history_mode"):
-            settings = _ensure_dict(profile, "settings")
+            _apply_nonnegative_int(
+                panel,
+                "followup_window_minutes",
+                settings,
+                "followup_window_minutes",
+            )
             _apply_mode(panel, "history_mode", settings, "history_enabled")
-        if _changed(panel, "commands_mode"):
+            _apply_nonnegative_int(
+                panel, "history_period_hours", settings, "history_period_hours"
+            )
+            _apply_nonnegative_int(
+                panel,
+                "history_keep_periods",
+                settings,
+                "history_keep_periods",
+            )
+        if any(
+            _changed(panel, key)
+            for key in (
+                "commands_mode",
+                "commands_read_level",
+                "commands_write_level",
+                "commands_followup_level",
+            )
+        ):
             commands = _ensure_dict(profile, "commands")
             _apply_mode(panel, "commands_mode", commands, "enabled")
+            _apply_nonnegative_int(
+                panel, "commands_read_level", commands, "read_level"
+            )
+            _apply_nonnegative_int(
+                panel, "commands_write_level", commands, "write_level"
+            )
+            _apply_nonnegative_int(
+                panel,
+                "commands_followup_level",
+                commands,
+                "followup_level",
+            )
     return result
 
 

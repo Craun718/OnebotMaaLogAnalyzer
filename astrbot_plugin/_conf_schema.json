@@ -69,6 +69,11 @@
       "image"
     ]
   },
+  "report_template": {
+    "description": "报告模板名；留空沿用当前配置档案",
+    "type": "string",
+    "default": ""
+  },
   "project_name": {
     "description": "项目显示名；留空沿用当前配置档案",
     "type": "string",
@@ -84,6 +89,61 @@
       "known",
       "prefix",
       "any"
+    ]
+  },
+  "file_prefix": {
+    "description": "prefix 模式的日志包文件名前缀；留空沿用当前配置档案",
+    "type": "string",
+    "default": ""
+  },
+  "require_log_layout_mode": {
+    "description": "prefix 模式是否校验日志布局；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "ui_mxu_mode": {
+    "description": "MXU 日志包开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "ui_mfaa_mode": {
+    "description": "MFAAvalonia 日志包开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "ui_maafwapp_mode": {
+    "description": "MaaFwApp 日志包开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "ui_auto_mode": {
+    "description": "未知 UI 兜底开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
     ]
   },
   "repo_mode": {
@@ -116,6 +176,36 @@
       "disabled"
     ]
   },
+  "send_images_mode": {
+    "description": "报告图片发送开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "send_repo_images_mode": {
+    "description": "仓库图片发送开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "send_files_mode": {
+    "description": "报告附件发送开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
   "followup_mode": {
     "description": "报告追问开关；inherit 沿用高级 JSON",
     "type": "string",
@@ -125,6 +215,11 @@
       "enabled",
       "disabled"
     ]
+  },
+  "followup_window_minutes": {
+    "description": "追问窗口分钟数；-1 沿用高级 JSON，0 表示不限制",
+    "type": "int",
+    "default": -1
   },
   "history_mode": {
     "description": "分析历史开关；inherit 沿用高级 JSON",
@@ -136,6 +231,16 @@
       "disabled"
     ]
   },
+  "history_period_hours": {
+    "description": "历史周期小时数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "history_keep_periods": {
+    "description": "历史保留周期数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
   "commands_mode": {
     "description": "管理指令开关；inherit 沿用高级 JSON",
     "type": "string",
@@ -145,6 +250,36 @@
       "enabled",
       "disabled"
     ]
+  },
+  "commands_read_level": {
+    "description": "查看类指令权限等级；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "commands_write_level": {
+    "description": "修改类指令权限等级；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "commands_followup_level": {
+    "description": "追问指令权限等级；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "log_to_file_mode": {
+    "description": "文件日志开关；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "log_dir": {
+    "description": "日志目录；留空沿用 config.json",
+    "type": "string",
+    "default": ""
   },
   "log_level": {
     "description": "日志级别；留空沿用 config.json",
