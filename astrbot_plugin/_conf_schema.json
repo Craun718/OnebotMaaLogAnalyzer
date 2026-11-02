@@ -959,5 +959,173 @@
     "description": "错误命中后保留行数；-1 沿用高级 JSON",
     "type": "int",
     "default": -1
+  },
+  "llm_fallback_models": {
+    "description": "备用候选，格式 端点名:模型名；留空沿用高级 JSON",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "llm_profile_temperature": {
+    "description": "当前档案采样温度；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_profile_max_tokens": {
+    "description": "当前档案最大输出 token；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_profile_top_p": {
+    "description": "当前档案 top_p；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_endpoint_selector": {
+    "description": "要编辑的全局端点名；留空选择第一个",
+    "type": "string",
+    "default": ""
+  },
+  "llm_endpoint_name": {
+    "description": "端点显示名/引用名；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_endpoint_kind": {
+    "description": "端点协议；留空沿用高级 JSON",
+    "type": "string",
+    "default": "",
+    "options": [
+      "",
+      "openai",
+      "anthropic"
+    ]
+  },
+  "llm_endpoint_base_url": {
+    "description": "端点根地址；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_endpoint_api_key": {
+    "description": "端点 API Key；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_endpoint_max_concurrency": {
+    "description": "端点并发上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_endpoint_timeout_seconds": {
+    "description": "端点请求超时秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_endpoint_connect_timeout_seconds": {
+    "description": "端点连接超时秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_endpoint_max_retries": {
+    "description": "端点重试次数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_endpoint_model": {
+    "description": "要编辑的端点模型名；留空选择第一个",
+    "type": "string",
+    "default": ""
+  },
+  "llm_model_support_tools_mode": {
+    "description": "模型支持工具调用；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "llm_model_support_vision_mode": {
+    "description": "模型支持看图；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "llm_model_support_json_mode_mode": {
+    "description": "模型声明 JSON 模式；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "llm_model_max_tokens": {
+    "description": "模型最大输出 token；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_model_max_context_tokens": {
+    "description": "模型上下文窗口 token；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_model_temperature": {
+    "description": "模型级温度；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_model_top_p": {
+    "description": "模型级 top_p；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_defaults_temperature": {
+    "description": "全局兜底温度；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_defaults_top_p": {
+    "description": "全局兜底 top_p；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "llm_defaults_max_tokens": {
+    "description": "全局兜底最大输出 token；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_defaults_max_context_tokens": {
+    "description": "全局兜底上下文窗口；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_circuit_failure_threshold": {
+    "description": "端点熔断失败阈值；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_circuit_cooldown_seconds": {
+    "description": "通用熔断冷却秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_circuit_rate_cooldown_seconds": {
+    "description": "限流熔断冷却秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "llm_circuit_auth_cooldown_seconds": {
+    "description": "鉴权失败冷却秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
   }
 }
