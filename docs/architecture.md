@@ -56,7 +56,7 @@ OnebotMaaLogAnalyzer/
 ├── astrbot_plugin/                 # AstrBot 插件壳
 │   ├── main.py                     # Star 生命周期、事件过滤器、AIOCQHTTP 监听
 │   ├── metadata.yaml
-│   ├── _conf_schema.json           # 面板常用配置
+│   ├── _conf_schema.json           # 面板配置模式
 │   └── requirements.txt
 ├── maa_analyzer/                   # 两个入口共享的唯一内核命名空间
 │   ├── platform.py                 # PlatformPort、事件 DTO、发送者与文件元数据

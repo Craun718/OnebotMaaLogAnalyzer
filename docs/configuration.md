@@ -26,7 +26,7 @@
 - **AstrBot AIOCQHTTP**：忽略 `onebot` 段，由 AstrBot 接收事件和调用协议 API；`bot`、`llm`、
   `log` 及配置档案语义保持不变。
 
-AstrBot 面板只映射常用字段：
+AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON：
 
 | 面板字段 | 临时覆盖的 JSON 位置 | 留空时 |
 | --- | --- | --- |

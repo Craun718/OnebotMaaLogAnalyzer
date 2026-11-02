@@ -117,7 +117,7 @@ python main.py               # 首次运行生成 config.json
 1. 下载发布页的 `OnebotMaaLogAnalyzer-<版本>-astrbot.zip`。
 2. 解压到 AstrBot 的 `data/plugins/`，确认路径为 `data/plugins/OnebotMaaLogAnalyzer/main.py`。
 3. 在 AstrBot 插件管理中重载或重启 AstrBot，并启用 OnebotMaaLogAnalyzer。
-4. 在插件面板填写监听群、项目识别、LLM 首选模型等常用配置，或通过“配置文件位置”复用现有 `config.json`。
+4. 在插件面板填写监听群、项目识别、LLM 端点/模型与分析高级配置，或通过“配置文件位置”复用现有 `config.json`。
 
 插件默认把首次生成的 `config.json` 与运行数据放在 AstrBot 的 `data/plugin_data/OnebotMaaLogAnalyzer/`。复用裸模式数据时，建议在面板中把 `config_file` 填为原 `config.json` 的绝对路径，并把 `data_dir` 填为原数据目录的绝对路径；面板留空字段会继承 JSON 中的值。`onebot` 连接段在插件模式下不使用，消息和群文件操作由 AstrBot 的 AIOCQHTTP 适配器提供。
 
