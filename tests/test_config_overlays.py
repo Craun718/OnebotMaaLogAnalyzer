@@ -42,15 +42,33 @@ class PanelOverrideTests(unittest.TestCase):
             "owners": ["1", " 2 ", ""],
             "admins": ["3"],
             "report_mode": "image",
+            "report_template": "dark",
             "project_name": " Beta Project ",
             "archive_match_mode": "any",
+            "file_prefix": "MaaXXX-logs",
+            "require_log_layout_mode": "disabled",
+            "ui_mxu_mode": "disabled",
+            "ui_mfaa_mode": "enabled",
+            "ui_maafwapp_mode": "disabled",
+            "ui_auto_mode": "enabled",
             "repo_mode": "enabled",
             "llm_provider": "default",
             "llm_model": "gpt-4o-mini",
             "vision_mode": "disabled",
+            "send_images_mode": "disabled",
+            "send_repo_images_mode": "enabled",
+            "send_files_mode": "enabled",
             "followup_mode": "disabled",
+            "followup_window_minutes": 0,
             "history_mode": "disabled",
+            "history_period_hours": 12,
+            "history_keep_periods": 3,
             "commands_mode": "disabled",
+            "commands_read_level": 1,
+            "commands_write_level": 1,
+            "commands_followup_level": 2,
+            "log_to_file_mode": "disabled",
+            "log_dir": "runtime-logs",
         }
 
         result = apply_panel_overrides(cfg, panel)
@@ -60,13 +78,25 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(beta["listen_groups"], ["10001", "10002"])
         self.assertEqual(beta["notify_group"], "10003")
         self.assertIs(beta["settings"]["enabled"], True)
-        self.assertIs(beta["settings"]["send_files"], False)
+        self.assertIs(beta["settings"]["send_files"], True)
         self.assertEqual(beta["commands"]["prefix"], "!maa")
         self.assertEqual(beta["commands"]["owners"], ["1", "2"])
         self.assertEqual(beta["commands"]["admins"], ["3"])
         self.assertEqual(beta["report"]["render"], "image")
+        self.assertEqual(beta["report"]["template"], "dark")
         self.assertEqual(beta["project"]["name"], "Beta Project")
         self.assertEqual(beta["project"]["archive_match_mode"], "any")
+        self.assertEqual(beta["project"]["file_prefix"], "MaaXXX-logs")
+        self.assertIs(beta["project"]["require_log_layout"], False)
+        self.assertEqual(
+            beta["project"]["ui"],
+            {
+                "mxu": {"enabled": False},
+                "mfaa": {"enabled": True},
+                "maafwapp": {"enabled": False},
+                "auto": {"enabled": True},
+            },
+        )
         self.assertIs(beta["project"]["repo"]["enabled"], True)
         self.assertEqual(
             beta["llm"]["models"],
@@ -76,9 +106,20 @@ class PanelOverrideTests(unittest.TestCase):
             ],
         )
         self.assertIs(beta["vision"]["enabled"], False)
+        self.assertIs(beta["settings"]["send_images"], False)
+        self.assertIs(beta["settings"]["send_repo_images"], True)
+        self.assertIs(beta["settings"]["send_files"], True)
         self.assertIs(beta["settings"]["followup_enabled"], False)
+        self.assertEqual(beta["settings"]["followup_window_minutes"], 0)
         self.assertIs(beta["settings"]["history_enabled"], False)
+        self.assertEqual(beta["settings"]["history_period_hours"], 12)
+        self.assertEqual(beta["settings"]["history_keep_periods"], 3)
         self.assertIs(beta["commands"]["enabled"], False)
+        self.assertEqual(beta["commands"]["read_level"], 1)
+        self.assertEqual(beta["commands"]["write_level"], 1)
+        self.assertEqual(beta["commands"]["followup_level"], 2)
+        self.assertIs(result["log"]["log_to_file"], False)
+        self.assertEqual(result["log"]["log_dir"], "runtime-logs")
         self.assertEqual(
             beta["project"]["custom_advanced"],
             {"keep": True},
@@ -124,6 +165,13 @@ class PanelOverrideTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "archive_match_mode"):
             apply_panel_overrides(
                 self._config(), {"archive_match_mode": "everything"}
+            )
+
+        with self.assertRaisesRegex(
+            ValueError, "followup_window_minutes"
+        ):
+            apply_panel_overrides(
+                self._config(), {"followup_window_minutes": -2}
             )
 
     def test_missing_selected_profile_is_rejected(self):
