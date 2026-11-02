@@ -438,5 +438,196 @@
     "description": "任务列表最多条数；-1 沿用高级 JSON",
     "type": "int",
     "default": -1
+  },
+  "repo_search_mode": {
+    "description": "仓库检索模式；留空沿用高级 JSON",
+    "type": "string",
+    "default": "",
+    "options": [
+      "",
+      "inject",
+      "agent"
+    ]
+  },
+  "repo_path": {
+    "description": "本地仓库目录；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "repo_url": {
+    "description": "仓库主地址；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "repo_mirrors": {
+    "description": "备用仓库地址；留空沿用高级 JSON",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "repo_branch": {
+    "description": "克隆分支或 tag；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "repo_default_branch": {
+    "description": "分析结束还原分支；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "repo_preload_enabled_mode": {
+    "description": "启动预下载仓库；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "repo_preload_retries": {
+    "description": "启动预下载重试次数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_update_on_analyze_mode": {
+    "description": "分析前更新默认分支；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "repo_allow_ai_update_mode": {
+    "description": "允许 AI 更新仓库；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "repo_auto_checkout_version_mode": {
+    "description": "按日志版本切 tag；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "repo_allow_ai_switch_tag_mode": {
+    "description": "允许 AI 切换 tag；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "repo_max_tag_switch_rounds": {
+    "description": "AI 切换 tag 最大轮数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_restore_latest_after_analyze_mode": {
+    "description": "分析后还原位置；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "repo_refuse_dirty_worktree_mode": {
+    "description": "脏工作区拒绝切换；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "repo_max_tool_rounds": {
+    "description": "agent 最大工具轮数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_tool_calls_per_round": {
+    "description": "agent 单轮工具数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_tool_result_chars": {
+    "description": "agent 单次结果字符数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_tool_result_tokens": {
+    "description": "agent 单次结果 token；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_tool_context_tokens": {
+    "description": "agent 工具上下文 token；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_agent_deadline_seconds": {
+    "description": "agent 循环超时秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_extensions": {
+    "description": "仓库扫描扩展名；留空沿用高级 JSON",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "repo_max_file_kb": {
+    "description": "仓库单文件大小上限 KB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_scan_files": {
+    "description": "仓库扫描文件数上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_files": {
+    "description": "注入文件数上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_identifiers": {
+    "description": "注入标识符数上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_context_lines": {
+    "description": "普通命中上下文行数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_block_lines": {
+    "description": "JSON 块最大展开行数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "repo_max_chars": {
+    "description": "代码片段字符上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
   }
 }
