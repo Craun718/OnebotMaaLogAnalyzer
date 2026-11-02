@@ -9,6 +9,10 @@ from pathlib import Path
 
 from maa_analyzer.config import (
     PANEL_DEFAULTS,
+    PANEL_PROFILE_FLOAT_OVERRIDES,
+    PANEL_PROFILE_INT_OVERRIDES,
+    PANEL_PROFILE_MODE_OVERRIDES,
+    PANEL_PROFILE_STRING_OVERRIDES,
     apply_panel_overrides,
     default_config,
     load_effective_config,
@@ -173,6 +177,69 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertIs(profile["report"]["render_followup"], False)
         self.assertEqual(profile["commands"]["reply_chunk_chars"], 2000)
         self.assertEqual(profile["commands"]["max_list_items"], 20)
+
+    def test_all_remaining_analysis_settings_have_panel_fields(self):
+        mapping_groups = (
+            PANEL_PROFILE_STRING_OVERRIDES,
+            PANEL_PROFILE_FLOAT_OVERRIDES,
+            PANEL_PROFILE_INT_OVERRIDES,
+            PANEL_PROFILE_MODE_OVERRIDES,
+        )
+        mapped_settings = {
+            path[-1]
+            for mappings in mapping_groups
+            for path in mappings.values()
+            if path[0] == "settings"
+        }
+        expected = {
+            "file_list_delay_seconds", "duplicate_window_seconds",
+            "send_progress_message", "send_summary", "reply_chunk_chars",
+            "max_report_images", "max_report_files",
+            "max_file_attachment_mb", "inline_attachments",
+            "followup_max_turns", "followup_max_sessions",
+            "history_max_records", "history_max_total_mb",
+            "analysis_concurrency", "download_concurrency",
+            "download_timeout_seconds", "digest_timeout_seconds",
+            "ai_stage_timeout_seconds", "max_context_tokens",
+            "context_compact_enabled", "context_compact_ratio",
+            "context_retain_ratio", "context_prune_tool_result_tokens",
+            "context_summary_tokens", "analysis_cache_hours",
+            "circuit_breaker_enabled", "system_prompt",
+            "log_tools_enabled", "cleanup_after_done", "save_digest_debug",
+            "max_zip_size_mb", "max_total_uncompressed_mb",
+            "max_prompt_chars", "max_zip_members", "max_log_files",
+            "max_maafw_bak_files", "max_maafw_bak_mb", "merge_archive_parts",
+            "archive_part_settle_seconds", "max_log_file_read_kb",
+            "small_log_full_read_mb", "stream_medium_logs",
+            "large_log_threshold_mb", "max_large_log_read_kb",
+            "stream_large_logs", "max_stream_log_mb", "max_sections_per_log",
+            "max_log_chars", "compress_context_noise",
+            "max_recognition_evidence_lines",
+            "max_recognition_evidence_chars", "log_head_lines",
+            "context_before_lines", "context_after_lines",
+        }
+        self.assertLessEqual(expected, mapped_settings)
+        for field in expected:
+            direct = "settings_" + field
+            tristate = direct + "_mode"
+            self.assertTrue(direct in PANEL_DEFAULTS or tristate in PANEL_DEFAULTS)
+
+    def test_analysis_advanced_fields_apply_each_panel_type(self):
+        panel = {
+            "default_config": "Alpha",
+            "settings_file_list_delay_seconds": "1.5",
+            "settings_duplicate_window_seconds": 60,
+            "settings_send_progress_message_mode": "disabled",
+            "settings_system_prompt": "你是日志分析助手",
+            "settings_context_compact_ratio": "0.75",
+        }
+        result = apply_panel_overrides(self._config(), panel)
+        settings = result["bot"]["configs"]["Alpha"]["settings"]
+        self.assertEqual(settings["file_list_delay_seconds"], 1.5)
+        self.assertEqual(settings["duplicate_window_seconds"], 60)
+        self.assertIs(settings["send_progress_message"], False)
+        self.assertEqual(settings["system_prompt"], "你是日志分析助手")
+        self.assertEqual(settings["context_compact_ratio"], 0.75)
 
     def test_repo_advanced_fields_are_panel_overridable(self):
         result = apply_panel_overrides(
