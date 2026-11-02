@@ -12,6 +12,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from maa_analyzer.config import PANEL_DEFAULTS
+
 
 ROOT = Path(__file__).resolve().parent.parent
 SHELL_PATH = ROOT / "astrbot_plugin" / "main.py"
@@ -219,49 +221,13 @@ class AstrBotPackageMetadataTests(unittest.TestCase):
         self.assertIn("name: OnebotMaaLogAnalyzer", metadata)
         self.assertIn("support_platforms:\n  - aiocqhttp", metadata)
         self.assertIn('astrbot_version: ">=4.29.0,<5"', metadata)
-        self.assertEqual(
-            set(schema),
-            {
-                "enabled_mode",
-                "config_file",
-                "data_dir",
-                "default_config",
-                "listen_groups",
-                "notify_group",
-                "command_prefix",
-                "owners",
-                "admins",
-                "report_mode",
-                "report_template",
-                "project_name",
-                "archive_match_mode",
-                "file_prefix",
-                "require_log_layout_mode",
-                "ui_mxu_mode",
-                "ui_mfaa_mode",
-                "ui_maafwapp_mode",
-                "ui_auto_mode",
-                "repo_mode",
-                "llm_provider",
-                "llm_model",
-                "vision_mode",
-                "send_images_mode",
-                "send_repo_images_mode",
-                "send_files_mode",
-                "followup_mode",
-                "followup_window_minutes",
-                "history_mode",
-                "history_period_hours",
-                "history_keep_periods",
-                "commands_mode",
-                "commands_read_level",
-                "commands_write_level",
-                "commands_followup_level",
-                "log_to_file_mode",
-                "log_dir",
-                "log_level",
-            },
-        )
+        self.assertEqual(set(schema), set(PANEL_DEFAULTS))
+        for key, default in PANEL_DEFAULTS.items():
+            self.assertEqual(
+                schema[key]["default"],
+                default,
+                f"schema default mismatch: {key}",
+            )
         self.assertEqual(schema["listen_groups"]["type"], "list")
         self.assertIn("aiohttp", requirements)
 

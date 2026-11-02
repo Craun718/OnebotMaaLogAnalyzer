@@ -18,7 +18,8 @@ LOG_FORMAT = "%(asctime)s [%(levelname)s]%(config_prefix)s %(name)s: %(message)s
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 BOOTSTRAP_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 ONEBOT_MODES = ("ws", "http_ws", "ws_reverse", "http_ws_reverse")
-PANEL_TRISTATE_MODE_FIELDS = {
+# Panel keys which use inherit / enabled / disabled instead of a raw boolean.
+PANEL_BASE_TRISTATE_MODE_FIELDS = {
     "enabled_mode",
     "require_log_layout_mode",
     "ui_mxu_mode",
@@ -43,6 +44,50 @@ PANEL_NONNEGATIVE_INT_FIELDS = {
     "commands_write_level",
     "commands_followup_level",
 }
+
+# Declarative profile overrides. Paths are relative to
+# bot.configs.<name>. Flat keys are required by AstrBot's plugin schema.
+PANEL_PROFILE_STRING_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "report_font_family": ("report", "font_family"),
+    "report_browser_path": ("report", "browser_path"),
+}
+PANEL_PROFILE_FLOAT_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "report_device_scale_factor": ("report", "device_scale_factor"),
+}
+PANEL_PROFILE_INT_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "vision_max_images": ("vision", "max_images"),
+    "vision_max_image_kb": ("vision", "max_image_kb"),
+    "report_max_width_px": ("report", "max_width_px"),
+    "report_max_height_px": ("report", "max_height_px"),
+    "report_max_pages": ("report", "max_pages"),
+    "report_render_timeout_ms": ("report", "render_timeout_ms"),
+    "commands_reply_chunk_chars": ("commands", "reply_chunk_chars"),
+    "commands_max_list_items": ("commands", "max_list_items"),
+}
+PANEL_PROFILE_LIST_OVERRIDES: dict[str, tuple[str, ...]] = {}
+PANEL_PROFILE_MODE_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "vision_attach_error_screenshots_mode": (
+        "vision", "attach_error_screenshots"
+    ),
+    "vision_attach_repo_templates_mode": (
+        "vision", "attach_repo_templates"
+    ),
+    "vision_allow_model_request_mode": (
+        "vision", "allow_model_request"
+    ),
+    "report_reuse_browser_mode": ("report", "reuse_browser"),
+    "report_embed_attachments_mode": ("report", "embed_attachments"),
+    "report_attach_markdown_mode": ("report", "attach_markdown"),
+    "report_fallback_to_text_mode": ("report", "fallback_to_text"),
+    "report_render_followup_mode": ("report", "render_followup"),
+}
+PANEL_PROFILE_OPTION_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "vision_detail": ("vision", "detail"),
+}
+PANEL_TRISTATE_MODE_FIELDS = (
+    PANEL_BASE_TRISTATE_MODE_FIELDS | set(PANEL_PROFILE_MODE_OVERRIDES)
+)
+PANEL_NONNEGATIVE_INT_FIELDS |= set(PANEL_PROFILE_INT_OVERRIDES)
 
 PANEL_DEFAULTS: dict[str, Any] = {
     "enabled_mode": "inherit",
@@ -83,7 +128,71 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "log_to_file_mode": "inherit",
     "log_dir": "",
     "log_level": "",
+    "vision_max_images": -1,
+    "vision_max_image_kb": -1,
+    "vision_detail": "",
+    "vision_attach_error_screenshots_mode": "inherit",
+    "vision_attach_repo_templates_mode": "inherit",
+    "vision_allow_model_request_mode": "inherit",
+    "report_max_width_px": -1,
+    "report_max_height_px": -1,
+    "report_max_pages": -1,
+    "report_device_scale_factor": "",
+    "report_font_family": "",
+    "report_browser_path": "",
+    "report_reuse_browser_mode": "inherit",
+    "report_render_timeout_ms": -1,
+    "report_embed_attachments_mode": "inherit",
+    "report_attach_markdown_mode": "inherit",
+    "report_fallback_to_text_mode": "inherit",
+    "report_render_followup_mode": "inherit",
+    "commands_reply_chunk_chars": -1,
+    "commands_max_list_items": -1,
 }
+
+PANEL_PROFILE_FIELDS = (
+    {
+        "enabled_mode",
+        "default_config",
+        "listen_groups",
+        "notify_group",
+        "command_prefix",
+        "owners",
+        "admins",
+        "report_mode",
+        "report_template",
+        "project_name",
+        "archive_match_mode",
+        "file_prefix",
+        "require_log_layout_mode",
+        "ui_mxu_mode",
+        "ui_mfaa_mode",
+        "ui_maafwapp_mode",
+        "ui_auto_mode",
+        "repo_mode",
+        "llm_provider",
+        "llm_model",
+        "vision_mode",
+        "send_images_mode",
+        "send_repo_images_mode",
+        "send_files_mode",
+        "followup_mode",
+        "followup_window_minutes",
+        "history_mode",
+        "history_period_hours",
+        "history_keep_periods",
+        "commands_mode",
+        "commands_read_level",
+        "commands_write_level",
+        "commands_followup_level",
+    }
+    | set(PANEL_PROFILE_STRING_OVERRIDES)
+    | set(PANEL_PROFILE_FLOAT_OVERRIDES)
+    | set(PANEL_PROFILE_INT_OVERRIDES)
+    | set(PANEL_PROFILE_LIST_OVERRIDES)
+    | set(PANEL_PROFILE_MODE_OVERRIDES)
+    | set(PANEL_PROFILE_OPTION_OVERRIDES)
+)
 
 
 def default_config() -> dict:
@@ -399,44 +508,7 @@ def _has_panel_changes(panel: Mapping[str, Any]) -> bool:
 
 
 def _has_profile_changes(panel: Mapping[str, Any]) -> bool:
-    return any(
-        _changed(panel, key)
-        for key in (
-            "enabled_mode",
-            "default_config",
-            "listen_groups",
-            "notify_group",
-            "command_prefix",
-            "owners",
-            "admins",
-            "report_mode",
-            "report_template",
-            "project_name",
-            "archive_match_mode",
-            "file_prefix",
-            "require_log_layout_mode",
-            "ui_mxu_mode",
-            "ui_mfaa_mode",
-            "ui_maafwapp_mode",
-            "ui_auto_mode",
-            "repo_mode",
-            "llm_provider",
-            "llm_model",
-            "vision_mode",
-            "send_images_mode",
-            "send_repo_images_mode",
-            "send_files_mode",
-            "followup_mode",
-            "followup_window_minutes",
-            "history_mode",
-            "history_period_hours",
-            "history_keep_periods",
-            "commands_mode",
-            "commands_read_level",
-            "commands_write_level",
-            "commands_followup_level",
-        )
-    )
+    return any(_changed(panel, key) for key in PANEL_PROFILE_FIELDS)
 
 
 def _enabled_mode(panel: Mapping[str, Any]) -> str:
@@ -482,6 +554,55 @@ def _apply_nonnegative_int(
 ) -> None:
     if _changed(panel, key):
         parent[setting] = _nonnegative_int(panel, key)
+
+
+def _float(panel: Mapping[str, Any], key: str) -> float:
+    raw = _panel_value(panel, key)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} 必须是数字。") from exc
+    if value != value or value in {float("inf"), float("-inf")}:
+        raise ValueError(f"{key} 必须是有限数字。")
+    return value
+
+
+def _set_path(parent: dict, path: tuple[str, ...], value: Any) -> None:
+    target = parent
+    for key in path[:-1]:
+        target = _ensure_dict(target, key)
+    target[path[-1]] = value
+
+
+def _apply_profile_field_mappings(
+    panel: Mapping[str, Any], profile: dict
+) -> None:
+    for key, path in PANEL_PROFILE_STRING_OVERRIDES.items():
+        if _changed(panel, key):
+            _set_path(profile, path, str(_panel_value(panel, key)).strip())
+    for key, path in PANEL_PROFILE_FLOAT_OVERRIDES.items():
+        if _changed(panel, key):
+            _set_path(profile, path, _float(panel, key))
+    for key, path in PANEL_PROFILE_INT_OVERRIDES.items():
+        if _changed(panel, key):
+            _set_path(profile, path, _nonnegative_int(panel, key))
+    for key, path in PANEL_PROFILE_LIST_OVERRIDES.items():
+        if _changed(panel, key):
+            value = [
+                str(item).strip()
+                for item in (_panel_value(panel, key) or [])
+                if str(item).strip()
+            ]
+            _set_path(profile, path, value)
+    for key, path in PANEL_PROFILE_MODE_OVERRIDES.items():
+        if _changed(panel, key):
+            mode = _mode_value(panel, key)
+            _set_path(profile, path, mode == "enabled")
+    for key, path in PANEL_PROFILE_OPTION_OVERRIDES.items():
+        if _changed(panel, key):
+            _set_path(
+                profile, path, str(_panel_value(panel, key)).strip().lower()
+            )
 
 
 def _apply_ui_mode(
@@ -716,6 +837,8 @@ def apply_panel_overrides(
                 commands,
                 "followup_level",
             )
+
+        _apply_profile_field_mappings(panel, profile)
     return result
 
 

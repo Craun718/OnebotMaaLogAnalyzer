@@ -292,5 +292,151 @@
       "WARNING",
       "ERROR"
     ]
+  },
+  "vision_max_images": {
+    "description": "单次看图数量上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "vision_max_image_kb": {
+    "description": "单张看图大小上限 KB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "vision_detail": {
+    "description": "看图细节等级；留空沿用高级 JSON",
+    "type": "string",
+    "default": "",
+    "options": [
+      "",
+      "low",
+      "high",
+      "auto"
+    ]
+  },
+  "vision_attach_error_screenshots_mode": {
+    "description": "自动注入错误截图；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "vision_attach_repo_templates_mode": {
+    "description": "注入项目模板图；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "vision_allow_model_request_mode": {
+    "description": "允许模型主动索图；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "report_max_width_px": {
+    "description": "报告画布宽度；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "report_max_height_px": {
+    "description": "报告单页高度；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "report_max_pages": {
+    "description": "报告最多页数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "report_device_scale_factor": {
+    "description": "报告渲染倍率；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "report_font_family": {
+    "description": "报告 CSS 字体；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "report_browser_path": {
+    "description": "报告浏览器路径；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "report_reuse_browser_mode": {
+    "description": "常驻报告浏览器；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "report_render_timeout_ms": {
+    "description": "报告渲染超时毫秒；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "report_embed_attachments_mode": {
+    "description": "报告嵌入附件；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "report_attach_markdown_mode": {
+    "description": "报告附带 Markdown；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "report_fallback_to_text_mode": {
+    "description": "报告渲染失败回退文本；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "report_render_followup_mode": {
+    "description": "追问渲染图片报告；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "commands_reply_chunk_chars": {
+    "description": "指令回复分段字符数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "commands_max_list_items": {
+    "description": "任务列表最多条数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
   }
 }

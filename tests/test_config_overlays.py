@@ -125,6 +125,67 @@ class PanelOverrideTests(unittest.TestCase):
             {"keep": True},
         )
 
+    def test_vision_report_and_command_advanced_fields_are_panel_overridable(self):
+        result = apply_panel_overrides(
+            self._config(),
+            {
+                "default_config": "Alpha",
+                "vision_max_images": 2,
+                "vision_max_image_kb": 512,
+                "vision_detail": "low",
+                "vision_attach_error_screenshots_mode": "disabled",
+                "vision_attach_repo_templates_mode": "disabled",
+                "vision_allow_model_request_mode": "enabled",
+                "report_max_width_px": 900,
+                "report_max_height_px": 3000,
+                "report_max_pages": 10,
+                "report_device_scale_factor": "1.5",
+                "report_font_family": " Noto Sans CJK ",
+                "report_browser_path": "/usr/bin/chromium",
+                "report_reuse_browser_mode": "disabled",
+                "report_render_timeout_ms": 12000,
+                "report_embed_attachments_mode": "disabled",
+                "report_attach_markdown_mode": "enabled",
+                "report_fallback_to_text_mode": "disabled",
+                "report_render_followup_mode": "disabled",
+                "commands_reply_chunk_chars": 2000,
+                "commands_max_list_items": 20,
+            },
+        )
+        profile = result["bot"]["configs"]["Alpha"]
+        self.assertEqual(profile["vision"]["max_images"], 2)
+        self.assertEqual(profile["vision"]["max_image_kb"], 512)
+        self.assertEqual(profile["vision"]["detail"], "low")
+        self.assertIs(profile["vision"]["attach_error_screenshots"], False)
+        self.assertIs(profile["vision"]["attach_repo_templates"], False)
+        self.assertIs(profile["vision"]["allow_model_request"], True)
+        self.assertEqual(profile["report"]["max_width_px"], 900)
+        self.assertEqual(profile["report"]["max_height_px"], 3000)
+        self.assertEqual(profile["report"]["max_pages"], 10)
+        self.assertEqual(profile["report"]["device_scale_factor"], 1.5)
+        self.assertEqual(profile["report"]["font_family"], "Noto Sans CJK")
+        self.assertEqual(profile["report"]["browser_path"], "/usr/bin/chromium")
+        self.assertIs(profile["report"]["reuse_browser"], False)
+        self.assertEqual(profile["report"]["render_timeout_ms"], 12000)
+        self.assertIs(profile["report"]["embed_attachments"], False)
+        self.assertIs(profile["report"]["attach_markdown"], True)
+        self.assertIs(profile["report"]["fallback_to_text"], False)
+        self.assertIs(profile["report"]["render_followup"], False)
+        self.assertEqual(profile["commands"]["reply_chunk_chars"], 2000)
+        self.assertEqual(profile["commands"]["max_list_items"], 20)
+
+    def test_invalid_advanced_float_and_mode_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "report_device_scale_factor"):
+            apply_panel_overrides(
+                self._config(),
+                {"report_device_scale_factor": "not-a-number"},
+            )
+        with self.assertRaisesRegex(ValueError, "report_reuse_browser_mode"):
+            apply_panel_overrides(
+                self._config(),
+                {"report_reuse_browser_mode": "sometimes"},
+            )
+
     def test_schema_defaults_are_inheritance_markers(self):
         cfg = self._config()
         panel = dict(PANEL_DEFAULTS)
