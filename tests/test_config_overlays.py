@@ -174,6 +174,79 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(profile["commands"]["reply_chunk_chars"], 2000)
         self.assertEqual(profile["commands"]["max_list_items"], 20)
 
+    def test_repo_advanced_fields_are_panel_overridable(self):
+        result = apply_panel_overrides(
+            self._config(),
+            {
+                "default_config": "Alpha",
+                "repo_search_mode": "agent",
+                "repo_path": " /repos/maa ",
+                "repo_url": "https://example.com/maa.git",
+                "repo_mirrors": [" https://mirror.example/maa.git ", ""],
+                "repo_branch": "dev",
+                "repo_default_branch": "main",
+                "repo_preload_enabled_mode": "disabled",
+                "repo_preload_retries": 5,
+                "repo_update_on_analyze_mode": "enabled",
+                "repo_allow_ai_update_mode": "disabled",
+                "repo_auto_checkout_version_mode": "disabled",
+                "repo_allow_ai_switch_tag_mode": "enabled",
+                "repo_max_tag_switch_rounds": 3,
+                "repo_restore_latest_after_analyze_mode": "disabled",
+                "repo_refuse_dirty_worktree_mode": "disabled",
+                "repo_max_tool_rounds": 6,
+                "repo_max_tool_calls_per_round": 4,
+                "repo_max_tool_result_chars": 12000,
+                "repo_max_tool_result_tokens": 4000,
+                "repo_max_tool_context_tokens": 16000,
+                "repo_agent_deadline_seconds": 900,
+                "repo_extensions": [" .json ", ".yaml", ""],
+                "repo_max_file_kb": 512,
+                "repo_max_scan_files": 5000,
+                "repo_max_files": 8,
+                "repo_max_identifiers": 12,
+                "repo_context_lines": 4,
+                "repo_max_block_lines": 80,
+                "repo_max_chars": 30000,
+            },
+        )
+        repo = result["bot"]["configs"]["Alpha"]["project"]["repo"]
+        self.assertEqual(repo["mode"], "agent")
+        self.assertEqual(repo["path"], "/repos/maa")
+        self.assertEqual(repo["url"], "https://example.com/maa.git")
+        self.assertEqual(repo["mirrors"], ["https://mirror.example/maa.git"])
+        self.assertEqual(repo["branch"], "dev")
+        self.assertEqual(repo["default_branch"], "main")
+        self.assertIs(repo["preload_enabled"], False)
+        self.assertEqual(repo["preload_retries"], 5)
+        self.assertIs(repo["update_on_analyze"], True)
+        self.assertIs(repo["allow_ai_update"], False)
+        self.assertIs(repo["auto_checkout_version"], False)
+        self.assertIs(repo["allow_ai_switch_tag"], True)
+        self.assertEqual(repo["max_tag_switch_rounds"], 3)
+        self.assertIs(repo["restore_latest_after_analyze"], False)
+        self.assertIs(repo["refuse_dirty_worktree"], False)
+        self.assertEqual(repo["max_tool_rounds"], 6)
+        self.assertEqual(repo["max_tool_calls_per_round"], 4)
+        self.assertEqual(repo["max_tool_result_chars"], 12000)
+        self.assertEqual(repo["max_tool_result_tokens"], 4000)
+        self.assertEqual(repo["max_tool_context_tokens"], 16000)
+        self.assertEqual(repo["agent_deadline_seconds"], 900)
+        self.assertEqual(repo["extensions"], [".json", ".yaml"])
+        self.assertEqual(repo["max_file_kb"], 512)
+        self.assertEqual(repo["max_scan_files"], 5000)
+        self.assertEqual(repo["max_files"], 8)
+        self.assertEqual(repo["max_identifiers"], 12)
+        self.assertEqual(repo["context_lines"], 4)
+        self.assertEqual(repo["max_block_lines"], 80)
+        self.assertEqual(repo["max_chars"], 30000)
+
+    def test_invalid_repo_search_mode_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "repo_search_mode"):
+            apply_panel_overrides(
+                self._config(), {"repo_search_mode": "browse"}
+            )
+
     def test_invalid_advanced_float_and_mode_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "report_device_scale_factor"):
             apply_panel_overrides(

@@ -51,7 +51,7 @@ AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 | `report_*` | 报告渲染模式、模板、尺寸、浏览器与渲染回退等高级项 |
 | `project_name` / `archive_match_mode` / `file_prefix` | 项目显示名、日志包识别模式与前缀 |
 | `require_log_layout_mode` / `ui_*_mode` | 日志布局校验与各 UI 日志包开关 |
-| `repo_mode` | 项目代码仓库开关；`inherit` 继承 JSON |
+| `repo_*` | 项目代码仓库开关、来源、分支、检索模式、版本切换与扫描限制 |
 | `llm_provider` / `llm_model` | 覆盖所选档案的首选 LLM 候选；端点、密钥和模型清单仍在 JSON 中声明 |
 | `vision_*` / `send_*_mode` | 看图开关、数量、细节、索图与报告图片、附件发送开关 |
 | `followup_mode` / `followup_window_minutes` | 追问开关与窗口 |
@@ -60,7 +60,7 @@ AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 | `log_to_file_mode` / `log_dir` / `log_level` | 文件日志开关、目录与等级 |
 
 空字符串、空列表、数值 `-1` 和各 `*_mode: inherit` 表示继承，不会清空高级 JSON。面板值只覆盖
-所选配置档案中的对应字段，其他档案、未涉及字段以及端点密钥、模型清单、仓库细节等
+所选配置档案中的对应字段，其他档案、未涉及字段以及端点密钥、模型清单等
 复杂设置保持原样；面板不会回写修改 `config.json`。
 
 ### 复用裸模式配置与数据

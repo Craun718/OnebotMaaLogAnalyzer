@@ -50,6 +50,10 @@ PANEL_NONNEGATIVE_INT_FIELDS = {
 PANEL_PROFILE_STRING_OVERRIDES: dict[str, tuple[str, ...]] = {
     "report_font_family": ("report", "font_family"),
     "report_browser_path": ("report", "browser_path"),
+    "repo_path": ("project", "repo", "path"),
+    "repo_url": ("project", "repo", "url"),
+    "repo_branch": ("project", "repo", "branch"),
+    "repo_default_branch": ("project", "repo", "default_branch"),
 }
 PANEL_PROFILE_FLOAT_OVERRIDES: dict[str, tuple[str, ...]] = {
     "report_device_scale_factor": ("report", "device_scale_factor"),
@@ -63,8 +67,34 @@ PANEL_PROFILE_INT_OVERRIDES: dict[str, tuple[str, ...]] = {
     "report_render_timeout_ms": ("report", "render_timeout_ms"),
     "commands_reply_chunk_chars": ("commands", "reply_chunk_chars"),
     "commands_max_list_items": ("commands", "max_list_items"),
+    "repo_preload_retries": ("project", "repo", "preload_retries"),
+    "repo_max_tag_switch_rounds": ("project", "repo", "max_tag_switch_rounds"),
+    "repo_max_tool_rounds": ("project", "repo", "max_tool_rounds"),
+    "repo_max_tool_calls_per_round": (
+        "project", "repo", "max_tool_calls_per_round"
+    ),
+    "repo_max_tool_result_chars": (
+        "project", "repo", "max_tool_result_chars"
+    ),
+    "repo_max_tool_result_tokens": (
+        "project", "repo", "max_tool_result_tokens"
+    ),
+    "repo_max_tool_context_tokens": (
+        "project", "repo", "max_tool_context_tokens"
+    ),
+    "repo_agent_deadline_seconds": ("project", "repo", "agent_deadline_seconds"),
+    "repo_max_file_kb": ("project", "repo", "max_file_kb"),
+    "repo_max_scan_files": ("project", "repo", "max_scan_files"),
+    "repo_max_files": ("project", "repo", "max_files"),
+    "repo_max_identifiers": ("project", "repo", "max_identifiers"),
+    "repo_context_lines": ("project", "repo", "context_lines"),
+    "repo_max_block_lines": ("project", "repo", "max_block_lines"),
+    "repo_max_chars": ("project", "repo", "max_chars"),
 }
-PANEL_PROFILE_LIST_OVERRIDES: dict[str, tuple[str, ...]] = {}
+PANEL_PROFILE_LIST_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "repo_mirrors": ("project", "repo", "mirrors"),
+    "repo_extensions": ("project", "repo", "extensions"),
+}
 PANEL_PROFILE_MODE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "vision_attach_error_screenshots_mode": (
         "vision", "attach_error_screenshots"
@@ -80,9 +110,29 @@ PANEL_PROFILE_MODE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "report_attach_markdown_mode": ("report", "attach_markdown"),
     "report_fallback_to_text_mode": ("report", "fallback_to_text"),
     "report_render_followup_mode": ("report", "render_followup"),
+    "repo_preload_enabled_mode": ("project", "repo", "preload_enabled"),
+    "repo_update_on_analyze_mode": ("project", "repo", "update_on_analyze"),
+    "repo_allow_ai_update_mode": ("project", "repo", "allow_ai_update"),
+    "repo_auto_checkout_version_mode": (
+        "project", "repo", "auto_checkout_version"
+    ),
+    "repo_allow_ai_switch_tag_mode": (
+        "project", "repo", "allow_ai_switch_tag"
+    ),
+    "repo_restore_latest_after_analyze_mode": (
+        "project", "repo", "restore_latest_after_analyze"
+    ),
+    "repo_refuse_dirty_worktree_mode": (
+        "project", "repo", "refuse_dirty_worktree"
+    ),
 }
 PANEL_PROFILE_OPTION_OVERRIDES: dict[str, tuple[str, ...]] = {
     "vision_detail": ("vision", "detail"),
+    "repo_search_mode": ("project", "repo", "mode"),
+}
+PANEL_PROFILE_OPTION_VALUES: dict[str, set[str]] = {
+    "vision_detail": {"", "low", "high", "auto"},
+    "repo_search_mode": {"", "inject", "agent"},
 }
 PANEL_TRISTATE_MODE_FIELDS = (
     PANEL_BASE_TRISTATE_MODE_FIELDS | set(PANEL_PROFILE_MODE_OVERRIDES)
@@ -148,6 +198,35 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "report_render_followup_mode": "inherit",
     "commands_reply_chunk_chars": -1,
     "commands_max_list_items": -1,
+    "repo_search_mode": "",
+    "repo_path": "",
+    "repo_url": "",
+    "repo_mirrors": [],
+    "repo_branch": "",
+    "repo_default_branch": "",
+    "repo_preload_enabled_mode": "inherit",
+    "repo_preload_retries": -1,
+    "repo_update_on_analyze_mode": "inherit",
+    "repo_allow_ai_update_mode": "inherit",
+    "repo_auto_checkout_version_mode": "inherit",
+    "repo_allow_ai_switch_tag_mode": "inherit",
+    "repo_max_tag_switch_rounds": -1,
+    "repo_restore_latest_after_analyze_mode": "inherit",
+    "repo_refuse_dirty_worktree_mode": "inherit",
+    "repo_max_tool_rounds": -1,
+    "repo_max_tool_calls_per_round": -1,
+    "repo_max_tool_result_chars": -1,
+    "repo_max_tool_result_tokens": -1,
+    "repo_max_tool_context_tokens": -1,
+    "repo_agent_deadline_seconds": -1,
+    "repo_extensions": [],
+    "repo_max_file_kb": -1,
+    "repo_max_scan_files": -1,
+    "repo_max_files": -1,
+    "repo_max_identifiers": -1,
+    "repo_context_lines": -1,
+    "repo_max_block_lines": -1,
+    "repo_max_chars": -1,
 }
 
 PANEL_PROFILE_FIELDS = (
@@ -599,10 +678,15 @@ def _apply_profile_field_mappings(
             mode = _mode_value(panel, key)
             _set_path(profile, path, mode == "enabled")
     for key, path in PANEL_PROFILE_OPTION_OVERRIDES.items():
-        if _changed(panel, key):
-            _set_path(
-                profile, path, str(_panel_value(panel, key)).strip().lower()
+        if not _changed(panel, key):
+            continue
+        value = str(_panel_value(panel, key)).strip().lower()
+        allowed = PANEL_PROFILE_OPTION_VALUES.get(key)
+        if allowed is not None and value not in allowed:
+            raise ValueError(
+                f"{key} 必须是 {', '.join(sorted(item for item in allowed if item))}。"
             )
+        _set_path(profile, path, value)
 
 
 def _apply_ui_mode(

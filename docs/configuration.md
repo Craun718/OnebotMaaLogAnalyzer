@@ -46,7 +46,14 @@ AstrBot 面板只映射常用字段：
 | `file_prefix` | 所选档案的 `project.file_prefix` | 保持原值 |
 | `require_log_layout_mode` | 所选档案的 `project.require_log_layout` | `inherit` 保持原值 |
 | `ui_mxu_mode` / `ui_mfaa_mode` / `ui_maafwapp_mode` / `ui_auto_mode` | 所选档案的 `project.ui.<名称>.enabled` | `inherit` 保持原值 |
-| `repo_mode` | 所选档案的 `project.repo.enabled` | `inherit` 保持原值 |
+| `repo_mode` / `repo_search_mode` / `repo_path` / `repo_url` | 所选档案的仓库开关、检索模式与来源 | `inherit` / 留空保持原值 |
+| `repo_mirrors` / `repo_branch` / `repo_default_branch` | 仓库镜像、克隆分支与还原分支 | 留空 / 空列表保持原值 |
+| `repo_preload_*` / `repo_update_on_analyze_mode` / `repo_allow_ai_update_mode` | 仓库预下载、重试、分析前更新与 AI 更新权限 | `inherit` / `-1` 保持原值 |
+| `repo_auto_checkout_version_mode` / `repo_allow_ai_switch_tag_mode` / `repo_max_tag_switch_rounds` | 日志版本切 tag、AI 切 tag 与轮数限制 | `inherit` / `-1` 保持原值 |
+| `repo_restore_latest_after_analyze_mode` / `repo_refuse_dirty_worktree_mode` | 分析后还原与脏工作区保护 | `inherit` 保持原值 |
+| `repo_max_tool_*` / `repo_agent_deadline_seconds` | agent 模式轮次、调用数、结果、上下文与超时限制 | `-1` 保持原值 |
+| `repo_extensions` / `repo_max_file_kb` / `repo_max_scan_files` / `repo_max_files` | 仓库扫描扩展名、大小、文件数与注入文件数 | 空列表 / `-1` 保持原值 |
+| `repo_max_identifiers` / `repo_context_lines` / `repo_max_block_lines` / `repo_max_chars` | inject 模式标识符、上下文、JSON 块与字符限制 | `-1` 保持原值 |
 | `llm_provider` / `llm_model` | 所选档案 `llm.models[0].name` / `.model` | 保持原值 |
 | `vision_mode` / `vision_max_images` / `vision_max_image_kb` | 所选档案的看图开关与数量、大小上限 | `inherit` 标记保持原值 |
 | `vision_detail` / `vision_*_mode` | 看图细节、错误截图、项目模板图与模型索图 | `inherit` 标记保持原值 |
@@ -63,7 +70,7 @@ AstrBot 面板只映射常用字段：
 | `log_level` | `log.log_level` | 保持原值 |
 
 空字符串、空列表、数值 `-1` 和各 `*_mode: inherit` 都是继承标记。面板覆盖不会回写 `config.json`，
-未选中的配置档案以及端点、密钥、模型清单、仓库细节和自定义高级字段保持不变。`llm_provider`
+未选中的配置档案以及端点、密钥、模型清单和自定义高级字段保持原值。`llm_provider`
 与 `llm_model` 只负责选择 JSON 中已声明的首选候选，不会创建或修改 LLM 端点。
 
 复用裸模式配置时，建议在 AstrBot 面板中同时填写绝对 `config_file` 与绝对 `data_dir`。
