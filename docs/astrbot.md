@@ -38,7 +38,7 @@ AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 
 ## 配置
 
-完整配置格式与裸 OneBot 模式相同，详见[配置](configuration.md)。AstrBot 面板只映射常用项：
+完整配置格式与裸 OneBot 模式相同，详见[配置](configuration.md)。AstrBot 面板映射常用项和大多数高级项；配置档案增删改排序、未被选择的 LLM Provider/Model 数组项等复杂结构仍需高级 JSON：
 
 | 面板项 | 行为 |
 | --- | --- |
@@ -129,7 +129,7 @@ base64。不同协议端对 `upload_group_file`、异步返回值和群文件 UR
 
 **面板改了值但未生效**
 
-确认 `default_config` 指向现有档案，面板非空值才会覆盖；复杂设置仍需编辑高级 JSON。
+确认 `default_config` 指向现有档案，面板非空值才会覆盖；配置档案管理、未被选择的 Provider/Model 数组项和数组顺序仍需编辑高级 JSON。
 修改后执行 `/maa reload` 或重载插件。
 
 **插件停用后仍有旧任务**
