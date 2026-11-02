@@ -32,7 +32,7 @@ import json
 import logging
 import shutil
 import time
-from core.concurrency import run_blocking
+from maa_analyzer.core.concurrency import run_blocking
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -150,7 +150,7 @@ class HistoryStore:
 
     def cleanup_staging(self, max_age_hours: float = 6.0) -> int:
         """清理崩溃遗留的暂存解压目录（已归档的都在记录目录里）。"""
-        from features.maa.archive_extract import cleanup_stale_dirs
+        from maa_analyzer.features.maa.archive_extract import cleanup_stale_dirs
 
         removed = 0
         for name in self._known_config_names():

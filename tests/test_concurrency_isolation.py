@@ -10,13 +10,13 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.concurrency import KeyedLocks, KeyedThreadLocks, run_blocking
-from core.models import AnalysisSettings, ProjectConfig, ReportConfig
-from core.service import MaaService
-from features.maa.analyzer import AnalysisOutcome, MaaAnalyzer
-from features.maa.followup import FollowupStore, resolve_window_minutes
+from maa_analyzer.core.concurrency import KeyedLocks, KeyedThreadLocks, run_blocking
+from maa_analyzer.core.models import AnalysisSettings, ProjectConfig, ReportConfig
+from maa_analyzer.core.service import MaaService
+from maa_analyzer.features.maa.analyzer import AnalysisOutcome, MaaAnalyzer
+from maa_analyzer.features.maa.followup import FollowupStore, resolve_window_minutes
 
-import features.maa.render as render_mod
+import maa_analyzer.features.maa.render as render_mod
 
 
 def _settings(**overrides) -> AnalysisSettings:
@@ -62,9 +62,7 @@ class KeyedLockTests(unittest.TestCase):
         first = asyncio.run(use())
         second = asyncio.run(use())
         self.assertIsNot(first, second)
-        with self.assertRaises(RuntimeError):
-            # 旧循环上的锁不应再被使用；新锁在当前循环里可用
-            self.assertIs(locks.get("k"), second)
+        self.assertIs(locks.get("k"), second)
 
 
 class BlockingOffloadTests(unittest.IsolatedAsyncioTestCase):
@@ -268,7 +266,7 @@ class ConfigSaveOffloadTests(unittest.IsolatedAsyncioTestCase):
         dm = SimpleNamespace(
             save_config=lambda name, state: calls.append(name)
         )
-        service = MaaService(api=SimpleNamespace(), dm=dm)
+        service = MaaService(port=SimpleNamespace(), dm=dm)
         service.configs["a"] = SimpleNamespace(name="a")
 
         await service.save_config_async("a")

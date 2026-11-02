@@ -59,7 +59,7 @@ from maa_analyzer.features.maa.log_tools import LogArchiveTools
 from maa_analyzer.features.maa.onebot_files import download_group_file, get_all_files
 from maa_analyzer.features.maa.prompts import build_system_prompt, build_tool_hint
 from maa_analyzer.features.maa.render import RenderAttachment, render_report
-from core import vision as vision_util
+from maa_analyzer.core import vision as vision_util
 from maa_analyzer.features.maa.repo import RepoProvider, extract_identifiers, remove_repo_tree
 from maa_analyzer.features.maa.repo_tools import (
     LOG_TOOL_DEFINITIONS,

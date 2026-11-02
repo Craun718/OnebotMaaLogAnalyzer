@@ -14,8 +14,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from core.models import AnalysisSettings, RepoConfig
-from core.tokens import (
+from maa_analyzer.core.models import AnalysisSettings, RepoConfig
+from maa_analyzer.core.tokens import (
     IMAGE_PART_TOKENS,
     MIN_TOOL_RESULT_TOKENS,
     clamp_tool_result_tokens,
@@ -24,17 +24,17 @@ from core.tokens import (
     fold_text,
     trim_to_tokens,
 )
-from features.maa.analyzer import MaaAnalyzer
-from features.maa.archive_extract import (
+from maa_analyzer.features.maa.analyzer import MaaAnalyzer
+from maa_analyzer.features.maa.archive_extract import (
     ArchiveProbe,
     cleanup_stale_dirs,
     probe_archive,
 )
-from features.maa.attachments import build_report_segments, text_segments
-from features.maa.history import HistoryStore
-from features.maa.log_digest import DigestResult
-from features.maa.log_tools import LogArchiveTools
-from features.maa.repo_tools import RepoTools
+from maa_analyzer.features.maa.attachments import build_report_segments, text_segments
+from maa_analyzer.features.maa.history import HistoryStore
+from maa_analyzer.features.maa.log_digest import DigestResult
+from maa_analyzer.features.maa.log_tools import LogArchiveTools
+from maa_analyzer.features.maa.repo_tools import RepoTools
 
 
 def _run_with_timeout(callable_, seconds=5):
@@ -505,7 +505,7 @@ class ArchiveExtractionTests(unittest.TestCase):
             archive.writestr("a.log", "x" * (3 * 1024 * 1024))
         # 假装 probe 通过（模拟头声明 1 字节、实际 3 MB）
         with mock.patch(
-            "features.maa.archive_extract.probe_archive",
+            "maa_analyzer.features.maa.archive_extract.probe_archive",
             return_value=ArchiveProbe(ok=True, total_bytes=1, member_count=1),
         ):
             tools = LogArchiveTools(str(liar), max_total_mb=1)
