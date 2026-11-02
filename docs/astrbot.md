@@ -56,6 +56,7 @@ AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 | `vision_*` / `send_*_mode` | 看图开关、数量、细节、索图与报告图片、附件发送开关 |
 | `followup_mode` / `followup_window_minutes` | 追问开关与窗口 |
 | `history_mode` / `history_period_hours` / `history_keep_periods` | 历史开关、周期与保留数量 |
+| `settings_*` | 分析触发、反馈、上下文、超时、压缩包与日志摘要高级设置 |
 | `commands_*` | 管理指令开关、权限等级、回复分段与列表条数 |
 | `log_to_file_mode` / `log_dir` / `log_level` | 文件日志开关、目录与等级 |
 

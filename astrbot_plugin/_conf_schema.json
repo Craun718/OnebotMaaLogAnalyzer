@@ -629,5 +629,335 @@
     "description": "代码片段字符上限；-1 沿用高级 JSON",
     "type": "int",
     "default": -1
+  },
+  "settings_file_list_delay_seconds": {
+    "description": "上传后等待文件列表秒数；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "settings_duplicate_window_seconds": {
+    "description": "同文件去重窗口秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_send_progress_message_mode": {
+    "description": "发送进度提示；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_send_summary_mode": {
+    "description": "发送分析结果；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_reply_chunk_chars": {
+    "description": "回复分段字符数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_report_images": {
+    "description": "最多附带图片数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_report_files": {
+    "description": "最多附带文件数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_file_attachment_mb": {
+    "description": "单个附件大小上限 MB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_inline_attachments_mode": {
+    "description": "附件插入文字中间；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_followup_max_turns": {
+    "description": "单会话最多追问轮数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_followup_max_sessions": {
+    "description": "最多保留追问会话数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_history_max_records": {
+    "description": "历史记录条数上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_history_max_total_mb": {
+    "description": "历史目录大小上限 MB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_analysis_concurrency": {
+    "description": "同时分析任务数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_download_concurrency": {
+    "description": "同时下载数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_download_timeout_seconds": {
+    "description": "下载超时秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_digest_timeout_seconds": {
+    "description": "摘要提取超时秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_ai_stage_timeout_seconds": {
+    "description": "AI 阶段超时秒数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_context_tokens": {
+    "description": "上下文 token 预算；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_context_compact_enabled_mode": {
+    "description": "超限自动压缩上下文；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_context_compact_ratio": {
+    "description": "触发压缩预算占比；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "settings_context_retain_ratio": {
+    "description": "压缩后保留最近对话占比；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "settings_context_prune_tool_result_tokens": {
+    "description": "历史工具结果裁剪 token；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_context_summary_tokens": {
+    "description": "压缩摘要 token 上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_analysis_cache_hours": {
+    "description": "分析缓存小时数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_circuit_breaker_enabled_mode": {
+    "description": "连续失败熔断端点；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_system_prompt": {
+    "description": "自定义系统提示词；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "settings_log_tools_enabled_mode": {
+    "description": "允许 AI 直读日志包；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_cleanup_after_done_mode": {
+    "description": "完成后清理临时文件；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_save_digest_debug_mode": {
+    "description": "保存发送摘要调试文件；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_max_zip_size_mb": {
+    "description": "zip 大小上限 MB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_total_uncompressed_mb": {
+    "description": "解压总大小上限 MB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_prompt_chars": {
+    "description": "摘要字符上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_zip_members": {
+    "description": "zip 成员数上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_log_files": {
+    "description": "最多处理日志文件数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_maafw_bak_files": {
+    "description": "最多处理 maafw.bak 数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_maafw_bak_mb": {
+    "description": "单个 maafw.bak 上限 MB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_merge_archive_parts_mode": {
+    "description": "自动合并分卷包；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_archive_part_settle_seconds": {
+    "description": "分卷静默期秒数；留空沿用高级 JSON",
+    "type": "string",
+    "default": ""
+  },
+  "settings_max_log_file_read_kb": {
+    "description": "普通日志读取上限 KB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_small_log_full_read_mb": {
+    "description": "小日志完整读取阈值 MB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_stream_medium_logs_mode": {
+    "description": "流式扫描中等日志；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_large_log_threshold_mb": {
+    "description": "巨型日志阈值 MB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_large_log_read_kb": {
+    "description": "巨型日志前缀读取 KB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_stream_large_logs_mode": {
+    "description": "流式深扫巨型日志；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_max_stream_log_mb": {
+    "description": "巨型日志流式扫描上限 MB；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_sections_per_log": {
+    "description": "单日志小节数上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_log_chars": {
+    "description": "单日志摘要字符上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_compress_context_noise_mode": {
+    "description": "折叠低价值日志行；inherit 沿用高级 JSON",
+    "type": "string",
+    "default": "inherit",
+    "options": [
+      "inherit",
+      "enabled",
+      "disabled"
+    ]
+  },
+  "settings_max_recognition_evidence_lines": {
+    "description": "OCR 证据行数上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_max_recognition_evidence_chars": {
+    "description": "OCR 证据字符上限；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_log_head_lines": {
+    "description": "日志小节保留开头行数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_context_before_lines": {
+    "description": "错误命中前保留行数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
+  },
+  "settings_context_after_lines": {
+    "description": "错误命中后保留行数；-1 沿用高级 JSON",
+    "type": "int",
+    "default": -1
   }
 }

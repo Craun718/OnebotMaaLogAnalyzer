@@ -63,6 +63,9 @@ AstrBot 面板只映射常用字段：
 | `history_mode` | 所选档案的 `settings.history_enabled` | `inherit` 保持原值 |
 | `history_period_hours` | 所选档案的 `settings.history_period_hours` | `-1` 保持原值 |
 | `history_keep_periods` | 所选档案的 `settings.history_keep_periods` | `-1` 保持原值 |
+| `settings_*` | 分析触发、去重、反馈、附图、附件、追问、历史、并发、超时、上下文压缩与缓存等高级设置 | 继承标记保持原值 |
+| `settings_max_zip_*` / `settings_max_log_*` / `settings_*_lines` | 压缩包、日志文件、摘要与证据提取上限 | `-1` 保持原值 |
+| `settings_system_prompt` | 自定义系统提示词 | 留空保持原值 |
 | `commands_mode` / `commands_*_level` | 所选档案的 `commands.enabled` 与权限等级 | `-1` / `inherit` 保持原值 |
 | `commands_reply_chunk_chars` / `commands_max_list_items` | 指令回复分段与任务列表条数 | `-1` 保持原值 |
 | `log_to_file_mode` | `log.log_to_file` | `inherit` 保持原值 |
