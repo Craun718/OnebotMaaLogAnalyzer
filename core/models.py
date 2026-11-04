@@ -62,9 +62,9 @@ class CommandConfig(BaseModel):
     owners: List[str] = Field(default_factory=list)   # 超管 QQ 号
     admins: List[str] = Field(default_factory=list)   # 管理员 QQ 号
 
-    read_level: int = 0    # 查看类指令所需等级
+    read_level: int = 1    # 查看类指令所需等级（默认仅管理员及以上）
     write_level: int = 2   # 修改类指令所需等级
-    followup_level: int = 0  # 追问答疑所需等级
+    followup_level: int = 0  # 追问答疑所需等级（`followup close` 另需 >=1）
 
     reply_chunk_chars: int = 3500
     max_list_items: int = 40
@@ -258,12 +258,21 @@ class RepoConfig(BaseModel):
     mirrors: List[str] = Field(default_factory=list)
     branch: str = ""
     default_branch: str = ""       # 分析结束后切回的目标，空 = 自动探测
-    # 启动时预下载：完整克隆（含全部历史 / tag）并初始化子模块；
-    # 关闭时改为首次分析时浅克隆，并按需拉取 tag / commit
+    # 启动时预下载：在 canonical 目录做完整克隆（含全部历史 / tag）并初始化子模块。
+    # 分析现场**一律**用临时浅克隆（与这个开关无关）：开关只决定要不要在后台
+    # 做完整克隆，关掉则永远只用浅克隆（版本切换时按需拉取 tag）。
     preload_enabled: bool = True
     preload_retries: int = 3
     update_on_analyze: bool = False  # 每份日志分析前更新默认分支
     allow_ai_update: bool = True    # 允许 AI 请求更新当前配置的仓库
+
+    # ── 时长上限（0 = 沿用内置常量）──
+    # 分析/追问现场只做浅克隆（完整克隆只由后台预下载负责），这里是它的单次上限。
+    shallow_clone_timeout_seconds: int = 600
+    # 后台预下载一次完整克隆的总上限（含子模块）。
+    preload_timeout_seconds: int = 1800
+    # 分析/追问路径里「更新默认分支」的总预算（探测 + fetch）。
+    update_timeout_seconds: int = 600
 
     # ── 版本切换 ──
     auto_checkout_version: bool = True      # 从日志版本号自动切 tag
@@ -523,6 +532,15 @@ class AnalysisSettings(BaseModel):
     # 分卷包静默期：每收到一个新分卷就重新计时，连续该秒数无新分卷后才分析
     # 0 = 收到第一个分卷立即分析（可能缺少后续分卷）
     archive_part_settle_seconds: float = 30.0
+    # 分卷齐全性判据：编号连续 + 内容特征（至少一卷含非图片成员，即日志正文/配置）。
+    # 关掉内容判据则只按编号连续判定（编号无法发现"后面的卷还没上传"）。
+    archive_part_require_content: bool = True
+    # 判定不完整时额外等待的轮数，每轮再等 archive_part_settle_seconds 秒。
+    # 0 = 不额外等待（与旧行为一致）
+    archive_part_wait_extra_rounds: int = 1
+    # 额外等待用尽后仍不完整：analyze = 照常分析，并在提示词与报告里标注缺失；
+    # cancel = 取消本次分析并提示补齐后重传
+    archive_part_incomplete_action: str = "analyze"
     max_log_file_read_kb: int = 512
     small_log_full_read_mb: int = 5
     stream_medium_logs: bool = True

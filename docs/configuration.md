@@ -261,7 +261,7 @@
 | 字段 | 类型 / 默认 | 说明 | 示例 |
 | --- | --- | --- | --- |
 | `data_dir` | `string` / `"data"` | 数据根目录（相对启动时的工作目录）。设置、历史、仓库缓存、用量都写在下面；调试模式下不生效 | `"data_dir": "data"` |
-| `configs` | `object` / — | 多群配置：键是**配置名**，值是下面这组字段。配置名同时用于日志前缀 `[配置名]` 与数据子目录 `data/<配置名>/`，改名等于换一套数据 | `"configs": { "官服": { "listen_groups": ["111111111"] } }` |
+| `configs` | `object` / — | 多群配置：键是**配置名**，值是下面这组字段。配置名同时用于日志前缀 `[配置名]` 与数据子目录 `data/<配置名>/`，改名等于换一套数据；目录名会被清洗（只留字母数字与 `._-`，其余替换为 `_`），升级前已有的老目录名继续沿用 | `"configs": { "官服": { "listen_groups": ["111111111"] } }` |
 | `configs.<名称>.listen_groups` | `string[]` / `[]` | 要监听的群号（字符串）。为空则该配置不接收任何群 | `"listen_groups": ["111111111"]` |
 | `configs.<名称>.notify_group` | `string` / `null` | 分析结果额外推送的群号；`null` / 空串 = 只发回原群 | `"notify_group": "111111111"` |
 | `configs.<名称>.project` | `object` / — | 项目名、日志包识别方式、UI 开关、代码仓库，见 [project](#project项目配置) | `"project": { "name": "MaaXXX" }` |
@@ -358,7 +358,7 @@ data/
 | `mirrors` | `string[]` / `[]` | 备用地址，按顺序依次尝试，直到一个来源成功 | `"mirrors": ["https://gitee.com/xx/MaaXXX.git"]` |
 | `branch` | `string` / `""` | 克隆时使用的分支 / tag；空 = 仓库默认分支 | `"branch": "dev"` |
 | `default_branch` | `string` / `""` | 分析结束还原时的兜底目标；空 = 自动探测 | `"default_branch": "main"` |
-| `preload_enabled` | `bool` / `true` | 启动后后台完整克隆（含全部历史 / tag）并初始化子模块；关闭则首次分析时浅克隆、按需拉 tag | `"preload_enabled": false` |
+| `preload_enabled` | `bool` / `true` | 启动后后台完整克隆（含全部历史 / tag）并初始化子模块；**分析现场始终浅克隆**，关闭则不做完整克隆、tag 按需拉取 | `"preload_enabled": false` |
 | `preload_retries` | `int` / `3` | 启动预下载失败的重试次数（最大 5，间隔递增） | `"preload_retries": 5` |
 | `update_on_analyze` | `bool` / `false` | 每份日志分析前先更新默认分支，再对齐日志版本 tag | `"update_on_analyze": true` |
 | `allow_ai_update` | `bool` / `true` | 允许 AI 用 `pull_latest` 更新当前仓库的默认分支（不接受 URL 或 Git 命令） | `"allow_ai_update": false` |
@@ -373,6 +373,9 @@ data/
 | `max_tool_result_tokens` | `int` / `0` | **agent** 单次工具结果 token 上限；`0` = 由 `max_tool_result_chars` 估算，非 0 时最小 64 | `"max_tool_result_tokens": 4000` |
 | `max_tool_context_tokens` | `int` / `0` | 工具结果累计 token 预算；`0` = 不超过本次上下文预算的 50% | `"max_tool_context_tokens": 16000` |
 | `agent_deadline_seconds` | `int` / `600` | **agent** 循环总时长上限 | `"agent_deadline_seconds": 900` |
+| `shallow_clone_timeout_seconds` | `int` / `600` | 分析/追问现场**浅克隆**的单次上限（秒）；`0` = 内置 600 | `"shallow_clone_timeout_seconds": 300` |
+| `preload_timeout_seconds` | `int` / `1800` | 后台预下载一次**完整克隆**（含子模块）的总上限（秒）；`0` = 内置 1800 | `"preload_timeout_seconds": 900` |
+| `update_timeout_seconds` | `int` / `600` | 分析/追问里「更新默认分支」的总预算（探测 + fetch，秒）；`0` = 内置 | `"update_timeout_seconds": 120` |
 | `extensions` | `string[]` / `json/jsonc/yaml/yml/toml/md/txt` | 参与扫描的文件扩展名 | `"extensions": [".json", ".yaml"]` |
 | `max_file_kb` | `int` / `256` | 跳过大于该值的文件（KB） | `"max_file_kb": 512` |
 | `max_scan_files` | `int` / `20000` | 单次扫描文件数上限 | `"max_scan_files": 5000` |
@@ -439,7 +442,7 @@ project： config.json 的 project
 | MFAAvalonia | `log_20261019_110324.zip`、`log_20261019_141709-part01.zip` | `mfaa` |
 | MaaFwApp | `maafw_logs_20261022_195657.zip` | `maafwapp` |
 
-Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版本，并写入摘要和报告头；分卷包 `*-partNN.zip` 会先等待上传（连续 `archive_part_settle_seconds` 秒无新分卷），再自动下载并合并分析。
+Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版本，并写入摘要和报告头；分卷包 `*-partNN.zip` 会先等待上传（连续 `archive_part_settle_seconds` 秒无新分卷），再自动下载并合并分析。合并后按「编号连续 + 内容特征」判断是否齐全：不完整时最多额外等 `archive_part_wait_extra_rounds` 轮，仍不完整则按 `archive_part_incomplete_action` 处理（照常分析并标注缺失，或取消并提示补齐后重传）。
 
 > 旧字段 `settings.file_prefix` / `extra_file_prefixes` / `auto_detect_archive` / `display_name` / `archive_match_mode` / `require_log_layout` / `repo` 已移除，写在 `settings` 里会被静默忽略；日志包匹配、UI 开关、项目名、项目仓库只在 `project` 中生效。
 
@@ -611,6 +614,9 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `max_maafw_bak_mb` | `int` / `64` | 单个 `maafw.bak` 大小上限 MB；`0` = 不限制 | `"max_maafw_bak_mb": 32` |
 | `merge_archive_parts` | `bool` / `true` | 自动合并 `*-partNN.zip` 分卷日志包 | `"merge_archive_parts": false` |
 | `archive_part_settle_seconds` | `float` / `30` | 分卷静默期：连续该秒数无新分卷才开始分析；`0` = 首个分卷立即分析 | `"archive_part_settle_seconds": 60` |
+| `archive_part_require_content` | `bool` / `true` | 分卷齐全性是否要求内容特征（至少一卷含日志正文/配置）；`false` = 只按编号连续判定 | `"archive_part_require_content": false` |
+| `archive_part_wait_extra_rounds` | `int` / `1` | 判定不完整时额外等待的轮数（每轮再等 `archive_part_settle_seconds` 秒） | `"archive_part_wait_extra_rounds": 2` |
+| `archive_part_incomplete_action` | `str` / `analyze` | 仍不完整时：`analyze`（照常分析并标注缺失）或 `cancel`（取消并提示重传） | `"archive_part_incomplete_action": "cancel"` |
 | `max_log_file_read_kb` | `int` / `512` | 日志包单文件读取/工具返回窗口上限 KB（`log_search` 流式全量扫描，不受此限） | `"max_log_file_read_kb": 1024` |
 | `small_log_full_read_mb` | `int` / `5` | 小于该值完整读取（MB） | `"small_log_full_read_mb": 3` |
 | `stream_medium_logs` | `bool` / `true` | 流式扫描中等日志 | `"stream_medium_logs": false` |
@@ -652,14 +658,17 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `prefix` | `string` / `"/maa"` | 指令前缀 | `"prefix": "!maa"` |
 | `owners` | `string[]` / `[]` | 超管 QQ 号列表（等级 2，可修改任何配置） | `"owners": ["10001"]` |
 | `admins` | `string[]` / `[]` | 管理员 QQ 号列表（等级 1，配合 `write_level: 1` 授予写权限） | `"admins": ["10002"]` |
-| `read_level` | `int` / `0` | 查看类指令所需等级（`status` / `get` / `jobs` / `history` / `ai` …） | `"read_level": 1` |
+| `read_level` | `int` / `1` | 查看类指令所需等级（`status` / `get` / `project` / `repo` / `jobs` / `history` / `ai`；默认仅管理员及以上，`0` = 群内任何人） | `"read_level": 0` |
 | `write_level` | `int` / `2` | 修改类指令所需等级（`set` / `project set` / `repo` …） | `"write_level": 1` |
-| `followup_level` | `int` / `0` | 追问答疑所需等级 | `"followup_level": 1` |
+| `followup_level` | `int` / `0` | 追问答疑所需等级；`followup close`（结束会话）另需至少 `1` | `"followup_level": 1` |
 | `reply_chunk_chars` | `int` / `3500` | 指令回复的分段字符数 | `"reply_chunk_chars": 2000` |
 | `max_list_items` | `int` / `40` | `/maa jobs` 列表最多展示的任务条数 | `"max_list_items": 20` |
 
 - 等级 2 = `owners` 中的 QQ；等级 1 = `admins` 中的 QQ，或协议端上报的群管理 / 群主；其余为 0
 - 默认 `write_level: 2`（仅超管可改）是刻意的保守选择：`repo.url` 一旦可改，等于允许让 Bot 去读取任意 git 仓库
+- 默认 `read_level: 1`：查看类指令会暴露群列表、群内上传记录、本地仓库路径与模型用量，因此默认只对管理员开放；想让群成员也能查，显式设 `"read_level": 0`
+- 报告本身照常发到群里（主动推送不走指令），提级只影响手动查询
+- `followup_level` 默认 `0` 表示**群成员仍可引用报告追问**；但 `followup close`（结束会话）是写操作，任何情况下都至少需要等级 `1`
 - `system_prompt` 不允许通过指令修改（避免提示词注入）
 
 指令全集与输出格式见 [QQ 指令](commands.md)。
