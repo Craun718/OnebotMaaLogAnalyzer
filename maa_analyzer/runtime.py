@@ -163,8 +163,6 @@ class MaaWorkflowRuntime:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-        if self.analyzer is not None:
-            self.analyzer.close()
         if self.service is not None:
             try:
                 self.service.save()
@@ -231,12 +229,13 @@ class MaaWorkflowRuntime:
         while True:
             try:
                 await asyncio.sleep(max(300, int(interval_seconds or 3600)))
-                results = history.cleanup_all(
+                results = await history.cleanup_all_async(
                     {
                         name: state.settings
                         for name, state in service.configs.items()
                     }
                 )
+                await history.cleanup_staging_async()
                 for name, result in results.items():
                     if result.removed:
                         logger.info(

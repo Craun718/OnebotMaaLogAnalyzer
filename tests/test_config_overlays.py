@@ -316,7 +316,7 @@ class PanelOverrideTests(unittest.TestCase):
             "max_file_attachment_mb", "inline_attachments",
             "followup_max_turns", "followup_max_sessions",
             "history_max_records", "history_max_total_mb",
-            "analysis_concurrency", "download_concurrency",
+            "download_concurrency",
             "download_timeout_seconds", "digest_timeout_seconds",
             "ai_stage_timeout_seconds", "max_context_tokens",
             "context_compact_enabled", "context_compact_ratio",

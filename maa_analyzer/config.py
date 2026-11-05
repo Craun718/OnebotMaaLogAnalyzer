@@ -112,7 +112,6 @@ PANEL_PROFILE_INT_OVERRIDES: dict[str, tuple[str, ...]] = {
     "settings_followup_max_sessions": ("settings", "followup_max_sessions"),
     "settings_history_max_records": ("settings", "history_max_records"),
     "settings_history_max_total_mb": ("settings", "history_max_total_mb"),
-    "settings_analysis_concurrency": ("settings", "analysis_concurrency"),
     "settings_download_concurrency": ("settings", "download_concurrency"),
     "settings_download_timeout_seconds": ("settings", "download_timeout_seconds"),
     "settings_digest_timeout_seconds": ("settings", "digest_timeout_seconds"),
@@ -378,7 +377,6 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "settings_followup_max_sessions": -1,
     "settings_history_max_records": -1,
     "settings_history_max_total_mb": -1,
-    "settings_analysis_concurrency": -1,
     "settings_download_concurrency": -1,
     "settings_download_timeout_seconds": -1,
     "settings_digest_timeout_seconds": -1,
@@ -554,7 +552,6 @@ def default_config() -> dict:
                         "history_keep_periods": 2,
                         "ai_stage_timeout_seconds": 300,
                         "max_context_tokens": 0,
-                        "analysis_concurrency": 2,
                     },
                     "commands": {
                         "enabled": True,
@@ -1338,7 +1335,10 @@ def load_effective_config(
     """Load advanced JSON, apply panel overrides, and resolve runtime paths."""
     panel = panel or {}
     plugin_dir = Path(plugin_data_dir).resolve()
-    configured_path = str(_panel_value(panel, "config_file") or "").strip()
+    configured_path = (
+        str(_panel_value(panel, "config_file") or "").strip()
+        or "config.json"
+    )
     config_path = Path(configured_path).expanduser()
     if not config_path.is_absolute():
         config_path = plugin_dir / config_path

@@ -710,11 +710,6 @@
     "type": "int",
     "default": -1
   },
-  "settings_analysis_concurrency": {
-    "description": "同时分析任务数；-1 沿用高级 JSON",
-    "type": "int",
-    "default": -1
-  },
   "settings_download_concurrency": {
     "description": "同时下载数；-1 沿用高级 JSON",
     "type": "int",

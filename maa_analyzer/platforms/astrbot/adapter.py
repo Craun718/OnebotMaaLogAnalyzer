@@ -90,6 +90,27 @@ def _message_id(value: Any) -> str | None:
     return None
 
 
+def _explicit_failure(value: Any) -> bool:
+    """True only when a response carries a status or retcode saying it failed.
+
+    AIOCQHTTP implementations differ in what ``call_action`` hands back: some
+    return the whole envelope, some only its ``data`` field. For
+    ``upload_group_file`` that ``data`` is usually ``null`` even on success, so a
+    missing signal must not be read as a failure.
+    """
+    if isinstance(value, Mapping):
+        status = _text(_get(value, "status")).lower()
+        if status in {"failed", "error", "fail"}:
+            return True
+        retcode = _get(value, "retcode", _get(value, "code"))
+        if retcode is not None:
+            try:
+                return int(retcode) != 0
+            except (TypeError, ValueError):
+                pass
+    return False
+
+
 def _api_success(value: Any, *, allow_empty: bool = False) -> bool:
     """Return whether a OneBot API response represents success."""
     if value is None or value is False:
@@ -97,16 +118,8 @@ def _api_success(value: Any, *, allow_empty: bool = False) -> bool:
     if value is True:
         return True
     if isinstance(value, Mapping):
-        status = _text(_get(value, "status")).lower()
-        if status in {"failed", "error", "fail"}:
+        if _explicit_failure(value):
             return False
-        retcode = _get(value, "retcode", _get(value, "code"))
-        if retcode is not None:
-            try:
-                if int(retcode) != 0:
-                    return False
-            except (TypeError, ValueError):
-                pass
         return allow_empty or bool(value)
     return True
 
@@ -513,25 +526,37 @@ class AstrBotPlatformAdapter:
             return await self.map_group_upload(event)
         return await self.map_group_message(event)
 
-    async def _call_action(self, action: str, **params: Any) -> Any:
+    async def _call_action_result(
+        self, action: str, **params: Any
+    ) -> tuple[bool, Any]:
+        """Call a bot action and report whether the call itself succeeded.
+
+        The flag is False only when no bot is bound or the call raised. A
+        successful call can still carry a ``None`` payload, and the value is
+        whatever the implementation handed back.
+        """
         bot = self.bot
         if bot is None:
-            return None
+            return False, None
         call_action = getattr(bot, "call_action", None)
         if callable(call_action):
             try:
-                return await call_action(action, **params)
+                return True, await call_action(action, **params)
             except Exception as exc:
                 logger.warning("[AstrBot] %s 调用失败：%s", action, exc)
-                return None
+                return False, None
         api = getattr(bot, "api", None)
         api_call = getattr(api, "call_action", None)
         if callable(api_call):
             try:
-                return await api_call(action, **params)
+                return True, await api_call(action, **params)
             except Exception as exc:
                 logger.warning("[AstrBot] %s 调用失败：%s", action, exc)
-        return None
+        return False, None
+
+    async def _call_action(self, action: str, **params: Any) -> Any:
+        _, result = await self._call_action_result(action, **params)
+        return result
 
     async def _send_group(
         self, group_id: int, message: Sequence[Mapping[str, Any]]
@@ -576,13 +601,17 @@ class AstrBotPlatformAdapter:
     async def upload_group_file(
         self, group_id: int, file: str, name: str
     ) -> bool:
-        result = await self._call_action(
+        called, result = await self._call_action_result(
             "upload_group_file",
             group_id=_api_id(group_id),
             file=file,
             name=name,
         )
-        return _api_success(result)
+        if not called:
+            return False
+        # 成功时 data 常常是 null；只在响应明确报失败时才判失败，否则
+        # send_file 会再用 base64 传一遍，群里会出现重复文件。
+        return not _explicit_failure(result)
 
     async def send_file(
         self, group_id: int, file_name: str, data: bytes

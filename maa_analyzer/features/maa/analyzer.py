@@ -458,8 +458,10 @@ class MaaAnalyzer:
 
     @property
     def _template_root(self) -> Path:
+        if self._template_root_path is not None:
+            return self._template_root_path
         # features/maa/analyzer.py → 工程根目录/templates
-        return Path(__file__).resolve().parents[2] / "templates"
+        return Path(__file__).resolve().parents[3] / "templates"
 
     @staticmethod
     def _context_budget(settings: AnalysisSettings, llm: LLMPool,
@@ -632,6 +634,7 @@ class MaaAnalyzer:
         file_name: str,
         file_id: Optional[str],
         file_size: Optional[int],
+        file_url: str = "",
         uploader: str = "",
         progress: Optional[callable] = None,
     ) -> AnalysisOutcome:
@@ -669,6 +672,7 @@ class MaaAnalyzer:
                         group_id=group_id,
                         file_name=file_name,
                         file_id=file_id,
+                        file_url=file_url,
                         file_size=file_size,
                         uploader=uploader,
                         progress=progress,
@@ -688,6 +692,7 @@ class MaaAnalyzer:
         file_name: str,
         file_id: Optional[str],
         file_size: Optional[int],
+        file_url: str = "",
         uploader: str = "",
         progress: Optional[callable] = None,
     ) -> AnalysisOutcome:
@@ -720,7 +725,8 @@ class MaaAnalyzer:
             )
 
             resolved_id = file_id
-            if not resolved_id:
+            file_url = str(file_url or "").strip()
+            if not resolved_id and not file_url:
                 await asyncio.sleep(max(0.0, float(settings.file_list_delay_seconds or 0)))
                 resolved_id = await self._resolve_file_id(group_id, file_name, file_size, settings)
                 if not resolved_id:
@@ -738,6 +744,7 @@ class MaaAnalyzer:
                     group_id=group_id,
                     file_name=file_name,
                     file_id=resolved_id,
+                    file_url=file_url,
                     file_size=int(file_size or 0),
                     part=part,
                     zip_path=zip_path,
@@ -754,6 +761,7 @@ class MaaAnalyzer:
                     max_bytes=settings.max_zip_bytes(),
                     semaphore=download_sem,
                     timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
+                    url=file_url,
                 )
                 if part is not None:
                     extra_notes.append(
@@ -1138,6 +1146,7 @@ class MaaAnalyzer:
         file_name: str,
         file_id: str,
         file_size: int,
+        file_url: str = "",
         part: ArchivePart,
         zip_path: Path,
         work_dir: Path,
@@ -1151,7 +1160,7 @@ class MaaAnalyzer:
 
         等待新分卷的静默期由 `LogWatcher` 负责，这里直接拉取列表。
         """
-        candidates: dict[int, tuple[str, str, int]] = {}
+        candidates: dict[int, tuple[str, str, int, str]] = {}
         list_failed = False
         try:
             files = await get_all_files(self.s, group_id)
@@ -1166,9 +1175,9 @@ class MaaAnalyzer:
                 continue
             candidates.setdefault(
                 parsed.number,
-                (item.file_name, item.file_id, int(item.size or 0)),
+                (item.file_name, item.file_id, int(item.size or 0), item.url),
             )
-        candidates[part.number] = (file_name, file_id, int(file_size or 0))
+        candidates[part.number] = (file_name, file_id, int(file_size or 0), file_url)
 
         if len(candidates) <= 1:
             downloaded = await download_group_file(
@@ -1176,6 +1185,7 @@ class MaaAnalyzer:
                 max_bytes=settings.max_zip_bytes(),
                 semaphore=semaphore,
                 timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
+                url=file_url,
             )
             reason = "无法获取群文件列表" if list_failed else "群内未找到其他分卷"
             return downloaded, [
@@ -1188,7 +1198,7 @@ class MaaAnalyzer:
         merged_names: list[str] = []
         failures: list[str] = []
         for number in sorted(candidates):
-            name, part_id, _ = candidates[number]
+            name, part_id, _, part_url = candidates[number]
             target = parts_dir / f"part{number:02d}.zip"
             try:
                 await download_group_file(
@@ -1196,6 +1206,7 @@ class MaaAnalyzer:
                     max_bytes=settings.max_zip_bytes(),
                     semaphore=semaphore,
                     timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
+                    url=part_url,
                 )
                 downloaded_paths.append(target)
                 merged_names.append(name)
