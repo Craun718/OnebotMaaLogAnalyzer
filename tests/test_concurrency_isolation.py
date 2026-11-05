@@ -59,10 +59,14 @@ class KeyedLockTests(unittest.TestCase):
             async with locks.get("k"):
                 return locks.get("k")
 
-        first = asyncio.run(use())
-        second = asyncio.run(use())
-        self.assertIsNot(first, second)
-        self.assertIs(locks.get("k"), second)
+        async def twice():
+            # 同一个循环内两次取到同一把锁
+            return await use(), await use()
+
+        a1, a2 = asyncio.run(twice())
+        self.assertIs(a1, a2)
+        b1, _b2 = asyncio.run(twice())
+        self.assertIsNot(a1, b1)
 
 
 class BlockingOffloadTests(unittest.IsolatedAsyncioTestCase):
