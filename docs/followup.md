@@ -68,7 +68,7 @@
 | `followup_window_minutes` | `0` | 会话有效时长；`0` = 跟随历史保留期 |
 | `followup_max_turns` | `10` | 单会话最多追问轮数 |
 | `followup_max_sessions` | `50` | 最多保留会话数 |
-| `followup_level` | `0` | 追问答疑所需权限等级，见 [QQ 指令](commands.md) |
+| `followup_level` | `0` | 追问答疑所需权限等级；`followup close`（结束会话）另需至少 `1`，见 [QQ 指令](commands.md) |
 
 > 窗口/轮数/会话数都是**按配置**生效的：改一个配置的设置不会影响另一个
 > 配置正在进行的会话。同一配置内追问与主分析排队串行（见[并发模型](architecture.md#并发模型)），
@@ -78,3 +78,9 @@
 > 旧日志的记录仍留在历史里，引用它发出的旧消息依然可以追问。
 >
 > 可用 `/maa followup close` 提前结束，或设 `followup_enabled: false` 整体关闭。
+>
+> **追问也有阶段超时**：追问的模型调用段（普通回答 / 工具循环 / 收敛 / 上下文压缩 /
+> 截断重试）与主分析一样受 `ai_stage_timeout_seconds` 约束；到点会明确回一句
+> "这次追问超时了（AI 阶段超过 N 秒）"，而不是长时间无响应。
+> 仓库准备（可能触发浅克隆）另受 `project.repo.shallow_clone_timeout_seconds` 约束，
+> 并且只做浅克隆——完整克隆由后台预下载负责，追问不会在这里等几十分钟。

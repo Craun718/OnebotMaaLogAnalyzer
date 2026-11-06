@@ -685,11 +685,6 @@
     "type": "int",
     "default": 4096
   },
-  "settings_analysis_concurrency": {
-    "description": "同时分析任务数",
-    "type": "int",
-    "default": 2
-  },
   "settings_download_concurrency": {
     "description": "同时下载数",
     "type": "int",

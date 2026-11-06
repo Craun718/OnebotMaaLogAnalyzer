@@ -229,12 +229,13 @@ class MaaWorkflowRuntime:
         while True:
             try:
                 await asyncio.sleep(max(300, int(interval_seconds or 3600)))
-                results = history.cleanup_all(
+                results = await history.cleanup_all_async(
                     {
                         name: state.settings
                         for name, state in service.configs.items()
                     }
                 )
+                await history.cleanup_staging_async()
                 for name, result in results.items():
                     if result.removed:
                         logger.info(

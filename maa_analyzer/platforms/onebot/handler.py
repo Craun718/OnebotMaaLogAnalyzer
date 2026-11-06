@@ -32,6 +32,8 @@ class EventHandler:
             return False
 
     async def on_notice(self, event: dict) -> bool:
+        if event.get("notice_type") != "group_upload":
+            return False
         try:
             return await self.service.handle_notice(
                 self.adapter.map_notice(event)

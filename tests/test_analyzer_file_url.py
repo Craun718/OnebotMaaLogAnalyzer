@@ -28,7 +28,7 @@ class AnalyzerFileUrlTests(unittest.IsolatedAsyncioTestCase):
                     file_id=None, file_size=100, file_url="https://example.test/log.zip",
                 )
             self.assertFalse(outcome.ok)
-            self.assertEqual(downloader.await_args.args[2], "")
+            self.assertIsNone(downloader.await_args.args[2])
             self.assertEqual(downloader.await_args.kwargs["url"], "https://example.test/log.zip")
 
     async def test_single_part_fallback_uses_event_url(self):

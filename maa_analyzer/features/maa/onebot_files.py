@@ -118,7 +118,7 @@ async def find_group_file_by_name(
 async def download_group_file(
     s: "MaaService",
     group_id: int,
-    file_id: str,
+    file_id: str | None,
     target_path: str | Path,
     *,
     max_bytes: int,

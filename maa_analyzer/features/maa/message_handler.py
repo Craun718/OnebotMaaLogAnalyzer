@@ -45,14 +45,14 @@ class MessageHandler:
     # 入口
     # ════════════════════════════════════════════════════════════
 
-    async def on_message_text(self, event: dict):
-        """处理群内文本消息。"""
+    async def on_message_text(self, event: dict) -> bool:
+        """处理群内文本消息；返回是否已消费该消息。"""
         group_id = event.get("group_id")
         if group_id is None:
-            return
+            return False
         text = str(event.get("_text") or "").strip()
         if not text:
-            return
+            return False
 
         group_str = str(group_id)
         user_id = str(event.get("user_id", ""))
@@ -64,13 +64,13 @@ class MessageHandler:
         cfg = self.s.resolve_config(group_str)
         # 指令与追问的日志都标注配置名（无法解析配置时保持无前缀）
         with config_log_context(cfg.name if cfg is not None else ""):
-            await self._dispatch(
+            return await self._dispatch(
                 cfg, group_str=group_str, user_id=user_id, text=text,
                 is_admin=is_admin, event=event,
             )
 
     async def _dispatch(self, cfg, *, group_str: str, user_id: str,
-                        text: str, is_admin: bool, event: dict) -> None:
+                        text: str, is_admin: bool, event: dict) -> bool:
         if cfg is not None and cfg.commands.enabled:
             args = CommandHandler.match(text, cfg.commands)
             if args is not None:
@@ -82,11 +82,13 @@ class MessageHandler:
                                         cfg.commands.reply_chunk_chars)
                 # 回复已发出，现在才真正重建运行时（否则会拆掉发送中的连接）
                 await self._apply_pending_reload()
-                return
+                return True
 
         # ── 2. 追问答疑（必须引用 Bot 的分析结果消息）──
         reply_id = str(event.get("_reply_id") or "").strip()
-        await self._handle_followup(group_str, user_id, text, reply_id, cfg)
+        return await self._handle_followup(
+            group_str, user_id, text, reply_id, cfg
+        )
 
     async def _apply_pending_reload(self) -> None:
         """若刚收到 `/maa reload`，在回复发出后执行运行时重建。"""
@@ -101,9 +103,9 @@ class MessageHandler:
     # ════════════════════════════════════════════════════════════
 
     async def _handle_followup(self, group_id: str, user_id: str, question: str,
-                               reply_id: str, cfg) -> None:
+                               reply_id: str, cfg) -> bool:
         if not reply_id:
-            return   # 未引用任何消息 → 不是追问
+            return False   # 未引用任何消息 → 不是追问
 
         settings = cfg.settings if cfg is not None else None
         config_name = cfg.name if cfg is not None else ""
@@ -114,13 +116,13 @@ class MessageHandler:
 
         session = self.followup.by_message_id(reply_id, config_name)
         if session is None:
-            return   # 引用的不是 Bot 的分析结果消息
+            return False   # 引用的不是 Bot 的分析结果消息
 
         if session.group_id != group_id:
-            return   # 跨群引用，忽略
+            return False   # 跨群引用，忽略
 
         if settings is None or not settings.followup_enabled:
-            return
+            return True
 
         commands = cfg.commands if cfg is not None else None
         if commands is not None:
@@ -130,7 +132,7 @@ class MessageHandler:
                     int(group_id),
                     f"权限不足：追问答疑需要等级 {commands.followup_level}。",
                 )
-                return
+                return True
 
         logger.info(f"[追问] 群 {group_id} 引用 {reply_id} 提问：{question[:60]}")
 
@@ -178,13 +180,14 @@ class MessageHandler:
                     "可以试着把问题说得更具体，或换一种问法再引用一次。"
                 )
             await self.s.send_text(int(group_id), text)
-            return
+            return True
 
         self.followup.append(group_id, question, answer.text)
         # 登记本轮回复的消息 ID，使其可被再次引用（支持连续追问）
         sent_ids = await self._send_answer(group_id, answer, settings)
         for mid in sent_ids:
             self.followup.register_message(group_id, mid)
+        return True
 
     async def _send_answer(self, group_id: str, answer, settings) -> list:
         """
