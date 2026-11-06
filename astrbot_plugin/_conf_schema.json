@@ -4,7 +4,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -101,7 +100,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -111,7 +109,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -121,7 +118,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -131,7 +127,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -141,7 +136,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -151,7 +145,6 @@
     "type": "string",
     "default": "disabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -171,7 +164,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -181,7 +173,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -191,7 +182,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -201,7 +191,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -211,7 +200,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -226,7 +214,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -246,7 +233,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -271,7 +257,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -319,7 +304,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -329,7 +313,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -339,7 +322,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -379,7 +361,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -394,7 +375,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -404,7 +384,6 @@
     "type": "string",
     "default": "disabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -414,7 +393,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -424,7 +402,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -482,7 +459,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -497,7 +473,6 @@
     "type": "string",
     "default": "disabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -507,7 +482,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -517,7 +491,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -527,7 +500,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -542,7 +514,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -552,7 +523,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -653,7 +623,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -663,7 +632,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -693,7 +661,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -753,7 +720,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -788,7 +754,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -803,7 +768,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -813,7 +777,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -823,7 +786,6 @@
     "type": "string",
     "default": "disabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -868,7 +830,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -893,7 +854,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -913,7 +873,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -938,7 +897,6 @@
     "type": "string",
     "default": "enabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -1051,7 +1009,6 @@
     "type": "string",
     "default": "disabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -1061,7 +1018,6 @@
     "type": "string",
     "default": "disabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]
@@ -1071,7 +1027,6 @@
     "type": "string",
     "default": "disabled",
     "options": [
-      "inherit",
       "enabled",
       "disabled"
     ]

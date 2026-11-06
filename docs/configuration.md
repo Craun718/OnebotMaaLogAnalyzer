@@ -77,7 +77,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 | `log_dir` | `log.log_dir` | 保持原值 |
 | `log_level` | `log.log_level` | 保持原值 |
 
-没有固定值的字段（如端点、密钥和可选的模型级采样参数）仍可留空。为兼容已有配置，空字符串、空列表、数值 `-1` 和各 `*_mode: inherit` 仍是继承标记；已有面板配置不会自动重置为新的默认值。面板覆盖不会回写 `config.json`，
+没有固定值的字段（如端点、密钥和可选的模型级采样参数）仍可留空。插件启动时会将已保存面板中的旧 `inherit` 和 `-1` 标记替换为对应的固定程序默认值，并保存面板配置；已填写的具体值保留。没有固定值的字段和空字符串、空列表仍可沿用高级配置。面板覆盖不会回写 `config.json`，
 未选中的配置档案、未被 `llm_endpoint_selector` / `llm_endpoint_model`
 选中的端点与模型、Provider/Model 数组顺序和自定义高级字段保持原值。`llm_provider`
 与 `llm_model` 负责首选候选；`llm_endpoint_*` 与 `llm_model_*` 只编辑选中的一个端点和模型。

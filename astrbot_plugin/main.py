@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import importlib
+import copy
 import sys
 import weakref
 from pathlib import Path
@@ -50,8 +51,10 @@ try:
         runtime_module = importlib.import_module(
             ".maa_analyzer.astrbot.plugin_runtime", package=__package__
         )
+        config_module = importlib.import_module(".maa_analyzer.config", package=__package__)
     else:
         runtime_module = importlib.import_module("maa_analyzer.astrbot.plugin_runtime")
+        config_module = importlib.import_module("maa_analyzer.config")
     AstrBotPluginRuntime = runtime_module.AstrBotPluginRuntime
 except ImportError as exc:  # Reported from initialize() without breaking discovery.
     AstrBotPluginRuntime = None  # type: ignore[assignment,misc]
@@ -86,6 +89,21 @@ class Main(Star):
         config: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(context, config)
+        # AstrBot keeps previously saved values when the schema defaults change.
+        # Replace old sentinel values in that same object so the panel updates too.
+        if config is not None and _KERNEL_IMPORT_ERROR is None:
+            changed = False
+            for key, default in config_module.PANEL_DEFAULTS.items():
+                value = config.get(key)
+                legacy = (key in config_module.PANEL_TRISTATE_MODE_FIELDS and value == "inherit") or (
+                    key in config_module.PANEL_NONNEGATIVE_INT_FIELDS and value == -1
+                )
+                if key not in config or (legacy and default not in ("inherit", -1)):
+                    config[key] = copy.deepcopy(default)
+                    changed = True
+            save = getattr(config, "save_config", None)
+            if changed and callable(save):
+                save()
         self.config = dict(config or {})
         self.plugin_data_dir: Path | None = None
         self.plugin_runtime: Any | None = None

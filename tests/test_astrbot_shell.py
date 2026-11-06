@@ -132,6 +132,20 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
         fake_runtime.initialize.assert_awaited()
         self.assertEqual(fake_runtime.initialize.await_count, 2)
 
+    async def test_old_panel_markers_are_replaced_and_saved(self):
+        class SavedConfig(dict):
+            save_config = MagicMock()
+
+        config = SavedConfig(history_mode="inherit", history_period_hours=-1,
+                             repo_mode="disabled", llm_model="custom-model")
+        plugin = self.shell.Main(object(), config)
+        self.assertEqual(config["history_mode"], "enabled")
+        self.assertEqual(config["history_period_hours"], 24)
+        self.assertEqual(config["repo_mode"], "disabled")
+        self.assertEqual(config["llm_model"], "custom-model")
+        self.assertEqual(plugin.config, config)
+        config.save_config.assert_called_once_with()
+
     async def test_packaged_kernel_uses_plugin_namespace_and_reloads(self):
         with tempfile.TemporaryDirectory() as directory:
             plugin_dir = Path(directory) / "test_plugin"
@@ -304,6 +318,7 @@ class AstrBotPackageMetadataTests(unittest.TestCase):
                 default,
                 f"schema default mismatch: {key}",
             )
+            self.assertNotIn("inherit", schema[key].get("options", []), key)
         self.assertEqual(schema["listen_groups"]["type"], "list")
         self.assertIn("aiohttp", requirements)
 
