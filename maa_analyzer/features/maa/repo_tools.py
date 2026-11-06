@@ -24,19 +24,19 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from maa_analyzer.core.concurrency import run_blocking
-from maa_analyzer.core.models import RepoConfig
-from maa_analyzer.features.maa.repo import (
+from ...core.concurrency import run_blocking
+from ...core.models import RepoConfig
+from ...features.maa.repo import (
     CHECKOUT_BUDGET_TIMEOUT,
     CHECKOUT_FETCH_TIMEOUT,
     CHECKOUT_PROBE_TIMEOUT,
     RepoProvider,
     _SKIP_DIRS,
 )
-from maa_analyzer.features.maa.safety import (
+from ...features.maa.safety import (
     resolve_repo_path,
 )
-from maa_analyzer.features.maa.text_utils import truncate_line
+from ...features.maa.text_utils import truncate_line
 
 logger = logging.getLogger("Maa.RepoTools")
 
@@ -335,7 +335,7 @@ class RepoTools:
 
     def _limit_result(self, text: str) -> str:
         """按 token 预算裁剪工具结果（0 = 由字符上限估算）。"""
-        from maa_analyzer.core.tokens import clamp_tool_result_tokens, estimate_tokens, trim_to_tokens
+        from ...core.tokens import clamp_tool_result_tokens, estimate_tokens, trim_to_tokens
 
         tokens = clamp_tool_result_tokens(
             int(self.cfg.max_tool_result_tokens or 0)

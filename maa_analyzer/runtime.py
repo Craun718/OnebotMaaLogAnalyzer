@@ -6,17 +6,17 @@ import logging
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from maa_analyzer.config import validate_common_config
-from maa_analyzer.core.ai_usage import UsageStore
-from maa_analyzer.core.data_manager import DataManager
-from maa_analyzer.core.llm_pool import LLMPool
-from maa_analyzer.core.service import MaaService
-from maa_analyzer.features.maa.analyzer import MaaAnalyzer
-from maa_analyzer.features.maa.followup import FollowupStore
-from maa_analyzer.features.maa.history import HistoryStore
-from maa_analyzer.features.maa.message_handler import MessageHandler
-from maa_analyzer.features.maa.watcher import LogWatcher
-from maa_analyzer.platform import PlatformPort
+from .config import validate_common_config
+from .core.ai_usage import UsageStore
+from .core.data_manager import DataManager
+from .core.llm_pool import LLMPool
+from .core.service import MaaService
+from .features.maa.analyzer import MaaAnalyzer
+from .features.maa.followup import FollowupStore
+from .features.maa.history import HistoryStore
+from .features.maa.message_handler import MessageHandler
+from .features.maa.watcher import LogWatcher
+from .platform import PlatformPort
 
 logger = logging.getLogger("Maa.Runtime")
 
@@ -178,7 +178,7 @@ class MaaWorkflowRuntime:
             except Exception as exc:
                 logger.warning("关闭 LLM 连接池失败：%s", exc)
         try:
-            from maa_analyzer.features.maa.render import close_all
+            from .features.maa.render import close_all
 
             close_all()
         except Exception as exc:

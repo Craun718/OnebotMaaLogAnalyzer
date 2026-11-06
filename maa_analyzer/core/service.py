@@ -32,7 +32,7 @@ from .models import (
     VisionConfig,
     normalize_ui_key,
 )
-from maa_analyzer.platform import (
+from ..platform import (
     GroupMessageEvent,
     GroupUploadNotice,
     PlatformEvent,

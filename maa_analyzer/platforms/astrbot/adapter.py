@@ -19,7 +19,7 @@ from typing import Any
 
 import aiohttp
 
-from maa_analyzer.platform import (
+from ...platform import (
     GroupFileMetadata,
     GroupMessageEvent,
     GroupUploadNotice,

@@ -455,7 +455,7 @@ class FollowupStore:
         if zip_path is None:
             return None
         try:
-            from maa_analyzer.features.maa.log_digest import describe_zip
+            from ...features.maa.log_digest import describe_zip
 
             digest = describe_zip(str(zip_path))
         except Exception as exc:

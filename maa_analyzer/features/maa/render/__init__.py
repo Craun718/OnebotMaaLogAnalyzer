@@ -17,11 +17,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from maa_analyzer.core.concurrency import KeyedLocks, KeyedThreadLocks
-from maa_analyzer.core.models import ReportConfig
-from maa_analyzer.features.maa.render.browser import BrowserRenderer, BrowserUnavailable, find_browser
-from maa_analyzer.features.maa.render.markdown import clean_markdown
-from maa_analyzer.features.maa.render.template import TemplateSet, load_template
+from ....core.concurrency import KeyedLocks, KeyedThreadLocks
+from ....core.models import ReportConfig
+from ....features.maa.render.browser import BrowserRenderer, BrowserUnavailable, find_browser
+from ....features.maa.render.markdown import clean_markdown
+from ....features.maa.render.template import TemplateSet, load_template
 
 logger = logging.getLogger("Maa.Render")
 
@@ -87,7 +87,7 @@ def _attachment_html(attachment, attachments: dict[str, RenderAttachment],
                 '<div class="attach-file attach-image-skipped">'
                 f'<span class="attach-name">图片未内联：{path}</span></div>'
             )
-        from maa_analyzer.core.vision import mime_for
+        from ....core.vision import mime_for
 
         encoded = base64.b64encode(item.data).decode("ascii")
         return (

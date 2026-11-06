@@ -13,15 +13,15 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from maa_analyzer.features.maa.commands import CommandHandler
-from maa_analyzer.features.maa.followup import FollowupStore, resolve_window_minutes
-from maa_analyzer.features.maa.text_utils import split_text
-from maa_analyzer.core.llm_pool import new_session_id
-from maa_analyzer.core.log_context import config_log_context
+from ...features.maa.commands import CommandHandler
+from ...features.maa.followup import FollowupStore, resolve_window_minutes
+from ...features.maa.text_utils import split_text
+from ...core.llm_pool import new_session_id
+from ...core.log_context import config_log_context
 
 if TYPE_CHECKING:
-    from maa_analyzer.core.service import MaaService
-    from maa_analyzer.features.maa.analyzer import MaaAnalyzer
+    from ...core.service import MaaService
+    from ...features.maa.analyzer import MaaAnalyzer
 
 logger = logging.getLogger("Maa.Message")
 

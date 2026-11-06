@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from maa_analyzer.core.llm import ContextOverflowError
-from maa_analyzer.core.llm_pool import LLMPool
-from maa_analyzer.core.models import (
+from ...core.llm import ContextOverflowError
+from ...core.llm_pool import LLMPool
+from ...core.models import (
     AnalysisSettings,
     ConfigLLM,
     ProjectConfig,
@@ -26,47 +26,47 @@ from maa_analyzer.core.models import (
     RepoConfig,
     VisionConfig,
 )
-from maa_analyzer.core.ai_usage import format_tokens
-from maa_analyzer.core.compaction import (
+from ...core.ai_usage import format_tokens
+from ...core.compaction import (
     COMPACT_SYSTEM_PROMPT,
     CompactionPolicy,
     ConversationCompactor,
     render_messages,
 )
-from maa_analyzer.core.concurrency import KeyedLocks
-from maa_analyzer.core.llm_pool import current_session_id, new_session_id, session_context
-from maa_analyzer.core.log_context import config_log_context
-from maa_analyzer.core.tokens import (
+from ...core.concurrency import KeyedLocks
+from ...core.llm_pool import current_session_id, new_session_id, session_context
+from ...core.log_context import config_log_context
+from ...core.tokens import (
     clamp_tool_result_tokens,
     estimate_messages_tokens,
     estimate_tokens,
     fold_text,
     trim_to_tokens,
 )
-from maa_analyzer.features.maa.archive_profile import (
+from ...features.maa.archive_profile import (
     ArchivePart,
     ArchiveProfile,
     parse_archive_part,
 )
-from maa_analyzer.features.maa.archive_extract import probe_archive
-from maa_analyzer.features.maa.log_digest import (
+from ...features.maa.archive_extract import probe_archive
+from ...features.maa.log_digest import (
     IMAGE_SUFFIXES,
     DigestOptions,
     DigestResult,
     build_log_digest,
 )
-from maa_analyzer.features.maa.log_tools import LogArchiveTools
-from maa_analyzer.features.maa.onebot_files import download_group_file, get_all_files
-from maa_analyzer.features.maa.prompts import build_system_prompt, build_tool_hint
-from maa_analyzer.features.maa.render import RenderAttachment, render_report
-from maa_analyzer.core import vision as vision_util
-from maa_analyzer.features.maa.repo import RepoProvider, extract_identifiers, remove_repo_tree
-from maa_analyzer.features.maa.repo_tools import (
+from ...features.maa.log_tools import LogArchiveTools
+from ...features.maa.onebot_files import download_group_file, get_all_files
+from ...features.maa.prompts import build_system_prompt, build_tool_hint
+from ...features.maa.render import RenderAttachment, render_report
+from ...core import vision as vision_util
+from ...features.maa.repo import RepoProvider, extract_identifiers, remove_repo_tree
+from ...features.maa.repo_tools import (
     LOG_TOOL_DEFINITIONS,
     RepoTools,
     repo_tool_definitions,
 )
-from maa_analyzer.features.maa.attachments import (
+from ...features.maa.attachments import (
     OutSegment,
     build_report_segments,
     find_repo_attachment_names,
@@ -75,10 +75,10 @@ from maa_analyzer.features.maa.attachments import (
     strip_vision_requests,
     text_segments,
 )
-from maa_analyzer.features.maa.text_utils import format_bytes, split_text
+from ...features.maa.text_utils import format_bytes, split_text
 
 if TYPE_CHECKING:
-    from maa_analyzer.core.service import MaaService
+    from ...core.service import MaaService
 
 logger = logging.getLogger("Maa.Analyze")
 
@@ -632,6 +632,7 @@ class MaaAnalyzer:
         file_name: str,
         file_id: Optional[str],
         file_size: Optional[int],
+        file_url: str = "",
         uploader: str = "",
         progress: Optional[callable] = None,
     ) -> AnalysisOutcome:
@@ -669,6 +670,7 @@ class MaaAnalyzer:
                         group_id=group_id,
                         file_name=file_name,
                         file_id=file_id,
+                        file_url=file_url,
                         file_size=file_size,
                         uploader=uploader,
                         progress=progress,
@@ -688,6 +690,7 @@ class MaaAnalyzer:
         file_name: str,
         file_id: Optional[str],
         file_size: Optional[int],
+        file_url: str = "",
         uploader: str = "",
         progress: Optional[callable] = None,
     ) -> AnalysisOutcome:
@@ -720,7 +723,7 @@ class MaaAnalyzer:
             )
 
             resolved_id = file_id
-            if not resolved_id:
+            if not resolved_id and not file_url:
                 await asyncio.sleep(max(0.0, float(settings.file_list_delay_seconds or 0)))
                 resolved_id = await self._resolve_file_id(group_id, file_name, file_size, settings)
                 if not resolved_id:
@@ -737,7 +740,8 @@ class MaaAnalyzer:
                 downloaded, extra_notes = await self._download_archive_parts(
                     group_id=group_id,
                     file_name=file_name,
-                    file_id=resolved_id,
+                    file_id=resolved_id or "",
+                    file_url=file_url,
                     file_size=int(file_size or 0),
                     part=part,
                     zip_path=zip_path,
@@ -749,11 +753,12 @@ class MaaAnalyzer:
                 downloaded = await download_group_file(
                     self.s,
                     group_id,
-                    resolved_id,
+                    resolved_id or "",
                     zip_path,
                     max_bytes=settings.max_zip_bytes(),
                     semaphore=download_sem,
                     timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
+                    url=file_url,
                 )
                 if part is not None:
                     extra_notes.append(
@@ -1065,7 +1070,7 @@ class MaaAnalyzer:
     async def _resolve_file_id(self, group_id: int, file_name: str,
                                file_size: Optional[int],
                                settings: AnalysisSettings) -> Optional[str]:
-        from maa_analyzer.features.maa.onebot_files import find_group_file_by_name
+        from ...features.maa.onebot_files import find_group_file_by_name
 
         found = await find_group_file_by_name(
             self.s, group_id, file_name, file_size=file_size
@@ -1138,6 +1143,7 @@ class MaaAnalyzer:
         file_name: str,
         file_id: str,
         file_size: int,
+        file_url: str = "",
         part: ArchivePart,
         zip_path: Path,
         work_dir: Path,
@@ -1176,6 +1182,7 @@ class MaaAnalyzer:
                 max_bytes=settings.max_zip_bytes(),
                 semaphore=semaphore,
                 timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
+                url=file_url,
             )
             reason = "无法获取群文件列表" if list_failed else "群内未找到其他分卷"
             return downloaded, [
@@ -1196,6 +1203,7 @@ class MaaAnalyzer:
                     max_bytes=settings.max_zip_bytes(),
                     semaphore=semaphore,
                     timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
+                    url=file_url if number == part.number else "",
                 )
                 downloaded_paths.append(target)
                 merged_names.append(name)

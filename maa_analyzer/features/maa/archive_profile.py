@@ -19,7 +19,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
-from maa_analyzer.core.archive_names import (
+from ...core.archive_names import (
     UI_MAAFWAPP,
     UI_MFAA,
     UI_MXU,

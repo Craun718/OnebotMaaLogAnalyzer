@@ -31,12 +31,12 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Optional
 
-from maa_analyzer.features.maa.log_digest import (
+from ...features.maa.log_digest import (
     IMAGE_SUFFIXES,
     DigestResult,
     read_zip_member,
 )
-from maa_analyzer.features.maa.safety import (
+from ...features.maa.safety import (
     describe_rejection,
     is_sensitive_path,
     normalize_tool_path,

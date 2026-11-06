@@ -17,7 +17,7 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from maa_analyzer.core.models import (
+from ...core.models import (
     AnalysisSettings,
     CommandConfig,
     ConfigState,
@@ -26,7 +26,7 @@ from maa_analyzer.core.models import (
     RepoConfig,
     normalize_ui_key,
 )
-from maa_analyzer.features.maa.repo import redact_remote_url
+from ...features.maa.repo import redact_remote_url
 
 logger = logging.getLogger("Maa.Commands")
 
@@ -361,7 +361,7 @@ class CommandHandler:
 
     async def _cmd_ai(self, cfg: ConfigState, args: list[str]) -> CommandResult:
         """`/maa ai [n]`：按会话（分析 + 追问）查看模型用量。"""
-        from maa_analyzer.core.ai_usage import UsageStore, format_tokens
+        from ...core.ai_usage import UsageStore, format_tokens
 
         try:
             limit = int(args[0]) if args else 5

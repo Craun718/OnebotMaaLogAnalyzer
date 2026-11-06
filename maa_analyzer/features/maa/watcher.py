@@ -15,15 +15,15 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
-from maa_analyzer.core.archive_names import ui_key_from_file_name
-from maa_analyzer.core.log_context import config_log_context
-from maa_analyzer.core.models import ConfigState, LogFileItem
-from maa_analyzer.features.maa.analyzer import MaaAnalyzer
-from maa_analyzer.features.maa.archive_profile import parse_archive_part
-from maa_analyzer.features.maa.text_utils import format_bytes, split_text
+from ...core.archive_names import ui_key_from_file_name
+from ...core.log_context import config_log_context
+from ...core.models import ConfigState, LogFileItem
+from ...features.maa.analyzer import MaaAnalyzer
+from ...features.maa.archive_profile import parse_archive_part
+from ...features.maa.text_utils import format_bytes, split_text
 
 if TYPE_CHECKING:
-    from maa_analyzer.core.service import MaaService
+    from ...core.service import MaaService
 
 logger = logging.getLogger("Maa.Watch")
 

@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-from maa_analyzer.core.archive_names import (
+from ..core.archive_names import (
     is_known_log_archive_name,
     looks_like_log_archive_name,
     normalize_archive_name,

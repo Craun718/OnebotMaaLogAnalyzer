@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import logging
 
-from maa_analyzer.core.service import MaaService
-from maa_analyzer.platforms.onebot.adapter import OneBotPlatformAdapter
+from ...core.service import MaaService
+from ...platforms.onebot.adapter import OneBotPlatformAdapter
 
 logger = logging.getLogger("Maa.Handler")
 

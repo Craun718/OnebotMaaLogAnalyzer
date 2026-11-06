@@ -7,17 +7,22 @@ from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from maa_analyzer.config import (
+from ..config import (
     load_effective_config,
     setup_logging,
     teardown_logging,
 )
-from maa_analyzer.core.archive_names import ui_key_from_file_name
-from maa_analyzer.features.maa.commands import CommandHandler
-from maa_analyzer.platforms.astrbot.adapter import AstrBotPlatformAdapter
-from maa_analyzer.runtime import MaaWorkflowRuntime
+from ..core.archive_names import ui_key_from_file_name
+from ..features.maa.commands import CommandHandler
+from ..platforms.astrbot.adapter import AstrBotPlatformAdapter
+from ..runtime import MaaWorkflowRuntime
 
 logger = logging.getLogger("Maa.AstrBot")
+
+
+class PluginConfigError(ValueError):
+    """The plugin configuration could not be loaded or validated."""
+
 
 ConfigLoader = Callable[
     [Mapping[str, Any], Path], tuple[dict, Path, Path]
@@ -102,7 +107,10 @@ class AstrBotPluginRuntime:
 
             self._state = "starting"
             try:
-                cfg, config_path, data_dir = self._load_config()
+                try:
+                    cfg, config_path, data_dir = self._load_config()
+                except (ValueError, OSError) as exc:
+                    raise PluginConfigError(str(exc)) from exc
                 setup_logging(
                     cfg.get("log") or {},
                     isolated=True,
@@ -182,9 +190,11 @@ class AstrBotPluginRuntime:
             hints = adapter.event_hints(event)
             group_id = str(hints.get("group_id") or "")
             if not group_id:
+                logger.debug("忽略群消息：缺少群号")
                 return False
             cfg = runtime.service.resolve_config(group_id)
             if cfg is None:
+                logger.debug("忽略群消息：群 %s 不在任何监听配置中", group_id)
                 return False
 
             text = str(hints.get("text") or "").strip()
@@ -193,7 +203,11 @@ class AstrBotPluginRuntime:
                 and cfg.commands.enabled
                 and CommandHandler.match(text, cfg.commands) is not None
             ):
+                logger.debug("接收管理指令：群 %s，配置 %s", group_id, cfg.name)
                 return True
+
+            if cfg.commands.prefix and text.startswith(cfg.commands.prefix):
+                logger.debug("忽略管理指令：群 %s，配置 %s，指令开关 %s，或指令不匹配", group_id, cfg.name, cfg.commands.enabled)
 
             if cfg.settings.enabled:
                 for file_name in hints.get("file_names") or []:

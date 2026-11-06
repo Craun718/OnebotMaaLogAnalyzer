@@ -21,8 +21,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Iterator, Optional
 
-from maa_analyzer.core.ai_usage import SessionUsage, UsageRecord, UsageStore
-from maa_analyzer.core.llm import (
+from ..core.ai_usage import SessionUsage, UsageRecord, UsageStore
+from ..core.llm import (
     ChatMessage,
     ContextOverflowError,
     LLMClient,
@@ -34,7 +34,7 @@ from maa_analyzer.core.llm import (
     normalize_usage,
     provider_kind,
 )
-from maa_analyzer.core.models import (
+from ..core.models import (
     ConfigLLM,
     LLMGlobalConfig,
     LLMProviderConfig,
@@ -741,7 +741,7 @@ class LLMPool:
     def _record_usage(self, record: UsageRecord,
                       messages: list[dict[str, Any]]) -> None:
         if record.ok and not record.prompt_tokens:
-            from maa_analyzer.core.tokens import estimate_messages_tokens
+            from ..core.tokens import estimate_messages_tokens
 
             record.prompt_tokens = estimate_messages_tokens(messages)
             if not record.total_tokens:

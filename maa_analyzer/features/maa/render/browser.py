@@ -24,8 +24,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from maa_analyzer.core.models import ReportConfig
-from maa_analyzer.features.maa.render.paginate import (
+from ....core.models import ReportConfig
+from ....features.maa.render.paginate import (
     MEASURE_BLOCKS_JS,
     MEASURE_CHROME_JS,
     MEASURE_PAGE_BOX_JS,
@@ -33,7 +33,7 @@ from maa_analyzer.features.maa.render.paginate import (
     pack_blocks,
     truncate_pages,
 )
-from maa_analyzer.features.maa.render.template import TemplateSet, load_template
+from ....features.maa.render.template import TemplateSet, load_template
 
 logger = logging.getLogger("Maa.Render.Browser")
 
@@ -452,7 +452,7 @@ class BrowserRenderer:
         attachment_html,
     ) -> list[bytes]:
         """把报告渲染为若干 PNG/JPEG 字节（串行）。"""
-        from maa_analyzer.features.maa.render.markdown import parse_report
+        from ....features.maa.render.markdown import parse_report
 
         timeout = max(1.0, float(report.render_timeout_ms or 8000) / 1000.0)
         parsed = parse_report(markdown, attachment_html)

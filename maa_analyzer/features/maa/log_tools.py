@@ -30,19 +30,19 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator, Optional
 
-from maa_analyzer.core.concurrency import run_blocking
-from maa_analyzer.core.tokens import clamp_tool_result_tokens, trim_to_tokens
-from maa_analyzer.features.maa.archive_extract import (
+from ...core.concurrency import run_blocking
+from ...core.tokens import clamp_tool_result_tokens, trim_to_tokens
+from ...features.maa.archive_extract import (
     DEFAULT_TOTAL_LIMIT_MB,
     ExtractedArchive,
 )
-from maa_analyzer.features.maa.log_digest import IMAGE_SUFFIXES
-from maa_analyzer.features.maa.safety import (
+from ...features.maa.log_digest import IMAGE_SUFFIXES
+from ...features.maa.safety import (
     describe_rejection,
     is_sensitive_path,
     normalize_tool_path,
 )
-from maa_analyzer.features.maa.text_utils import MAX_LINE_CHARS, truncate_line
+from ...features.maa.text_utils import MAX_LINE_CHARS, truncate_line
 
 logger = logging.getLogger("Maa.LogTools")
 

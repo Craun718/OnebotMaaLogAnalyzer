@@ -513,6 +513,16 @@ class EffectiveConfigLoadTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def test_empty_config_file_uses_default_in_plugin_data_dir(self):
+        for panel in ({}, {"config_file": ""}, {"config_file": "  "}):
+            with self.subTest(panel=panel):
+                effective, config_path, _ = load_effective_config(
+                    panel, plugin_data_dir=self.plugin_data
+                )
+                self.assertEqual(config_path, (self.plugin_data / "config.json").resolve())
+                self.assertTrue(config_path.is_file())
+                self.assertIn("bot", effective)
+
     def test_panel_file_data_and_log_paths_take_explicit_priority(self):
         cfg, config_path, data_dir = load_effective_config(
             {

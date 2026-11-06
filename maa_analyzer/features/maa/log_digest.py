@@ -17,7 +17,7 @@ from .archive_profile import (
     ArchiveProfile,
     detect_archive_profile,
 )
-from maa_analyzer.core.tokens import estimate_tokens, fold_text
+from ...core.tokens import estimate_tokens, fold_text
 
 from .text_utils import decode_bytes, format_bytes, limit_text
 from .safety import is_sensitive_path, normalize_tool_path

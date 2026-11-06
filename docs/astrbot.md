@@ -14,6 +14,8 @@ OnebotMaaLogAnalyzer 的 AstrBot 版本是 AIOCQHTTP 插件。它与裸 OneBot �
 插件安装后不需要运行 `python main.py`。AstrBot 的 AIOCQHTTP 适配器负责连接协议端，
 插件只处理已唤醒的群消息和群文件上传通知。
 
+插件日志会转发到 AstrBot 日志，并可按配置同时写入插件数据目录的 `logs/`。排查消息无响应时，将插件面板的 `log_level` 和 AstrBot 的日志级别设为 `DEBUG`，可以查看群号未匹配或管理指令未命中的原因。调试完成后可恢复为 `INFO`。
+
 ## 安装
 
 1. 从 GitHub Release 下载 `OnebotMaaLogAnalyzer-<版本>-astrbot.zip`。
@@ -23,6 +25,7 @@ OnebotMaaLogAnalyzer 的 AstrBot 版本是 AIOCQHTTP 插件。它与裸 OneBot �
 ```text
 AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 ├── main.py
+├── README.md
 ├── metadata.yaml
 ├── _conf_schema.json
 ├── requirements.txt

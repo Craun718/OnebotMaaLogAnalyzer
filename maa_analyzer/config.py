@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
-from maa_analyzer.core.llm_pool import detect_legacy_llm, validate_llm_config
-from maa_analyzer.core.log_context import ConfigNameFormatter
+from .core.llm_pool import detect_legacy_llm, validate_llm_config
+from .core.log_context import ConfigNameFormatter
 
 logger = logging.getLogger("Maa")
 
@@ -1338,7 +1338,7 @@ def load_effective_config(
     """Load advanced JSON, apply panel overrides, and resolve runtime paths."""
     panel = panel or {}
     plugin_dir = Path(plugin_data_dir).resolve()
-    configured_path = str(_panel_value(panel, "config_file") or "").strip()
+    configured_path = str(_panel_value(panel, "config_file") or "").strip() or "config.json"
     config_path = Path(configured_path).expanduser()
     if not config_path.is_absolute():
         config_path = plugin_dir / config_path
@@ -1400,12 +1400,15 @@ def setup_logging(
     target.setLevel(level)
     target.propagate = not isolated
 
-    console = logging.StreamHandler()
-    console.setLevel(level)
-    console.setFormatter(ConfigNameFormatter(LOG_FORMAT, LOG_DATE_FORMAT))
-    if isolated:
-        console._maa_plugin_handler = True
-    target.addHandler(console)
+    if not isolated or not any(
+        getattr(handler, "_maa_astrbot_bridge", False) for handler in target.handlers
+    ):
+        console = logging.StreamHandler()
+        console.setLevel(level)
+        console.setFormatter(ConfigNameFormatter(LOG_FORMAT, LOG_DATE_FORMAT))
+        if isolated:
+            console._maa_plugin_handler = True
+        target.addHandler(console)
 
     if log_to_file:
         try:

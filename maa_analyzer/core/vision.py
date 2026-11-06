@@ -14,8 +14,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Optional
 
-from maa_analyzer.core.models import VisionConfig
-from maa_analyzer.features.maa.safety import is_sensitive_path
+from ..core.models import VisionConfig
+from ..features.maa.safety import is_sensitive_path
 
 logger = logging.getLogger("Maa.Vision")
 

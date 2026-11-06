@@ -39,12 +39,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from maa_analyzer.features.maa.safety import (
+from ...features.maa.safety import (
     is_sensitive_path,
     normalize_tool_path,
     resolve_repo_path,
 )
-from maa_analyzer.features.maa.text_utils import format_bytes
+from ...features.maa.text_utils import format_bytes
 
 logger = logging.getLogger("Maa.ArchiveExtract")
 

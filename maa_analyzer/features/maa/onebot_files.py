@@ -16,10 +16,10 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from maa_analyzer.core.models import LogFileItem
+from ...core.models import LogFileItem
 
 if TYPE_CHECKING:
-    from maa_analyzer.core.service import MaaService
+    from ...core.service import MaaService
 
 logger = logging.getLogger("Maa.Files")
 

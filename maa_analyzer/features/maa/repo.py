@@ -41,9 +41,9 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
-from maa_analyzer.core.models import RepoConfig
-from maa_analyzer.features.maa.log_digest import IMAGE_SUFFIXES
-from maa_analyzer.features.maa.safety import normalize_relative_input, resolve_repo_path
+from ...core.models import RepoConfig
+from ...features.maa.log_digest import IMAGE_SUFFIXES
+from ...features.maa.safety import normalize_relative_input, resolve_repo_path
 
 logger = logging.getLogger("Maa.Repo")
 
