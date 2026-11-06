@@ -95,7 +95,7 @@ PROVIDER_KINDS = (
     ("anthropic", "anthropic — Anthropic Messages /v1/messages"),
 )
 LOG_LEVELS = (("DEBUG", "DEBUG"), ("INFO", "INFO"), ("WARNING", "WARNING"), ("ERROR", "ERROR"))
-UI_KEYS = ("mxu", "mfaa", "maafwapp", "auto")
+UI_KEYS = ("auto",)
 
 
 # ── 默认文档（来自 pydantic 模型，保证与代码同步） ──
@@ -1611,13 +1611,14 @@ function renderConfigGroups(host, spec, name) {
 
   const projectDefaults = META.defaults.bot.configs[DEFAULT_TEMPLATE_NAME].project;
   renderGroups(host, spec.project, projectDefaults, 'project', PROJECT_GROUPS);
+    if (['mxu', 'mxuapp', 'mfaa', 'mfaavalonia', 'maafwapp', 'maafw'].includes(key.toLowerCase().replace(/[^a-z0-9]/g, ''))) continue;
   renderProjectUI(host, spec.project);
 }
 
 function renderProjectUI(host, project) {
   const box = el('section', 'group');
   box.appendChild(el('h3', '', '按 UI 开关（project.ui）'));
-  const help = el('div', 'help', '只控制是否分析该 UI 的日志；未配置时回退 auto。');
+  const help = el('div', 'help', '已知 UI 始终启用；此处控制未知 UI 的日志。');
   box.appendChild(help);
   const grid = el('div', 'grid');
   const ui = isPlainObject(project.ui) ? project.ui : (project.ui = {});

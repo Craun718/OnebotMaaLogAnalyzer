@@ -1259,7 +1259,7 @@ class MaaAnalyzer:
         """
         判断是否需要跳过分析，返回原因（空串 = 继续分析）。
 
-        - 识别出的 UI 在 `project.ui.<名称>.enabled` 中被关闭 → 跳过
+        - 未知 UI 在 `project.ui.auto.enabled` 中被关闭 → 跳过
         - auto / known / any：必须命中内容特征
         - prefix：由 `require_log_layout` 决定是否额外校验内容
         """

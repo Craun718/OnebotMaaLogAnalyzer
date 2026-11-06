@@ -45,7 +45,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 | `archive_match_mode` | 所选档案的 `project.archive_match_mode` | 保持原值 |
 | `file_prefix` | 所选档案的 `project.file_prefix` | 保持原值 |
 | `require_log_layout_mode` | 所选档案的 `project.require_log_layout` | `inherit` 保持原值 |
-| `ui_mxu_mode` / `ui_mfaa_mode` / `ui_maafwapp_mode` / `ui_auto_mode` | 所选档案的 `project.ui.<名称>.enabled` | `inherit` 保持原值 |
+| `ui_auto_mode` | 所选档案的 `project.ui.auto.enabled` | `inherit` 保持原值 |
 | `repo_mode` / `repo_search_mode` / `repo_path` / `repo_url` | 所选档案的仓库开关、检索模式与来源 | `inherit` / 留空保持原值 |
 | `repo_mirrors` / `repo_branch` / `repo_default_branch` | 仓库镜像、克隆分支与还原分支 | 留空 / 空列表保持原值 |
 | `repo_preload_*` / `repo_update_on_analyze_mode` / `repo_allow_ai_update_mode` | 仓库预下载、重试、分析前更新与 AI 更新权限 | `inherit` / `-1` 保持原值 |
@@ -376,11 +376,8 @@ data/
   // 仅 prefix 模式使用：是否额外做内容特征识别（默认 true）
   "require_log_layout": true,
 
-  // 按 UI 开关：键名 mxu / mfaa / maafwapp / auto
-  "ui": {
-    "mfaa":     { "enabled": true },
-    "maafwapp": { "enabled": false }   // 不分析 MaaFwApp 的日志包
-  },
+  // 未知 UI 的日志包开关；已知 UI 始终启用
+  "ui": { "auto": { "enabled": true } },
 
   // 项目代码仓库
   "repo": {
@@ -400,8 +397,8 @@ data/
 | `archive_match_mode` | `string` / `"auto"` | 下载前的文件名初筛方式：`auto` / `known` / `prefix` / `any`，见[识别方式](#识别方式archive_match_mode) | `"archive_match_mode": "auto"` |
 | `file_prefix` | `string` / `""` | **仅 `prefix` 模式**：文件名前缀；留空则该模式不会命中任何包 | `"file_prefix": "MaaAssistantKedrgame-logs"` |
 | `require_log_layout` | `bool` / `true` | **仅 `prefix` 模式**：是否额外做内容特征识别；`false` = 只信前缀 | `"require_log_layout": true` |
-| `ui` | `object` / `{}` | 按 UI 开关，键名 `mxu` / `mfaa` / `maafwapp` / `auto`。未配置该 UI 时回退 `auto`，再回退 `true` | `"ui": { "maafwapp": { "enabled": false } }` |
-| `ui.<名称>.enabled` | `bool` / `true` | 是否分析该 UI 的日志包；`false` 会在下载后直接跳过，不调用 AI | `"enabled": false` |
+| `ui` | `object` / `{}` | 未知 UI 的开关；已知 UI 始终启用，旧配置中的对应开关不再生效 | `"ui": { "auto": { "enabled": false } }` |
+| `ui.<名称>.enabled` | `bool` / `true` | 控制未知 UI 的日志包；`false` 会跳过，不调用 AI | `"enabled": false` |
 | `repo` | `object` / — | 项目代码仓库，见 [repo](#repo项目代码仓库) | `"repo": { "enabled": true }` |
 
 #### repo：项目代码仓库
@@ -475,7 +472,7 @@ data/
   ├─ 文件名初筛（archive_match_mode，见上表）
   ├─ 下载（分卷则合并）
   └─ 内容特征识别
-       ├─ 识别出的 UI 被 project.ui.<名称>.enabled 关闭 → 跳过
+       ├─ 未知 UI 被 project.ui.auto.enabled 关闭 → 跳过
        ├─ 命中已知 UI 布局（maafw.log / device_info.txt / logs/log-* 等）→ 分析
        ├─ 有 .log / .jsonl / on_error 截图 → 分析
        └─ 都没有 → 跳过，不调用 AI，群里回一行「已跳过」
@@ -485,7 +482,7 @@ data/
 - `any` 适合完全自定义命名的日志包：所有 zip 都会下载后校验，代价是无谓下载
 - `prefix` 是唯一使用 `file_prefix` 的模式，`require_log_layout: false` 时**只信前缀**，不再校验内容
 - 内容特征识别只看包内容，仅靠文件名推断的 UI 不算命中，避免 `server-logs.zip` 这类误判
-- `project.ui.<名称>.enabled: false` 会在下载后直接跳过该 UI 的日志包（不调用 AI）
+- `project.ui.auto.enabled: false` 会跳过未知 UI 的日志包（不调用 AI）
 
 #### 解析优先级
 
@@ -502,7 +499,7 @@ project： config.json 的 project
 
 `project.repo` 由 `_prepare_repo` 直接读取，不经过 `settings`。
 
-`project.ui` 的键名会归一化：`mfaa` / `mfaaValonia` / `mfaa-avalonia` 等价，`maafwapp` / `maafw` 等价；`auto` 作为未命中时的兜底。
+MXU、MFAAvalonia 和 MaaFwApp 始终启用，旧配置中的对应开关及 `auto` 兜底均不能关闭它们。`auto` 控制未知 UI。
 
 #### 日志包命名与 UI 自动识别
 

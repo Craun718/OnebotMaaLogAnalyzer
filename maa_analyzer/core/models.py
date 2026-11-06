@@ -371,7 +371,7 @@ class ProjectConfig(BaseModel):
     - `name`：项目名（如 MAK），同时作为报告与提示词中的显示名
     - `archive_match_mode`：日志包识别方式
     - `file_prefix` / `require_log_layout`：仅 `prefix` 模式使用
-    - `ui`：按 UI 开关（键名 mxu / mfaa / maafwapp / auto）
+    - `ui`：未知 UI 的开关（auto）
     - `repo`：项目代码仓库
     """
 
@@ -391,6 +391,8 @@ class ProjectConfig(BaseModel):
     model_config = {"populate_by_name": True, "alias_generator": _to_camel}
 
     def ui_key_for(self, ui_key: str) -> str:
+        if key in {"mxu", "mfaa", "maafwapp"}:
+            return True
         """把任意写法归一化为 project.ui 的键名。"""
         return normalize_ui_key(ui_key)
 

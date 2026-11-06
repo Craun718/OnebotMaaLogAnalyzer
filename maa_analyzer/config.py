@@ -22,9 +22,6 @@ ONEBOT_MODES = ("ws", "http_ws", "ws_reverse", "http_ws_reverse")
 PANEL_BASE_TRISTATE_MODE_FIELDS = {
     "enabled_mode",
     "require_log_layout_mode",
-    "ui_mxu_mode",
-    "ui_mfaa_mode",
-    "ui_maafwapp_mode",
     "ui_auto_mode",
     "repo_mode",
     "vision_mode",
@@ -268,9 +265,6 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "archive_match_mode": 'auto',
     "file_prefix": "",
     "require_log_layout_mode": 'enabled',
-    "ui_mxu_mode": 'enabled',
-    "ui_mfaa_mode": 'enabled',
-    "ui_maafwapp_mode": 'enabled',
     "ui_auto_mode": 'enabled',
     "repo_mode": 'disabled',
     "llm_provider": "",
@@ -439,9 +433,6 @@ PANEL_PROFILE_FIELDS = (
         "archive_match_mode",
         "file_prefix",
         "require_log_layout_mode",
-        "ui_mxu_mode",
-        "ui_mfaa_mode",
-        "ui_maafwapp_mode",
         "ui_auto_mode",
         "repo_mode",
         "llm_provider",
@@ -1207,17 +1198,11 @@ def apply_panel_overrides(
         if any(
             _changed(panel, key)
             for key in (
-                "ui_mxu_mode",
-                "ui_mfaa_mode",
-                "ui_maafwapp_mode",
                 "ui_auto_mode",
             )
         ):
             project = _ensure_dict(profile, "project")
             ui = _ensure_dict(project, "ui")
-            _apply_ui_mode(panel, "ui_mxu_mode", ui, "mxu")
-            _apply_ui_mode(panel, "ui_mfaa_mode", ui, "mfaa")
-            _apply_ui_mode(panel, "ui_maafwapp_mode", ui, "maafwapp")
             _apply_ui_mode(panel, "ui_auto_mode", ui, "auto")
         if _changed(panel, "repo_mode"):
             project = _ensure_dict(profile, "project")

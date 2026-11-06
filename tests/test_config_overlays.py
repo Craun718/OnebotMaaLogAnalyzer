@@ -132,9 +132,6 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(
             beta["project"]["ui"],
             {
-                "mxu": {"enabled": False},
-                "mfaa": {"enabled": True},
-                "maafwapp": {"enabled": False},
                 "auto": {"enabled": True},
             },
         )

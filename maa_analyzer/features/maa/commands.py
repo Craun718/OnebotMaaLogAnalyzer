@@ -120,7 +120,7 @@ def _format_ui_switches(project: ProjectConfig) -> str:
     if not project.ui:
         return "（未配置，全部开启）"
     return ", ".join(
-        f"{key}={'开' if item.enabled else '关'}"
+        f"{key}={'开' if project.ui_enabled(key) else '关'}"
         for key, item in sorted(project.ui.items())
     )
 
@@ -449,7 +449,7 @@ class CommandHandler:
           /maa project set name MAK
           /maa project set archive_match_mode prefix
           /maa project set file_prefix MaaXXX-logs
-          /maa project set ui.mfaa.enabled false
+          /maa project set ui.auto.enabled false
           /maa project set repo.mode agent
         """
         sub = args[0].lower() if args else "get"
@@ -478,7 +478,7 @@ class CommandHandler:
         lines.extend(["", "各 UI 开关："])
         if project.ui:
             for key, item in sorted(project.ui.items()):
-                lines.append(f"  {key} = {'开' if item.enabled else '关'}")
+                lines.append(f"  {key} = {'开' if project.ui_enabled(key) else '关'}")
         else:
             lines.append("  （未配置，全部开启）")
 
@@ -488,7 +488,7 @@ class CommandHandler:
             f"  # 用 `{cfg.commands.prefix} repo` 查看详情",
             "",
             f"修改：{cfg.commands.prefix} project set <项> <值>",
-            f"      {cfg.commands.prefix} project set ui.mfaa.enabled false",
+            f"      {cfg.commands.prefix} project set ui.auto.enabled false",
         ])
         return CommandResult(text="\n".join(lines))
 
@@ -504,6 +504,8 @@ class CommandHandler:
 
         # ui.<名称>.<字段>
         if len(parts) == 3 and parts[0].lower() == "ui":
+            if ui_key in {"mxu", "mfaa", "maafwapp"}:
+                return CommandResult(text="已知 UI 的日志包始终启用，无法修改开关。", ok=False)
             ui_key = normalize_ui_key(parts[1])
             field_name = parts[2]
             field = ProjectUISettings.model_fields.get(field_name)
