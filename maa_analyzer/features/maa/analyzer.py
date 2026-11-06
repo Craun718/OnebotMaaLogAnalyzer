@@ -759,6 +759,7 @@ class MaaAnalyzer:
                     semaphore=download_sem,
                     timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
                     url=file_url,
+                    file_name=file_name,
                 )
                 if part is not None:
                     extra_notes.append(
@@ -1160,7 +1161,9 @@ class MaaAnalyzer:
         candidates: dict[int, tuple[str, str, int]] = {}
         list_failed = False
         try:
+            logger.info(f"[分析] 开始获取群文件列表以查找分卷：{file_name}")
             files = await get_all_files(self.s, group_id)
+            logger.info(f"[分析] 群文件列表获取完成：{file_name}（{len(files)} 个文件）")
         except Exception as exc:
             logger.warning(f"[分析] 获取群文件列表失败，无法合并分卷：{exc}")
             files = []
@@ -1183,6 +1186,7 @@ class MaaAnalyzer:
                 semaphore=semaphore,
                 timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
                 url=file_url,
+                file_name=file_name,
             )
             reason = "无法获取群文件列表" if list_failed else "群内未找到其他分卷"
             return downloaded, [
@@ -1204,7 +1208,9 @@ class MaaAnalyzer:
                     semaphore=semaphore,
                     timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
                     url=file_url if number == part.number else "",
+                    file_name=name,
                 )
+                logger.info(f"[分析] 分卷下载完成：{name}")
                 downloaded_paths.append(target)
                 merged_names.append(name)
             except Exception as exc:

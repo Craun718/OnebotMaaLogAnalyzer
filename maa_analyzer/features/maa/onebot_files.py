@@ -125,21 +125,27 @@ async def download_group_file(
     semaphore: asyncio.Semaphore,
     timeout_seconds: int = 120,
     url: str = "",
+    file_name: str = "",
 ) -> int:
     """
     通过 get_group_file_url 获取下载链接并下载到 target_path。
 
     返回实际下载字节数；超过 max_bytes 时抛出 RuntimeError 并删除临时文件。
     """
+    label = file_name or Path(target_path).name
     resolved_url = str(url or "").strip()
     if not resolved_url:
         if not file_id:
             raise RuntimeError("群文件既没有下载链接，也没有 file_id。")
+        logger.info(f"[下载] 开始获取群文件下载链接：{label}（群 {group_id}）")
         resolved_url = await s.get_group_file_url(group_id, file_id)
+        logger.info(f"[下载] 群文件下载链接获取完成：{label}（群 {group_id}）")
     if not resolved_url:
         raise RuntimeError("无法获取群文件下载链接。")
 
+    logger.info(f"[下载] 等待下载名额：{label}（群 {group_id}）")
     async with semaphore:
+        logger.info(f"[下载] 开始下载：{label}（群 {group_id}，超时 {timeout_seconds}s）")
         return await s.download_url(
             resolved_url,
             target_path,

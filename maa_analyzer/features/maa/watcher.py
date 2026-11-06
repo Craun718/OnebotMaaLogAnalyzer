@@ -247,10 +247,12 @@ class LogWatcher:
         self._active[active_key] = time.monotonic()
         try:
             if settings.send_progress_message:
+                logger.info(f"[监听] 开始发送分析进度消息：{file_name}")
                 await self.s.send_text(
                     int(group_id),
                     f"检测到日志包：{file_name}\n正在下载并分析，请稍等。",
                 )
+                logger.info(f"[监听] 分析进度消息发送完成：{file_name}")
             await self._analyze(
                 cfg, group_id, uploader,
                 LogFileItem(
@@ -352,10 +354,12 @@ class LogWatcher:
         self._active[key] = time.monotonic()
         try:
             if settings.send_progress_message:
+                logger.info(f"[监听] 开始发送分析进度消息：{file_name}")
                 await self.s.send_text(
                     int(group_id),
                     f"检测到日志包：{file_name}\n正在下载并分析，请稍等。",
                 )
+                logger.info(f"[监听] 分析进度消息发送完成：{file_name}")
             await self._analyze(
                 cfg, group_id, uploader,
                 LogFileItem(
@@ -396,6 +400,7 @@ class LogWatcher:
             if settings.send_progress_message:
                 await self.s.send_text(group_int, text)
 
+        logger.info(f"[监听] 开始调用分析器：{file_info.file_name}")
         outcome = await self.analyzer.analyze(
             config_name=cfg.name,
             settings=settings,
