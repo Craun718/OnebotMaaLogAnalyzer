@@ -163,8 +163,6 @@ class MaaWorkflowRuntime:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-        if self.analyzer is not None:
-            self.analyzer.close()
         if self.service is not None:
             try:
                 self.service.save()
