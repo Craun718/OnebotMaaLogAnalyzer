@@ -1,8 +1,8 @@
 {
   "enabled_mode": {
-    "description": "插件开关；inherit 使用高级 JSON 中的 settings.enabled",
+    "description": "插件开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -38,9 +38,9 @@
     "default": ""
   },
   "command_prefix": {
-    "description": "管理指令前缀；留空沿用当前配置档案",
+    "description": "管理指令前缀",
     "type": "string",
-    "default": ""
+    "default": "/maa"
   },
   "owners": {
     "description": "超管 QQ 号；留空沿用当前配置档案",
@@ -59,9 +59,9 @@
     }
   },
   "report_mode": {
-    "description": "报告模式 auto/text/image；留空沿用当前配置档案",
+    "description": "报告模式 auto/text/image",
     "type": "string",
-    "default": "",
+    "default": "auto",
     "options": [
       "",
       "auto",
@@ -70,9 +70,9 @@
     ]
   },
   "report_template": {
-    "description": "报告模板名；留空沿用当前配置档案",
+    "description": "报告模板名",
     "type": "string",
-    "default": ""
+    "default": "default"
   },
   "project_name": {
     "description": "项目显示名；留空沿用当前配置档案",
@@ -80,9 +80,9 @@
     "default": ""
   },
   "archive_match_mode": {
-    "description": "日志包识别模式；留空沿用当前配置档案",
+    "description": "日志包识别模式",
     "type": "string",
-    "default": "",
+    "default": "auto",
     "options": [
       "",
       "auto",
@@ -97,9 +97,9 @@
     "default": ""
   },
   "require_log_layout_mode": {
-    "description": "prefix 模式是否校验日志布局；inherit 沿用高级 JSON",
+    "description": "prefix 模式是否校验日志布局",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -107,9 +107,9 @@
     ]
   },
   "ui_mxu_mode": {
-    "description": "MXU 日志包开关；inherit 沿用高级 JSON",
+    "description": "MXU 日志包开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -117,9 +117,9 @@
     ]
   },
   "ui_mfaa_mode": {
-    "description": "MFAAvalonia 日志包开关；inherit 沿用高级 JSON",
+    "description": "MFAAvalonia 日志包开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -127,9 +127,9 @@
     ]
   },
   "ui_maafwapp_mode": {
-    "description": "MaaFwApp 日志包开关；inherit 沿用高级 JSON",
+    "description": "MaaFwApp 日志包开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -137,9 +137,9 @@
     ]
   },
   "ui_auto_mode": {
-    "description": "未知 UI 兜底开关；inherit 沿用高级 JSON",
+    "description": "未知 UI 兜底开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -147,9 +147,9 @@
     ]
   },
   "repo_mode": {
-    "description": "项目代码仓库开关；inherit 沿用高级 JSON",
+    "description": "项目代码仓库开关",
     "type": "string",
-    "default": "inherit",
+    "default": "disabled",
     "options": [
       "inherit",
       "enabled",
@@ -167,9 +167,9 @@
     "default": ""
   },
   "vision_mode": {
-    "description": "多模态看图开关；inherit 沿用高级 JSON",
+    "description": "多模态看图开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -177,9 +177,9 @@
     ]
   },
   "send_images_mode": {
-    "description": "报告图片发送开关；inherit 沿用高级 JSON",
+    "description": "报告图片发送开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -187,9 +187,9 @@
     ]
   },
   "send_repo_images_mode": {
-    "description": "仓库图片发送开关；inherit 沿用高级 JSON",
+    "description": "仓库图片发送开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -197,9 +197,9 @@
     ]
   },
   "send_files_mode": {
-    "description": "报告附件发送开关；inherit 沿用高级 JSON",
+    "description": "报告附件发送开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -207,9 +207,9 @@
     ]
   },
   "followup_mode": {
-    "description": "报告追问开关；inherit 沿用高级 JSON",
+    "description": "报告追问开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -217,14 +217,14 @@
     ]
   },
   "followup_window_minutes": {
-    "description": "追问窗口分钟数；-1 沿用高级 JSON，0 表示不限制",
+    "description": "追问窗口分钟数",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "history_mode": {
-    "description": "分析历史开关；inherit 沿用高级 JSON",
+    "description": "分析历史开关；默认启用",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -232,19 +232,19 @@
     ]
   },
   "history_period_hours": {
-    "description": "历史周期小时数；-1 沿用高级 JSON",
+    "description": "历史周期小时数；默认 24 小时",
     "type": "int",
-    "default": -1
+    "default": 24
   },
   "history_keep_periods": {
-    "description": "历史保留周期数；-1 沿用高级 JSON",
+    "description": "历史保留周期数",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "commands_mode": {
-    "description": "管理指令开关；inherit 沿用高级 JSON",
+    "description": "管理指令开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -252,24 +252,24 @@
     ]
   },
   "commands_read_level": {
-    "description": "查看类指令权限等级；-1 沿用高级 JSON",
+    "description": "查看类指令权限等级",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "commands_write_level": {
-    "description": "修改类指令权限等级；-1 沿用高级 JSON",
+    "description": "修改类指令权限等级",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "commands_followup_level": {
-    "description": "追问指令权限等级；-1 沿用高级 JSON",
+    "description": "追问指令权限等级",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "log_to_file_mode": {
-    "description": "文件日志开关；inherit 沿用高级 JSON",
+    "description": "文件日志开关",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -277,14 +277,14 @@
     ]
   },
   "log_dir": {
-    "description": "日志目录；留空沿用 config.json",
+    "description": "日志目录",
     "type": "string",
-    "default": ""
+    "default": "logs"
   },
   "log_level": {
-    "description": "日志级别；留空沿用 config.json",
+    "description": "日志级别",
     "type": "string",
-    "default": "",
+    "default": "INFO",
     "options": [
       "",
       "DEBUG",
@@ -294,19 +294,19 @@
     ]
   },
   "vision_max_images": {
-    "description": "单次看图数量上限；-1 沿用高级 JSON",
+    "description": "单次看图数量上限",
     "type": "int",
-    "default": -1
+    "default": 4
   },
   "vision_max_image_kb": {
-    "description": "单张看图大小上限 KB；-1 沿用高级 JSON",
+    "description": "单张看图大小上限 KB",
     "type": "int",
-    "default": -1
+    "default": 800
   },
   "vision_detail": {
-    "description": "看图细节等级；留空沿用高级 JSON",
+    "description": "看图细节等级",
     "type": "string",
-    "default": "",
+    "default": "high",
     "options": [
       "",
       "low",
@@ -315,9 +315,9 @@
     ]
   },
   "vision_attach_error_screenshots_mode": {
-    "description": "自动注入错误截图；inherit 沿用高级 JSON",
+    "description": "自动注入错误截图",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -325,9 +325,9 @@
     ]
   },
   "vision_attach_repo_templates_mode": {
-    "description": "注入项目模板图；inherit 沿用高级 JSON",
+    "description": "注入项目模板图",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -335,9 +335,9 @@
     ]
   },
   "vision_allow_model_request_mode": {
-    "description": "允许模型主动索图；inherit 沿用高级 JSON",
+    "description": "允许模型主动索图",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -345,39 +345,39 @@
     ]
   },
   "report_max_width_px": {
-    "description": "报告画布宽度；-1 沿用高级 JSON",
+    "description": "报告画布宽度",
     "type": "int",
-    "default": -1
+    "default": 1080
   },
   "report_max_height_px": {
-    "description": "报告单页高度；-1 沿用高级 JSON",
+    "description": "报告单页高度",
     "type": "int",
-    "default": -1
+    "default": 4096
   },
   "report_max_pages": {
-    "description": "报告最多页数；-1 沿用高级 JSON",
+    "description": "报告最多页数",
     "type": "int",
-    "default": -1
+    "default": 6
   },
   "report_device_scale_factor": {
-    "description": "报告渲染倍率；留空沿用高级 JSON",
+    "description": "报告渲染倍率",
     "type": "string",
-    "default": ""
+    "default": "1.0"
   },
   "report_font_family": {
-    "description": "报告 CSS 字体；留空沿用高级 JSON",
+    "description": "报告 CSS 字体",
     "type": "string",
     "default": ""
   },
   "report_browser_path": {
-    "description": "报告浏览器路径；留空沿用高级 JSON",
+    "description": "报告浏览器路径",
     "type": "string",
     "default": ""
   },
   "report_reuse_browser_mode": {
-    "description": "常驻报告浏览器；inherit 沿用高级 JSON",
+    "description": "常驻报告浏览器",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -385,14 +385,14 @@
     ]
   },
   "report_render_timeout_ms": {
-    "description": "报告渲染超时毫秒；-1 沿用高级 JSON",
+    "description": "报告渲染超时毫秒",
     "type": "int",
-    "default": -1
+    "default": 8000
   },
   "report_embed_attachments_mode": {
-    "description": "报告嵌入附件；inherit 沿用高级 JSON",
+    "description": "报告嵌入附件",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -400,9 +400,9 @@
     ]
   },
   "report_attach_markdown_mode": {
-    "description": "报告附带 Markdown；inherit 沿用高级 JSON",
+    "description": "报告附带 Markdown",
     "type": "string",
-    "default": "inherit",
+    "default": "disabled",
     "options": [
       "inherit",
       "enabled",
@@ -410,9 +410,9 @@
     ]
   },
   "report_fallback_to_text_mode": {
-    "description": "报告渲染失败回退文本；inherit 沿用高级 JSON",
+    "description": "报告渲染失败回退文本",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -420,9 +420,9 @@
     ]
   },
   "report_render_followup_mode": {
-    "description": "追问渲染图片报告；inherit 沿用高级 JSON",
+    "description": "追问渲染图片报告",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -430,19 +430,19 @@
     ]
   },
   "commands_reply_chunk_chars": {
-    "description": "指令回复分段字符数；-1 沿用高级 JSON",
+    "description": "指令回复分段字符数",
     "type": "int",
-    "default": -1
+    "default": 3500
   },
   "commands_max_list_items": {
-    "description": "任务列表最多条数；-1 沿用高级 JSON",
+    "description": "任务列表最多条数",
     "type": "int",
-    "default": -1
+    "default": 40
   },
   "repo_search_mode": {
-    "description": "仓库检索模式；留空沿用高级 JSON",
+    "description": "仓库检索模式",
     "type": "string",
-    "default": "",
+    "default": "inject",
     "options": [
       "",
       "inject",
@@ -450,17 +450,17 @@
     ]
   },
   "repo_path": {
-    "description": "本地仓库目录；留空沿用高级 JSON",
+    "description": "本地仓库目录",
     "type": "string",
     "default": ""
   },
   "repo_url": {
-    "description": "仓库主地址；留空沿用高级 JSON",
+    "description": "仓库主地址",
     "type": "string",
-    "default": ""
+    "default": "https://github.com/MAAXYZ/MaaXXX"
   },
   "repo_mirrors": {
-    "description": "备用仓库地址；留空沿用高级 JSON",
+    "description": "备用仓库地址",
     "type": "list",
     "default": [],
     "items": {
@@ -468,19 +468,19 @@
     }
   },
   "repo_branch": {
-    "description": "克隆分支或 tag；留空沿用高级 JSON",
+    "description": "克隆分支或 tag",
     "type": "string",
     "default": ""
   },
   "repo_default_branch": {
-    "description": "分析结束还原分支；留空沿用高级 JSON",
+    "description": "分析结束还原分支",
     "type": "string",
     "default": ""
   },
   "repo_preload_enabled_mode": {
-    "description": "启动预下载仓库；inherit 沿用高级 JSON",
+    "description": "启动预下载仓库",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -488,14 +488,14 @@
     ]
   },
   "repo_preload_retries": {
-    "description": "启动预下载重试次数；-1 沿用高级 JSON",
+    "description": "启动预下载重试次数",
     "type": "int",
-    "default": -1
+    "default": 3
   },
   "repo_update_on_analyze_mode": {
-    "description": "分析前更新默认分支；inherit 沿用高级 JSON",
+    "description": "分析前更新默认分支",
     "type": "string",
-    "default": "inherit",
+    "default": "disabled",
     "options": [
       "inherit",
       "enabled",
@@ -503,9 +503,9 @@
     ]
   },
   "repo_allow_ai_update_mode": {
-    "description": "允许 AI 更新仓库；inherit 沿用高级 JSON",
+    "description": "允许 AI 更新仓库",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -513,9 +513,9 @@
     ]
   },
   "repo_auto_checkout_version_mode": {
-    "description": "按日志版本切 tag；inherit 沿用高级 JSON",
+    "description": "按日志版本切 tag",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -523,9 +523,9 @@
     ]
   },
   "repo_allow_ai_switch_tag_mode": {
-    "description": "允许 AI 切换 tag；inherit 沿用高级 JSON",
+    "description": "允许 AI 切换 tag",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -533,14 +533,14 @@
     ]
   },
   "repo_max_tag_switch_rounds": {
-    "description": "AI 切换 tag 最大轮数；-1 沿用高级 JSON",
+    "description": "AI 切换 tag 最大轮数",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "repo_restore_latest_after_analyze_mode": {
-    "description": "分析后还原位置；inherit 沿用高级 JSON",
+    "description": "分析后还原位置",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -548,9 +548,9 @@
     ]
   },
   "repo_refuse_dirty_worktree_mode": {
-    "description": "脏工作区拒绝切换；inherit 沿用高级 JSON",
+    "description": "脏工作区拒绝切换",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -558,92 +558,100 @@
     ]
   },
   "repo_max_tool_rounds": {
-    "description": "agent 最大工具轮数；-1 沿用高级 JSON",
+    "description": "agent 最大工具轮数",
     "type": "int",
-    "default": -1
+    "default": 8
   },
   "repo_max_tool_calls_per_round": {
-    "description": "agent 单轮工具数；-1 沿用高级 JSON",
+    "description": "agent 单轮工具数",
     "type": "int",
-    "default": -1
+    "default": 6
   },
   "repo_max_tool_result_chars": {
-    "description": "agent 单次结果字符数；-1 沿用高级 JSON",
+    "description": "agent 单次结果字符数",
     "type": "int",
-    "default": -1
+    "default": 30000
   },
   "repo_max_tool_result_tokens": {
-    "description": "agent 单次结果 token；-1 沿用高级 JSON",
+    "description": "agent 单次结果 token",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "repo_max_tool_context_tokens": {
-    "description": "agent 工具上下文 token；-1 沿用高级 JSON",
+    "description": "agent 工具上下文 token",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "repo_agent_deadline_seconds": {
-    "description": "agent 循环超时秒数；-1 沿用高级 JSON",
+    "description": "agent 循环超时秒数",
     "type": "int",
-    "default": -1
+    "default": 600
   },
   "repo_extensions": {
-    "description": "仓库扫描扩展名；留空沿用高级 JSON",
+    "description": "仓库扫描扩展名",
     "type": "list",
-    "default": [],
+    "default": [
+      ".json",
+      ".jsonc",
+      ".yaml",
+      ".yml",
+      ".toml",
+      ".md",
+      ".txt"
+    ],
     "items": {
       "type": "string"
     }
   },
   "repo_max_file_kb": {
-    "description": "仓库单文件大小上限 KB；-1 沿用高级 JSON",
+    "description": "仓库单文件大小上限 KB",
     "type": "int",
-    "default": -1
+    "default": 256
   },
   "repo_max_scan_files": {
-    "description": "仓库扫描文件数上限；-1 沿用高级 JSON",
+    "description": "仓库扫描文件数上限",
     "type": "int",
-    "default": -1
+    "default": 20000
   },
   "repo_max_files": {
-    "description": "注入文件数上限；-1 沿用高级 JSON",
+    "description": "注入文件数上限",
     "type": "int",
-    "default": -1
+    "default": 12
   },
   "repo_max_identifiers": {
-    "description": "注入标识符数上限；-1 沿用高级 JSON",
+    "description": "注入标识符数上限",
     "type": "int",
-    "default": -1
+    "default": 24
   },
   "repo_context_lines": {
-    "description": "普通命中上下文行数；-1 沿用高级 JSON",
+    "description": "普通命中上下文行数",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "repo_max_block_lines": {
-    "description": "JSON 块最大展开行数；-1 沿用高级 JSON",
+    "description": "JSON 块最大展开行数",
     "type": "int",
-    "default": -1
+    "default": 150
   },
   "repo_max_chars": {
-    "description": "代码片段字符上限；-1 沿用高级 JSON",
+    "description": "代码片段字符上限",
     "type": "int",
-    "default": -1
+    "default": 60000
   },
   "settings_file_list_delay_seconds": {
-    "description": "上传后等待文件列表秒数；留空沿用高级 JSON",
+    "description": "上传后等待文件列表秒数",
     "type": "string",
-    "default": ""
+    "default": "0.0"
   },
   "settings_duplicate_window_seconds": {
-    "description": "同文件去重窗口秒数；-1 沿用高级 JSON",
+    "description": "同文件去重窗口秒数",
     "type": "int",
-    "default": -1
+    "default": 120
   },
   "settings_send_progress_message_mode": {
-    "description": "发送进度提示；inherit 沿用高级 JSON",
+    "description": "发送进度提示",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -651,9 +659,9 @@
     ]
   },
   "settings_send_summary_mode": {
-    "description": "发送分析结果；inherit 沿用高级 JSON",
+    "description": "发送分析结果",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -661,29 +669,29 @@
     ]
   },
   "settings_reply_chunk_chars": {
-    "description": "回复分段字符数；-1 沿用高级 JSON",
+    "description": "回复分段字符数",
     "type": "int",
-    "default": -1
+    "default": 3500
   },
   "settings_max_report_images": {
-    "description": "最多附带图片数；-1 沿用高级 JSON",
+    "description": "最多附带图片数",
     "type": "int",
-    "default": -1
+    "default": 4
   },
   "settings_max_report_files": {
-    "description": "最多附带文件数；-1 沿用高级 JSON",
+    "description": "最多附带文件数",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "settings_max_file_attachment_mb": {
-    "description": "单个附件大小上限 MB；-1 沿用高级 JSON",
+    "description": "单个附件大小上限 MB",
     "type": "int",
-    "default": -1
+    "default": 20
   },
   "settings_inline_attachments_mode": {
-    "description": "附件插入文字中间；inherit 沿用高级 JSON",
+    "description": "附件插入文字中间",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -691,59 +699,59 @@
     ]
   },
   "settings_followup_max_turns": {
-    "description": "单会话最多追问轮数；-1 沿用高级 JSON",
+    "description": "单会话最多追问轮数",
     "type": "int",
-    "default": -1
+    "default": 10
   },
   "settings_followup_max_sessions": {
-    "description": "最多保留追问会话数；-1 沿用高级 JSON",
+    "description": "最多保留追问会话数",
     "type": "int",
-    "default": -1
+    "default": 50
   },
   "settings_history_max_records": {
-    "description": "历史记录条数上限；-1 沿用高级 JSON",
+    "description": "历史记录条数上限",
     "type": "int",
-    "default": -1
+    "default": 200
   },
   "settings_history_max_total_mb": {
-    "description": "历史目录大小上限 MB；-1 沿用高级 JSON",
+    "description": "历史目录大小上限 MB",
     "type": "int",
-    "default": -1
+    "default": 4096
   },
   "settings_analysis_concurrency": {
-    "description": "同时分析任务数；-1 沿用高级 JSON",
+    "description": "同时分析任务数",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "settings_download_concurrency": {
-    "description": "同时下载数；-1 沿用高级 JSON",
+    "description": "同时下载数",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "settings_download_timeout_seconds": {
-    "description": "下载超时秒数；-1 沿用高级 JSON",
+    "description": "下载超时秒数",
     "type": "int",
-    "default": -1
+    "default": 120
   },
   "settings_digest_timeout_seconds": {
-    "description": "摘要提取超时秒数；-1 沿用高级 JSON",
+    "description": "摘要提取超时秒数",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "settings_ai_stage_timeout_seconds": {
-    "description": "AI 阶段超时秒数；-1 沿用高级 JSON",
+    "description": "AI 阶段超时秒数",
     "type": "int",
-    "default": -1
+    "default": 300
   },
   "settings_max_context_tokens": {
-    "description": "上下文 token 预算；-1 沿用高级 JSON",
+    "description": "上下文 token 预算",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "settings_context_compact_enabled_mode": {
-    "description": "超限自动压缩上下文；inherit 沿用高级 JSON",
+    "description": "超限自动压缩上下文",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -751,34 +759,34 @@
     ]
   },
   "settings_context_compact_ratio": {
-    "description": "触发压缩预算占比；留空沿用高级 JSON",
+    "description": "触发压缩预算占比",
     "type": "string",
-    "default": ""
+    "default": "0.8"
   },
   "settings_context_retain_ratio": {
-    "description": "压缩后保留最近对话占比；留空沿用高级 JSON",
+    "description": "压缩后保留最近对话占比",
     "type": "string",
-    "default": ""
+    "default": "0.25"
   },
   "settings_context_prune_tool_result_tokens": {
-    "description": "历史工具结果裁剪 token；-1 沿用高级 JSON",
+    "description": "历史工具结果裁剪 token",
     "type": "int",
-    "default": -1
+    "default": 512
   },
   "settings_context_summary_tokens": {
-    "description": "压缩摘要 token 上限；-1 沿用高级 JSON",
+    "description": "压缩摘要 token 上限",
     "type": "int",
-    "default": -1
+    "default": 1500
   },
   "settings_analysis_cache_hours": {
-    "description": "分析缓存小时数；-1 沿用高级 JSON",
+    "description": "分析缓存小时数",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "settings_circuit_breaker_enabled_mode": {
-    "description": "连续失败熔断端点；inherit 沿用高级 JSON",
+    "description": "连续失败熔断端点",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -786,14 +794,14 @@
     ]
   },
   "settings_system_prompt": {
-    "description": "自定义系统提示词；留空沿用高级 JSON",
+    "description": "自定义系统提示词",
     "type": "string",
     "default": ""
   },
   "settings_log_tools_enabled_mode": {
-    "description": "允许 AI 直读日志包；inherit 沿用高级 JSON",
+    "description": "允许 AI 直读日志包",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -801,9 +809,9 @@
     ]
   },
   "settings_cleanup_after_done_mode": {
-    "description": "完成后清理临时文件；inherit 沿用高级 JSON",
+    "description": "完成后清理临时文件",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -811,9 +819,9 @@
     ]
   },
   "settings_save_digest_debug_mode": {
-    "description": "保存发送摘要调试文件；inherit 沿用高级 JSON",
+    "description": "保存发送摘要调试文件",
     "type": "string",
-    "default": "inherit",
+    "default": "disabled",
     "options": [
       "inherit",
       "enabled",
@@ -821,44 +829,44 @@
     ]
   },
   "settings_max_zip_size_mb": {
-    "description": "zip 大小上限 MB；-1 沿用高级 JSON",
+    "description": "zip 大小上限 MB",
     "type": "int",
-    "default": -1
+    "default": 100
   },
   "settings_max_total_uncompressed_mb": {
-    "description": "解压总大小上限 MB；-1 沿用高级 JSON",
+    "description": "解压总大小上限 MB",
     "type": "int",
-    "default": -1
+    "default": 1024
   },
   "settings_max_prompt_chars": {
-    "description": "摘要字符上限；-1 沿用高级 JSON",
+    "description": "摘要字符上限",
     "type": "int",
-    "default": -1
+    "default": 200000
   },
   "settings_max_zip_members": {
-    "description": "zip 成员数上限；-1 沿用高级 JSON",
+    "description": "zip 成员数上限",
     "type": "int",
-    "default": -1
+    "default": 300
   },
   "settings_max_log_files": {
-    "description": "最多处理日志文件数；-1 沿用高级 JSON",
+    "description": "最多处理日志文件数",
     "type": "int",
-    "default": -1
+    "default": 6
   },
   "settings_max_maafw_bak_files": {
-    "description": "最多处理 maafw.bak 数；-1 沿用高级 JSON",
+    "description": "最多处理 maafw.bak 数",
     "type": "int",
-    "default": -1
+    "default": 1
   },
   "settings_max_maafw_bak_mb": {
-    "description": "单个 maafw.bak 上限 MB；-1 沿用高级 JSON",
+    "description": "单个 maafw.bak 上限 MB",
     "type": "int",
-    "default": -1
+    "default": 64
   },
   "settings_merge_archive_parts_mode": {
-    "description": "自动合并分卷包；inherit 沿用高级 JSON",
+    "description": "自动合并分卷包",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -866,24 +874,24 @@
     ]
   },
   "settings_archive_part_settle_seconds": {
-    "description": "分卷静默期秒数；留空沿用高级 JSON",
+    "description": "分卷静默期秒数",
     "type": "string",
-    "default": ""
+    "default": "30.0"
   },
   "settings_max_log_file_read_kb": {
-    "description": "普通日志读取上限 KB；-1 沿用高级 JSON",
+    "description": "普通日志读取上限 KB",
     "type": "int",
-    "default": -1
+    "default": 512
   },
   "settings_small_log_full_read_mb": {
-    "description": "小日志完整读取阈值 MB；-1 沿用高级 JSON",
+    "description": "小日志完整读取阈值 MB",
     "type": "int",
-    "default": -1
+    "default": 5
   },
   "settings_stream_medium_logs_mode": {
-    "description": "流式扫描中等日志；inherit 沿用高级 JSON",
+    "description": "流式扫描中等日志",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -891,19 +899,19 @@
     ]
   },
   "settings_large_log_threshold_mb": {
-    "description": "巨型日志阈值 MB；-1 沿用高级 JSON",
+    "description": "巨型日志阈值 MB",
     "type": "int",
-    "default": -1
+    "default": 50
   },
   "settings_max_large_log_read_kb": {
-    "description": "巨型日志前缀读取 KB；-1 沿用高级 JSON",
+    "description": "巨型日志前缀读取 KB",
     "type": "int",
-    "default": -1
+    "default": 256
   },
   "settings_stream_large_logs_mode": {
-    "description": "流式深扫巨型日志；inherit 沿用高级 JSON",
+    "description": "流式深扫巨型日志",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -911,24 +919,24 @@
     ]
   },
   "settings_max_stream_log_mb": {
-    "description": "巨型日志流式扫描上限 MB；-1 沿用高级 JSON",
+    "description": "巨型日志流式扫描上限 MB",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "settings_max_sections_per_log": {
-    "description": "单日志小节数上限；-1 沿用高级 JSON",
+    "description": "单日志小节数上限",
     "type": "int",
-    "default": -1
+    "default": 60
   },
   "settings_max_log_chars": {
-    "description": "单日志摘要字符上限；-1 沿用高级 JSON",
+    "description": "单日志摘要字符上限",
     "type": "int",
-    "default": -1
+    "default": 120000
   },
   "settings_compress_context_noise_mode": {
-    "description": "折叠低价值日志行；inherit 沿用高级 JSON",
+    "description": "折叠低价值日志行",
     "type": "string",
-    "default": "inherit",
+    "default": "enabled",
     "options": [
       "inherit",
       "enabled",
@@ -936,29 +944,29 @@
     ]
   },
   "settings_max_recognition_evidence_lines": {
-    "description": "OCR 证据行数上限；-1 沿用高级 JSON",
+    "description": "OCR 证据行数上限",
     "type": "int",
-    "default": -1
+    "default": 60
   },
   "settings_max_recognition_evidence_chars": {
-    "description": "OCR 证据字符上限；-1 沿用高级 JSON",
+    "description": "OCR 证据字符上限",
     "type": "int",
-    "default": -1
+    "default": 35000
   },
   "settings_log_head_lines": {
-    "description": "日志小节保留开头行数；-1 沿用高级 JSON",
+    "description": "日志小节保留开头行数",
     "type": "int",
-    "default": -1
+    "default": 16
   },
   "settings_context_before_lines": {
-    "description": "错误命中前保留行数；-1 沿用高级 JSON",
+    "description": "错误命中前保留行数",
     "type": "int",
-    "default": -1
+    "default": 80
   },
   "settings_context_after_lines": {
-    "description": "错误命中后保留行数；-1 沿用高级 JSON",
+    "description": "错误命中后保留行数",
     "type": "int",
-    "default": -1
+    "default": 60
   },
   "llm_fallback_models": {
     "description": "备用候选，格式 端点名:模型名；留空沿用高级 JSON",
@@ -994,9 +1002,9 @@
     "default": ""
   },
   "llm_endpoint_kind": {
-    "description": "端点协议；留空沿用高级 JSON",
+    "description": "端点协议",
     "type": "string",
-    "default": "",
+    "default": "openai",
     "options": [
       "",
       "openai",
@@ -1014,24 +1022,24 @@
     "default": ""
   },
   "llm_endpoint_max_concurrency": {
-    "description": "端点并发上限；-1 沿用高级 JSON",
+    "description": "端点并发上限",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "llm_endpoint_timeout_seconds": {
-    "description": "端点请求超时秒数；-1 沿用高级 JSON",
+    "description": "端点请求超时秒数",
     "type": "int",
-    "default": -1
+    "default": 180
   },
   "llm_endpoint_connect_timeout_seconds": {
-    "description": "端点连接超时秒数；-1 沿用高级 JSON",
+    "description": "端点连接超时秒数",
     "type": "int",
-    "default": -1
+    "default": 10
   },
   "llm_endpoint_max_retries": {
-    "description": "端点重试次数；-1 沿用高级 JSON",
+    "description": "端点重试次数",
     "type": "int",
-    "default": -1
+    "default": 2
   },
   "llm_endpoint_model": {
     "description": "要编辑的端点模型名；留空选择第一个",
@@ -1039,9 +1047,9 @@
     "default": ""
   },
   "llm_model_support_tools_mode": {
-    "description": "模型支持工具调用；inherit 沿用高级 JSON",
+    "description": "模型支持工具调用",
     "type": "string",
-    "default": "inherit",
+    "default": "disabled",
     "options": [
       "inherit",
       "enabled",
@@ -1049,9 +1057,9 @@
     ]
   },
   "llm_model_support_vision_mode": {
-    "description": "模型支持看图；inherit 沿用高级 JSON",
+    "description": "模型支持看图",
     "type": "string",
-    "default": "inherit",
+    "default": "disabled",
     "options": [
       "inherit",
       "enabled",
@@ -1059,9 +1067,9 @@
     ]
   },
   "llm_model_support_json_mode_mode": {
-    "description": "模型声明 JSON 模式；inherit 沿用高级 JSON",
+    "description": "模型声明 JSON 模式",
     "type": "string",
-    "default": "inherit",
+    "default": "disabled",
     "options": [
       "inherit",
       "enabled",
@@ -1069,14 +1077,14 @@
     ]
   },
   "llm_model_max_tokens": {
-    "description": "模型最大输出 token；-1 沿用高级 JSON",
+    "description": "模型最大输出 token",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "llm_model_max_context_tokens": {
-    "description": "模型上下文窗口 token；-1 沿用高级 JSON",
+    "description": "模型上下文窗口 token",
     "type": "int",
-    "default": -1
+    "default": 0
   },
   "llm_model_temperature": {
     "description": "模型级温度；留空沿用高级 JSON",
@@ -1089,43 +1097,43 @@
     "default": ""
   },
   "llm_defaults_temperature": {
-    "description": "全局兜底温度；留空沿用高级 JSON",
+    "description": "全局兜底温度",
     "type": "string",
-    "default": ""
+    "default": "0.2"
   },
   "llm_defaults_top_p": {
-    "description": "全局兜底 top_p；留空沿用高级 JSON",
+    "description": "全局兜底 top_p",
     "type": "string",
-    "default": ""
+    "default": "1.0"
   },
   "llm_defaults_max_tokens": {
-    "description": "全局兜底最大输出 token；-1 沿用高级 JSON",
+    "description": "全局兜底最大输出 token",
     "type": "int",
-    "default": -1
+    "default": 8192
   },
   "llm_defaults_max_context_tokens": {
-    "description": "全局兜底上下文窗口；-1 沿用高级 JSON",
+    "description": "全局兜底上下文窗口",
     "type": "int",
-    "default": -1
+    "default": 48000
   },
   "llm_circuit_failure_threshold": {
-    "description": "端点熔断失败阈值；-1 沿用高级 JSON",
+    "description": "端点熔断失败阈值",
     "type": "int",
-    "default": -1
+    "default": 3
   },
   "llm_circuit_cooldown_seconds": {
-    "description": "通用熔断冷却秒数；-1 沿用高级 JSON",
+    "description": "通用熔断冷却秒数",
     "type": "int",
-    "default": -1
+    "default": 300
   },
   "llm_circuit_rate_cooldown_seconds": {
-    "description": "限流熔断冷却秒数；-1 沿用高级 JSON",
+    "description": "限流熔断冷却秒数",
     "type": "int",
-    "default": -1
+    "default": 60
   },
   "llm_circuit_auth_cooldown_seconds": {
-    "description": "鉴权失败冷却秒数；-1 沿用高级 JSON",
+    "description": "鉴权失败冷却秒数",
     "type": "int",
-    "default": -1
+    "default": 1800
   }
 }

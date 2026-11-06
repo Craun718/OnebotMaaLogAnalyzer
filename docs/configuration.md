@@ -26,7 +26,7 @@
 - **AstrBot AIOCQHTTP**：忽略 `onebot` 段，由 AstrBot 接收事件和调用协议 API；`bot`、`llm`、
   `log` 及配置档案语义保持不变。
 
-AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON：
+AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON。新建面板配置时，有固定程序默认值的字段直接显示这些默认值，面板值会覆盖所选档案或端点的对应配置。下表说明手动使用旧继承标记时的行为：
 
 | 面板字段 | 临时覆盖的 JSON 位置 | 留空时 |
 | --- | --- | --- |
@@ -65,8 +65,8 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 | `send_images_mode` / `send_repo_images_mode` / `send_files_mode` | 所选档案的对应 `settings.send_*` | `inherit` 保持原值 |
 | `followup_mode` | 所选档案的 `settings.followup_enabled` | `inherit` 保持原值 |
 | `followup_window_minutes` | 所选档案的 `settings.followup_window_minutes` | `-1` 保持原值 |
-| `history_mode` | 所选档案的 `settings.history_enabled` | `inherit` 保持原值 |
-| `history_period_hours` | 所选档案的 `settings.history_period_hours` | `-1` 保持原值 |
+| `history_mode` | 所选档案的 `settings.history_enabled` | 默认 `enabled`；旧值 `inherit` 保持原值 |
+| `history_period_hours` | 所选档案的 `settings.history_period_hours` | 默认 `24`；旧值 `-1` 保持原值 |
 | `history_keep_periods` | 所选档案的 `settings.history_keep_periods` | `-1` 保持原值 |
 | `settings_*` | 分析触发、去重、反馈、附图、附件、追问、历史、并发、超时、上下文压缩与缓存等高级设置 | 继承标记保持原值 |
 | `settings_max_zip_*` / `settings_max_log_*` / `settings_*_lines` | 压缩包、日志文件、摘要与证据提取上限 | `-1` 保持原值 |
@@ -77,7 +77,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 | `log_dir` | `log.log_dir` | 保持原值 |
 | `log_level` | `log.log_level` | 保持原值 |
 
-空字符串、空列表、数值 `-1` 和各 `*_mode: inherit` 都是继承标记。面板覆盖不会回写 `config.json`，
+没有固定值的字段（如端点、密钥和可选的模型级采样参数）仍可留空。为兼容已有配置，空字符串、空列表、数值 `-1` 和各 `*_mode: inherit` 仍是继承标记；已有面板配置不会自动重置为新的默认值。面板覆盖不会回写 `config.json`，
 未选中的配置档案、未被 `llm_endpoint_selector` / `llm_endpoint_model`
 选中的端点与模型、Provider/Model 数组顺序和自定义高级字段保持原值。`llm_provider`
 与 `llm_model` 负责首选候选；`llm_endpoint_*` 与 `llm_model_*` 只编辑选中的一个端点和模型。
