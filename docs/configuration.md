@@ -1,6 +1,6 @@
 # 配置
 
-`config.json` 放在工程根目录，是 Bot 唯一的配置文件。首次运行 `python main.py` 会自动生成一份可直接启动的默认配置；`python main.py --print-config-template` 可随时把当前版本的模板打印到标准输出。
+`config.json` 是两个入口共用的完整配置格式。裸模式默认读取工程根目录的 `config.json`；AstrBot 插件默认读取 `data/plugin_data/OnebotMaaLogAnalyzer/config.json`，也可在面板中指定现有文件。首次运行 `python main.py` 会自动生成一份可直接启动的默认配置；`python main.py --print-config-template` 可随时把当前版本的模板打印到标准输出。
 
 本页**按 `config.json` 的字段顺序**（`onebot` → `bot` → `llm` → `debug` → `log`）逐字段说明：每个字段都给出类型 / 默认值、作用，以及可直接粘贴的示例。
 
@@ -15,6 +15,76 @@
 | `llm` | 全局端点、密钥、模型能力与兜底参数 | [LLM](#llm端点与候选模型) |
 | `debug` | 离线调试模式（不连接协议端） | [debug](#debug离线调试) |
 | `log` | 控制台 / 文件日志 | [log](#log日志) |
+
+## 部署入口与面板覆盖
+
+同一个文件可以继续供裸 OneBot 使用，也可以在 AstrBot 中复用。两种入口的差异只在事件和
+发送通道：
+
+- **裸 OneBot**：读取并使用 `onebot` 段，按 `ws` / `http_ws` / `ws_reverse` /
+  `http_ws_reverse` 建立连接。
+- **AstrBot AIOCQHTTP**：忽略 `onebot` 段，由 AstrBot 接收事件和调用协议 API；`bot`、`llm`、
+  `log` 及配置档案语义保持不变。
+
+AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON。新建面板配置时，有固定程序默认值的字段直接显示这些默认值，面板值会覆盖所选档案或端点的对应配置。下表说明手动使用旧继承标记时的行为：
+
+| 面板字段 | 临时覆盖的 JSON 位置 | 留空时 |
+| --- | --- | --- |
+| `enabled_mode` | 所选档案的 `settings.enabled` | `inherit` 保持原值 |
+| `config_file` | 配置文件路径本身 | 插件数据目录下的 `config.json` |
+| `data_dir` | `bot.data_dir` | 保持 JSON 值 |
+| `default_config` | 选择要修改的档案，不写入 JSON | 第一个档案 |
+| `listen_groups` | 所选档案的 `listen_groups` | 保持原值 |
+| `notify_group` | 所选档案的 `notify_group` | 保持原值 |
+| `command_prefix` | 所选档案的 `commands.prefix` | 保持原值 |
+| `owners` / `admins` | 所选档案的 `commands.owners` / `admins` | 保持原值 |
+| `report_mode` / `report_template` | 所选档案的 `report.render` / `template` | 保持原值 |
+| `report_max_*` / `report_device_scale_factor` / `report_font_family` / `report_browser_path` | 报告尺寸、页数、渲染倍率、字体与浏览器 | 继承标记保持原值 |
+| `report_reuse_browser_mode` / `report_render_timeout_ms` / `report_*_mode` | 报告浏览器复用、超时、嵌入附件、Markdown、文本回退与追问渲染 | `inherit` 标记保持原值 |
+| `project_name` | 所选档案的 `project.name` | 保持原值 |
+| `archive_match_mode` | 所选档案的 `project.archive_match_mode` | 保持原值 |
+| `file_prefix` | 所选档案的 `project.file_prefix` | 保持原值 |
+| `require_log_layout_mode` | 所选档案的 `project.require_log_layout` | `inherit` 保持原值 |
+| `ui_mxu_mode` / `ui_mfaa_mode` / `ui_maafwapp_mode` / `ui_auto_mode` | 所选档案的 `project.ui.<名称>.enabled` | `inherit` 保持原值 |
+| `repo_mode` / `repo_search_mode` / `repo_path` / `repo_url` | 所选档案的仓库开关、检索模式与来源 | `inherit` / 留空保持原值 |
+| `repo_mirrors` / `repo_branch` / `repo_default_branch` | 仓库镜像、克隆分支与还原分支 | 留空 / 空列表保持原值 |
+| `repo_preload_*` / `repo_update_on_analyze_mode` / `repo_allow_ai_update_mode` | 仓库预下载、重试、分析前更新与 AI 更新权限 | `inherit` / `-1` 保持原值 |
+| `repo_auto_checkout_version_mode` / `repo_allow_ai_switch_tag_mode` / `repo_max_tag_switch_rounds` | 日志版本切 tag、AI 切 tag 与轮数限制 | `inherit` / `-1` 保持原值 |
+| `repo_restore_latest_after_analyze_mode` / `repo_refuse_dirty_worktree_mode` | 分析后还原与脏工作区保护 | `inherit` 保持原值 |
+| `repo_max_tool_*` / `repo_agent_deadline_seconds` | agent 模式轮次、调用数、结果、上下文与超时限制 | `-1` 保持原值 |
+| `repo_extensions` / `repo_max_file_kb` / `repo_max_scan_files` / `repo_max_files` | 仓库扫描扩展名、大小、文件数与注入文件数 | 空列表 / `-1` 保持原值 |
+| `repo_max_identifiers` / `repo_context_lines` / `repo_max_block_lines` / `repo_max_chars` | inject 模式标识符、上下文、JSON 块与字符限制 | `-1` 保持原值 |
+| `llm_provider` / `llm_model` / `llm_fallback_models` | 所选档案首选候选与备用候选链；备用项格式为 `端点名:模型名` | 保持原值 |
+| `llm_profile_temperature` / `llm_profile_max_tokens` / `llm_profile_top_p` | 所选档案的模型调用参数 | 继承标记保持原值 |
+| `llm_endpoint_selector` / `llm_endpoint_name` / `llm_endpoint_kind` / `llm_endpoint_base_url` / `llm_endpoint_api_key` | 选择并编辑一个全局 LLM 端点 | 留空保持原值 |
+| `llm_endpoint_max_*` / `llm_endpoint_timeout_seconds` / `llm_endpoint_connect_timeout_seconds` / `llm_endpoint_max_retries` | 端点并发、超时与重试 | `-1` 保持原值 |
+| `llm_endpoint_model` / `llm_model_*` | 选择并编辑该端点的一个模型能力、输出、上下文与采样参数 | 继承标记保持原值 |
+| `llm_defaults_*` / `llm_circuit_*` | 全局模型兜底参数与端点熔断参数 | 继承标记保持原值 |
+| `vision_mode` / `vision_max_images` / `vision_max_image_kb` | 所选档案的看图开关与数量、大小上限 | `inherit` 标记保持原值 |
+| `vision_detail` / `vision_*_mode` | 看图细节、错误截图、项目模板图与模型索图 | `inherit` 标记保持原值 |
+| `send_images_mode` / `send_repo_images_mode` / `send_files_mode` | 所选档案的对应 `settings.send_*` | `inherit` 保持原值 |
+| `followup_mode` | 所选档案的 `settings.followup_enabled` | `inherit` 保持原值 |
+| `followup_window_minutes` | 所选档案的 `settings.followup_window_minutes` | `-1` 保持原值 |
+| `history_mode` | 所选档案的 `settings.history_enabled` | 默认 `enabled`；旧值 `inherit` 保持原值 |
+| `history_period_hours` | 所选档案的 `settings.history_period_hours` | 默认 `24`；旧值 `-1` 保持原值 |
+| `history_keep_periods` | 所选档案的 `settings.history_keep_periods` | `-1` 保持原值 |
+| `settings_*` | 分析触发、去重、反馈、附图、附件、追问、历史、并发、超时、上下文压缩与缓存等高级设置 | 继承标记保持原值 |
+| `settings_max_zip_*` / `settings_max_log_*` / `settings_*_lines` | 压缩包、日志文件、摘要与证据提取上限 | `-1` 保持原值 |
+| `settings_system_prompt` | 自定义系统提示词 | 留空保持原值 |
+| `commands_mode` / `commands_*_level` | 所选档案的 `commands.enabled` 与权限等级 | `-1` / `inherit` 保持原值 |
+| `commands_reply_chunk_chars` / `commands_max_list_items` | 指令回复分段与任务列表条数 | `-1` 保持原值 |
+| `log_to_file_mode` | `log.log_to_file` | `inherit` 保持原值 |
+| `log_dir` | `log.log_dir` | 保持原值 |
+| `log_level` | `log.log_level` | 保持原值 |
+
+没有固定值的字段（如端点、密钥和可选的模型级采样参数）仍可留空。插件启动时会将已保存面板中的旧 `inherit` 和 `-1` 标记替换为对应的固定程序默认值，并保存面板配置；已填写的具体值保留。没有固定值的字段和空字符串、空列表仍可沿用高级配置。面板覆盖不会回写 `config.json`，
+未选中的配置档案、未被 `llm_endpoint_selector` / `llm_endpoint_model`
+选中的端点与模型、Provider/Model 数组顺序和自定义高级字段保持原值。`llm_provider`
+与 `llm_model` 负责首选候选；`llm_endpoint_*` 与 `llm_model_*` 只编辑选中的一个端点和模型。
+
+复用裸模式配置时，建议在 AstrBot 面板中同时填写绝对 `config_file` 与绝对 `data_dir`。
+若只写相对 `bot.data_dir`，插件会按自己的数据目录解析，不一定等于裸进程的启动目录。
+完整安装、迁移和故障排查见 [AstrBot 部署](astrbot.md)。
 
 ## 完整示例：默认 config.json
 
@@ -163,7 +233,9 @@
 
 > `config.json` 含 API 密钥与 `access_token`，已被 `.gitignore` 排除，**不要提交到仓库**。
 
-## onebot：OneBot 连接
+## onebot：OneBot 连接（仅裸模式）
+
+本段只由 `python main.py` 使用。AstrBot AIOCQHTTP 插件不读取此段。
 
 ### onebot 示例
 
@@ -260,7 +332,7 @@
 
 | 字段 | 类型 / 默认 | 说明 | 示例 |
 | --- | --- | --- | --- |
-| `data_dir` | `string` / `"data"` | 数据根目录（相对启动时的工作目录）。设置、历史、仓库缓存、用量都写在下面；调试模式下不生效 | `"data_dir": "data"` |
+| `data_dir` | `string` / `"data"` | 数据根目录。裸模式相对启动工作目录，AstrBot 相对插件数据目录。设置、历史、仓库缓存、用量都写在下面；调试模式下不生效 | `"data_dir": "data"` |
 | `configs` | `object` / — | 多群配置：键是**配置名**，值是下面这组字段。配置名同时用于日志前缀 `[配置名]` 与数据子目录 `data/<配置名>/`，改名等于换一套数据；目录名会被清洗（只留字母数字与 `._-`，其余替换为 `_`），升级前已有的老目录名继续沿用 | `"configs": { "官服": { "listen_groups": ["111111111"] } }` |
 | `configs.<名称>.listen_groups` | `string[]` / `[]` | 要监听的群号（字符串）。为空则该配置不接收任何群 | `"listen_groups": ["111111111"]` |
 | `configs.<名称>.notify_group` | `string` / `null` | 分析结果额外推送的群号；`null` / 空串 = 只发回原群 | `"notify_group": "111111111"` |

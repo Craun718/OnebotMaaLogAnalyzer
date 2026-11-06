@@ -12,9 +12,9 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-from core.models import AnalysisSettings
-from features.maa import history as history_mod
-from features.maa.history import HistoryStore, new_record_id
+from maa_analyzer.core.models import AnalysisSettings
+from maa_analyzer.features.maa import history as history_mod
+from maa_analyzer.features.maa.history import HistoryStore, new_record_id
 
 
 @contextlib.contextmanager

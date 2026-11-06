@@ -67,7 +67,7 @@ class DebugManagerCloseTests(unittest.TestCase):
             (history / "records.json").write_text("[]", encoding="utf-8")
 
             closed: list = []
-            with patch("features.maa.render.close_all", lambda: closed.append(True)):
+            with patch("maa_analyzer.features.maa.render.close_all", lambda: closed.append(True)):
                 _manager(data).close()
 
             self.assertEqual(
@@ -90,14 +90,14 @@ class DebugManagerCloseTests(unittest.TestCase):
             profile = data / "_browser_profile"
             profile.mkdir()
             closed: list = []
-            with patch("features.maa.render.close_all", lambda: closed.append(True)):
+            with patch("maa_analyzer.features.maa.render.close_all", lambda: closed.append(True)):
                 _manager(data).close(clean_scratch=False)
             self.assertEqual(closed, [True])
             self.assertTrue(profile.exists(), "关浏览器与清文件是两件事")
 
     def test_missing_data_dir_is_noop(self):
         with _tmpdir() as tmp:
-            with patch("features.maa.render.close_all", lambda: None):
+            with patch("maa_analyzer.features.maa.render.close_all", lambda: None):
                 _manager(Path(tmp) / "missing").close()   # 不该抛异常
 
 

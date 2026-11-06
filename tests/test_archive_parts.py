@@ -15,16 +15,16 @@ import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.archive_names import parse_archive_part
-from core.models import AnalysisSettings
-from features.maa.analyzer import (
+from maa_analyzer.core.archive_names import parse_archive_part
+from maa_analyzer.core.models import AnalysisSettings
+from maa_analyzer.features.maa.analyzer import (
     ArchivePartsState,
     MaaAnalyzer,
     decide_parts_action,
     describe_parts_gap,
     judge_parts_state,
 )
-from features.maa.watcher import LogWatcher
+from maa_analyzer.features.maa.watcher import LogWatcher
 
 BASE = "log_20261019_141709"
 

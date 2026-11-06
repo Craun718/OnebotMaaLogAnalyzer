@@ -43,7 +43,7 @@ Anthropic 风格返回（`input_tokens` 只算未命中部分）：
 | 系统提示词在会话内保持不变 | `MaaAnalyzer._system_prompt` |
 | 追问复用分析阶段的系统提示词与工具说明，追问指令放到末尾的 user 消息 | `_answer_followup_inner` |
 | 追问上下文以**原始日志摘要开头**，文件名等独有信息放在末尾 | `_build_followup_context` |
-| 工具循环只追加消息；不再每轮折叠/重写历史 | `core/compaction.py` |
+| 工具循环只追加消息；不再每轮折叠/重写历史 | `maa_analyzer/core/compaction.py` |
 | 收敛与截断重试保留 `tools` 定义，仅用 `tool_choice="none"` 禁止调用 | `_run_tool_loop` / `_retry_truncated` |
 | 首轮输入在会话开始时按预算裁剪一次，之后不再改动 | `ConversationCompactor.prepare` |
 | 输入预算预留输出 token，避免「刚好塞满」被 400 拒绝 | `LLMPool.input_budget` |

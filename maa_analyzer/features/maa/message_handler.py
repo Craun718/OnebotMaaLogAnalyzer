@@ -1,0 +1,251 @@
+"""
+消息处理器 — 处理群内文本消息（指令 + 追问答疑）。
+
+优先级:
+  1. `/maa ...` 指令 → 交给 CommandHandler
+  2. **引用**了 Bot 分析结果消息的发言 → 作为追问交给 AI 续答
+  3. 其他文本 → 忽略（普通闲聊不响应）
+
+追问答疑必须引用 Bot 发送的分析结果消息，避免群里任何发言都被当作追问。
+"""
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from ...features.maa.commands import CommandHandler
+from ...features.maa.followup import FollowupStore, resolve_window_minutes
+from ...features.maa.text_utils import split_text
+from ...core.llm_pool import new_session_id
+from ...core.log_context import config_log_context
+
+if TYPE_CHECKING:
+    from ...core.service import MaaService
+    from ...features.maa.analyzer import MaaAnalyzer
+
+logger = logging.getLogger("Maa.Message")
+
+
+class MessageHandler:
+    """把群文本消息路由到指令系统或追问答疑。"""
+
+    def __init__(self, service: "MaaService", analyzer: "MaaAnalyzer",
+                 followup: FollowupStore, history=None, segment_sender=None):
+        self.s = service
+        self.analyzer = analyzer
+        self.followup = followup
+        self.history = history
+        # watcher.send_segments 回调，用于复用图文混排发送逻辑
+        self.segment_sender = segment_sender
+        self.commands = CommandHandler(
+            service, followup, history_store=history, analyzer=analyzer
+        )
+
+    # ════════════════════════════════════════════════════════════
+    # 入口
+    # ════════════════════════════════════════════════════════════
+
+    async def on_message_text(self, event: dict) -> bool:
+        """处理群内文本消息；返回是否已消费该消息。"""
+        group_id = event.get("group_id")
+        if group_id is None:
+            return False
+        text = str(event.get("_text") or "").strip()
+        if not text:
+            return False
+
+        group_str = str(group_id)
+        user_id = str(event.get("user_id", ""))
+        sender = event.get("sender") if isinstance(event.get("sender"), dict) else {}
+        role = str(sender.get("role") or "").lower()
+        is_admin = role in ("admin", "owner")
+
+        # ── 1. 指令 ──
+        cfg = self.s.resolve_config(group_str)
+        # 指令与追问的日志都标注配置名（无法解析配置时保持无前缀）
+        with config_log_context(cfg.name if cfg is not None else ""):
+            return await self._dispatch(
+                cfg, group_str=group_str, user_id=user_id, text=text,
+                is_admin=is_admin, event=event,
+            )
+
+    async def _dispatch(self, cfg, *, group_str: str, user_id: str,
+                        text: str, is_admin: bool, event: dict) -> bool:
+        if cfg is not None and cfg.commands.enabled:
+            args = CommandHandler.match(text, cfg.commands)
+            if args is not None:
+                result = await self.commands.handle(
+                    group_id=group_str, user_id=user_id,
+                    args=args, is_admin=is_admin,
+                )
+                await self._send_chunks(group_str, result.text,
+                                        cfg.commands.reply_chunk_chars)
+                # 回复已发出，现在才真正重建运行时（否则会拆掉发送中的连接）
+                await self._apply_pending_reload()
+                return True
+
+        # ── 2. 追问答疑（必须引用 Bot 的分析结果消息）──
+        reply_id = str(event.get("_reply_id") or "").strip()
+        return await self._handle_followup(
+            group_str, user_id, text, reply_id, cfg
+        )
+
+    async def _apply_pending_reload(self) -> None:
+        """若刚收到 `/maa reload`，在回复发出后执行运行时重建。"""
+        if not self.s.has_pending_reload():
+            return
+        ok, message = await self.s.apply_pending_reload()
+        if not ok:
+            logger.error(f"[重载] {message}")
+
+    # ════════════════════════════════════════════════════════════
+    # 追问答疑
+    # ════════════════════════════════════════════════════════════
+
+    async def _handle_followup(self, group_id: str, user_id: str, question: str,
+                               reply_id: str, cfg) -> bool:
+        if not reply_id:
+            return False   # 未引用任何消息 → 不是追问
+
+        settings = cfg.settings if cfg is not None else None
+        config_name = cfg.name if cfg is not None else ""
+        if settings is not None:
+            # 策略按配置下发：窗口 / 轮数 / 会话数都是这个配置自己的，
+            # 改一个配置的设置不会动到另一个配置正在进行的会话。
+            self.followup.apply_policy(config_name, settings)
+
+        session = self.followup.by_message_id(reply_id, config_name)
+        if session is None:
+            return False   # 引用的不是 Bot 的分析结果消息
+
+        if session.group_id != group_id:
+            return False   # 跨群引用，忽略
+
+        if settings is None or not settings.followup_enabled:
+            return True
+
+        commands = cfg.commands if cfg is not None else None
+        if commands is not None:
+            level = commands.level_of(user_id)
+            if level < commands.followup_level:
+                await self.s.send_text(
+                    int(group_id),
+                    f"权限不足：追问答疑需要等级 {commands.followup_level}。",
+                )
+                return True
+
+        logger.info(f"[追问] 群 {group_id} 引用 {reply_id} 提问：{question[:60]}")
+
+        # 旧会话（升级前创建 / 状态里没有 session_id）补一个会话 ID，
+        # 之后每轮追问都复用它，用量才能按会话聚合。
+        if not getattr(session, "session_id", ""):
+            session.session_id = new_session_id(config_name)
+
+        # 同一配置内，追问与主分析共用一把工作锁：追问会读/改仓库工作区
+        # （切版本、取 @项目 附件），必须等当前分析跑完；不同配置互不影响。
+        async with self.analyzer.config_work_lock(config_name):
+            # 复用本次分析已就绪的仓库 provider；重启后内存缓存为空，
+            # 这里按配置重建并确保就绪，否则仓库工具与 @项目 附件都会失效。
+            provider = await self.analyzer.ensure_repo_provider(config_name, cfg.project)
+            answer = await self.analyzer.answer_followup(
+                settings=settings,
+                messages=session.messages,
+                question=question,
+                digest=getattr(session, "digest", None),
+                provider=provider,
+                project=cfg.project,
+                config_name=config_name,
+                session_id=getattr(session, "session_id", ""),
+                file_name=getattr(session, "file_name", ""),
+            )
+        if answer is None or not answer.text:
+            # 模型没给出任何可用内容（如全程只调工具、收敛也失败）。
+            # 给一句可操作、可区分原因的提示，而不是笼统的「无效回复」。
+            reason = self.analyzer.llm_unavailable_summary(config_name)
+            logger.warning(
+                f"[追问] 群 {group_id} 未获得有效回答"
+                f"（工具可用={provider is not None or getattr(session, 'digest', None) is not None}"
+                f"，端点异常={reason or '无'}）"
+            )
+            if reason:
+                text = (
+                    f"这次追问没能整理出结论：模型端点不可用。\n"
+                    f"原因：{reason}\n"
+                    "稍后重试即可；鉴权失败需更正 `llm.providers[].api_key`，"
+                    "配额耗尽需等待恢复或补充其他端点。"
+                )
+            else:
+                text = (
+                    "这次追问没能整理出结论（可能是问题范围太大或检索未命中）。\n"
+                    "可以试着把问题说得更具体，或换一种问法再引用一次。"
+                )
+            await self.s.send_text(int(group_id), text)
+            return True
+
+        self.followup.append(group_id, question, answer.text)
+        # 登记本轮回复的消息 ID，使其可被再次引用（支持连续追问）
+        sent_ids = await self._send_answer(group_id, answer, settings)
+        for mid in sent_ids:
+            self.followup.register_message(group_id, mid)
+        return True
+
+    async def _send_answer(self, group_id: str, answer, settings) -> list:
+        """
+        按片段顺序发送追问回复（文本 / 图片 / 文件）。
+
+        复用 watcher 的发送实现，使追问与主报告的图文混排行为一致。
+        返回成功发出的 message_id 列表，供登记为新的引用锚点。
+        """
+        segments = getattr(answer, "segments", None)
+        if not segments:
+            return await self._send_chunks(
+                group_id, answer.text, settings.reply_chunk_chars
+            )
+
+        max_chars = max(1000, int(settings.reply_chunk_chars or 3500))
+        if self.segment_sender is not None:
+            return await self.segment_sender(
+                int(group_id), segments, settings, max_chars
+            )
+
+        # 没有 watcher 时退化为逐条发送
+        sent: list = []
+        for seg in segments:
+            if seg.kind == "text" and seg.text.strip():
+                sent.extend(
+                    await self._send_chunks(group_id, seg.text, max_chars)
+                )
+            elif seg.kind == "image":
+                try:
+                    mid = await self.s.send_image(int(group_id), seg.data)
+                    if mid:
+                        sent.append(mid)
+                except Exception as exc:
+                    logger.warning(f"[追问] 发送图片失败（{seg.label}）：{exc}")
+            elif seg.kind == "file":
+                try:
+                    await self.s.send_file(int(group_id), seg.name, seg.data)
+                except Exception as exc:
+                    logger.warning(f"[追问] 发送文件失败（{seg.name}）：{exc}")
+        return sent
+
+    # ════════════════════════════════════════════════════════════
+    # 工具
+    # ════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _window_minutes(settings) -> int:
+        """会话有效期（分钟）；0 表示跟随历史保留期（见 followup.resolve_window_minutes）。"""
+        return resolve_window_minutes(settings)
+
+    async def _send_chunks(self, group_id: str, text: str,
+                           chunk_chars: int) -> list:
+        """分段发送文本，返回成功发出的 message_id 列表。"""
+        sent: list = []
+        if not text:
+            return sent
+        for chunk in split_text(text, max(1000, int(chunk_chars or 3500))):
+            mid = await self.s.send_text(int(group_id), chunk)
+            if mid:
+                sent.append(mid)
+        return sent

@@ -51,15 +51,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 try:
-    from core.models import ReportConfig
-    from features.maa.render import RenderAttachment
-    from features.maa.render import _attachment_html as production_attachment_html
-    from features.maa.render.browser import (
+    from maa_analyzer.core.models import ReportConfig
+    from maa_analyzer.features.maa.render import RenderAttachment
+    from maa_analyzer.features.maa.render import _attachment_html as production_attachment_html
+    from maa_analyzer.features.maa.render.browser import (
         BrowserRenderer,
         BrowserUnavailable,
         find_browser,
     )
-    from features.maa.render.template import load_template
+    from maa_analyzer.features.maa.render.template import load_template
 except ImportError as exc:  # pragma: no cover - 启动期环境问题
     venv_python = (ROOT / ".venv" / "Scripts" / "python.exe"
                    if sys.platform.startswith("win")

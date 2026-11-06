@@ -11,9 +11,9 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-from core import data_manager as dm_mod
-from core.data_manager import DataManager, safe_name
-from core.models import AnalysisSettings
+from maa_analyzer.core import data_manager as dm_mod
+from maa_analyzer.core.data_manager import DataManager, safe_name
+from maa_analyzer.core.models import AnalysisSettings
 
 
 @contextlib.contextmanager

@@ -11,9 +11,9 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.models import RepoConfig
-from features.maa.analyzer import MaaAnalyzer
-from features.maa.repo import RepoProvider
+from maa_analyzer.core.models import RepoConfig
+from maa_analyzer.features.maa.analyzer import MaaAnalyzer
+from maa_analyzer.features.maa.repo import RepoProvider
 
 
 @contextlib.contextmanager

@@ -5,8 +5,8 @@ Run with: python -m unittest discover -s tests -v
 """
 import unittest
 
-from core.models import CommandConfig
-from features.maa.commands import required_level
+from maa_analyzer.core.models import CommandConfig
+from maa_analyzer.features.maa.commands import required_level
 
 
 class DefaultLevelTests(unittest.TestCase):
