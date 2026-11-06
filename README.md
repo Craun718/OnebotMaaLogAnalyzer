@@ -83,7 +83,7 @@ python main.py               # 首次运行生成 config.json
       "archive_match_mode": "auto",
       // 未知 UI 的日志包开关；三种已知 UI 始终启用
       "ui": { "auto": { "enabled": true } },
-      "repo": { "enabled": true, "mode": "agent", "url": "https://github.com/..." }
+      "repo": { "mode": "agent", "url": "https://github.com/..." }
     },
     "settings": { "max_log_files": 6 }
   }

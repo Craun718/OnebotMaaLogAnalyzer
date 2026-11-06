@@ -751,10 +751,8 @@ class CommandHandler:
             return await self._set_repo_field(cfg, "preload_enabled", value)
         if sub == "mirror":
             return await self._cmd_repo_mirror(cfg, args[1:])
-        if sub in ("on", "enable", "开"):
-            return await self._set_repo_field(cfg, "enabled", "true")
-        if sub in ("off", "disable", "关"):
-            return await self._set_repo_field(cfg, "enabled", "false")
+        if sub in ("on", "enable", "开", "off", "disable", "关"):
+            return CommandResult(text="项目代码参考始终开启，无法通过命令切换。", ok=False)
         return CommandResult(text=f"未知 repo 子指令：{sub}", ok=False)
 
     async def _cmd_repo_mirror(self, cfg: ConfigState,

@@ -275,7 +275,7 @@ def validate_document(cfg: Any) -> dict:
                     errors.append(f"配置「{display}」的 project.ui.{key} 必须是对象")
 
         repo = project.get("repo") if isinstance(project.get("repo"), dict) else {}
-        if repo.get("enabled"):
+        if repo:
             if not str(repo.get("path") or "").strip() and not str(repo.get("url") or "").strip():
                 errors.append(f"配置「{display}」启用了仓库但没有填 path 或 url")
             if str(repo.get("mode") or "inject") not in {"inject", "agent"}:
@@ -908,7 +908,6 @@ const LABELS = {
   'project.archive_match_mode': '日志包识别方式',
   'project.file_prefix': '文件名前缀',
   'project.require_log_layout': '要求日志布局特征',
-  'repo.enabled': '启用仓库对照',
   'repo.mode': '检索模式',
   'repo.path': '本地仓库路径',
   'repo.url': '仓库地址',
@@ -1127,7 +1126,7 @@ const SETTINGS_GROUPS = [
 ];
 
 const REPO_GROUPS = [
-  ['基本', ['enabled', 'mode']],
+  ['基本', ['mode']],
   ['来源', ['path', 'url', 'mirrors', 'branch', 'default_branch']],
   ['预下载与更新', ['preload_enabled', 'preload_retries', 'update_on_analyze', 'allow_ai_update',
     'preload_timeout_seconds', 'update_timeout_seconds', 'shallow_clone_timeout_seconds']],

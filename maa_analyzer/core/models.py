@@ -239,7 +239,10 @@ class RepoConfig(BaseModel):
       - 分析结束后还原到分析前的分支、tag 或提交
     """
 
-    enabled: bool = False
+    @property
+    def enabled(self) -> bool:
+        """项目代码参考始终开启，忽略旧配置中的开关。"""
+        return True
 
     # ── 检索模式 ──
     # inject: 预检索后把命中片段拼进提示词（快、省 token，默认）
@@ -502,7 +505,7 @@ class AnalysisSettings(BaseModel):
     system_prompt: str = ""
 
     # ── 日志包工具（让 AI 像读仓库一样读日志包原始文件）──
-    # 开启后，即使 repo.enabled=false，分析也会走工具模式：
+    # 开启后，分析会走工具模式：
     # 模型可调用 log_search / log_read_file / log_list_files 直接查压缩包内容，
     # 而不是只能看到摘要里已提取的部分。追问同样适用。
     log_tools_enabled: bool = True

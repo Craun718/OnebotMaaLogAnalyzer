@@ -23,7 +23,6 @@ PANEL_BASE_TRISTATE_MODE_FIELDS = {
     "enabled_mode",
     "require_log_layout_mode",
     "ui_auto_mode",
-    "repo_mode",
     "vision_mode",
     "send_images_mode",
     "send_repo_images_mode",
@@ -258,7 +257,6 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "file_prefix": "",
     "require_log_layout_mode": 'enabled',
     "ui_auto_mode": 'enabled',
-    "repo_mode": 'disabled',
     "llm_provider": "",
     "llm_model": "",
     "llm_fallback_models": [],
@@ -418,7 +416,6 @@ PANEL_PROFILE_FIELDS = (
         "file_prefix",
         "require_log_layout_mode",
         "ui_auto_mode",
-        "repo_mode",
         "llm_provider",
         "llm_model",
         "llm_fallback_models",
@@ -468,7 +465,6 @@ def default_config() -> dict:
                         "archive_match_mode": "auto",
                         "require_log_layout": True,
                         "repo": {
-                            "enabled": False,
                             "mode": "inject",
                             "path": "",
                             "url": "https://github.com/MAAXYZ/MaaXXX",
@@ -1174,11 +1170,6 @@ def apply_panel_overrides(
             project = _ensure_dict(profile, "project")
             ui = _ensure_dict(project, "ui")
             _apply_ui_mode(panel, "ui_auto_mode", ui, "auto")
-        if _changed(panel, "repo_mode"):
-            project = _ensure_dict(profile, "project")
-            repo = _ensure_dict(project, "repo")
-            _apply_mode(panel, "repo_mode", repo, "enabled")
-
         if any(
             _changed(panel, key)
             for key in ("llm_provider", "llm_model", "llm_fallback_models")

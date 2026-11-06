@@ -21,6 +21,13 @@ from maa_analyzer.core.models import AnalysisSettings, CommandConfig, ProjectCon
 
 
 class PanelOverrideTests(unittest.TestCase):
+    def test_repo_is_always_enabled_with_legacy_settings(self):
+        for legacy in ({}, {"enabled": False}, {"enabled": True}):
+            with self.subTest(legacy=legacy):
+                repo = ProjectConfig.model_validate({"repo": legacy}).repo
+                self.assertTrue(repo.enabled)
+                self.assertNotIn("enabled", repo.model_dump())
+
     def test_profile_panel_defaults_match_builtin_models(self):
         defaults = {
             "settings": AnalysisSettings().model_dump(),
@@ -92,7 +99,6 @@ class PanelOverrideTests(unittest.TestCase):
             "ui_mfaa_mode": "enabled",
             "ui_maafwapp_mode": "disabled",
             "ui_auto_mode": "enabled",
-            "repo_mode": "enabled",
             "llm_provider": "default",
             "llm_model": "gpt-4o-mini",
             "vision_mode": "disabled",
@@ -135,7 +141,7 @@ class PanelOverrideTests(unittest.TestCase):
                 "auto": {"enabled": True},
             },
         )
-        self.assertIs(beta["project"]["repo"]["enabled"], True)
+        self.assertTrue(ProjectConfig.model_validate(beta["project"]).repo.enabled)
         self.assertEqual(
             beta["llm"]["models"],
             [
@@ -507,9 +513,6 @@ class PanelOverrideTests(unittest.TestCase):
         )
 
     def test_invalid_panel_modes_are_rejected(self):
-        with self.assertRaisesRegex(ValueError, "repo_mode"):
-            apply_panel_overrides(self._config(), {"repo_mode": "maybe"})
-
         with self.assertRaisesRegex(ValueError, "archive_match_mode"):
             apply_panel_overrides(
                 self._config(), {"archive_match_mode": "everything"}

@@ -46,7 +46,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 | `file_prefix` | 所选档案的 `project.file_prefix` | 保持原值 |
 | `require_log_layout_mode` | 所选档案的 `project.require_log_layout` | `inherit` 保持原值 |
 | `ui_auto_mode` | 所选档案的 `project.ui.auto.enabled` | `inherit` 保持原值 |
-| `repo_mode` / `repo_search_mode` / `repo_path` / `repo_url` | 所选档案的仓库开关、检索模式与来源 | `inherit` / 留空保持原值 |
+| `repo_search_mode` / `repo_path` / `repo_url` | 所选档案的仓库检索模式与来源 | `inherit` / 留空保持原值 |
 | `repo_mirrors` / `repo_branch` / `repo_default_branch` | 仓库镜像、克隆分支与还原分支 | 留空 / 空列表保持原值 |
 | `repo_preload_*` / `repo_update_on_analyze_mode` / `repo_allow_ai_update_mode` | 仓库预下载、重试、分析前更新与 AI 更新权限 | `inherit` / `-1` 保持原值 |
 | `repo_auto_checkout_version_mode` / `repo_allow_ai_switch_tag_mode` / `repo_max_tag_switch_rounds` | 日志版本切 tag、AI 切 tag 与轮数限制 | `inherit` / `-1` 保持原值 |
@@ -112,7 +112,6 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
           "archive_match_mode": "auto",
           "require_log_layout": true,
           "repo": {
-            "enabled": false,
             "mode": "inject",
             "path": "",
             "url": "https://github.com/MAAXYZ/MaaXXX",
@@ -395,7 +394,7 @@ data/
 | `require_log_layout` | `bool` / `true` | **仅 `prefix` 模式**：是否额外做内容特征识别；`false` = 只信前缀 | `"require_log_layout": true` |
 | `ui` | `object` / `{}` | 未知 UI 的开关；已知 UI 始终启用，旧配置中的对应开关不再生效 | `"ui": { "auto": { "enabled": false } }` |
 | `ui.<名称>.enabled` | `bool` / `true` | 控制未知 UI 的日志包；`false` 会跳过，不调用 AI | `"enabled": false` |
-| `repo` | `object` / — | 项目代码仓库，见 [repo](#repo项目代码仓库) | `"repo": { "enabled": true }` |
+| `repo` | `object` / — | 项目代码仓库，见 [repo](#repo项目代码仓库) | `"repo": { "mode": "inject" }` |
 
 #### repo：项目代码仓库
 
@@ -403,7 +402,6 @@ data/
 
 ```jsonc
 "repo": {
-  "enabled": true,
   "mode": "inject",
   "path": "E:/Code/MAA/MaaXXX",
   "url": "https://github.com/MAAXYZ/MaaXXX",
@@ -414,9 +412,10 @@ data/
 }
 ```
 
+项目代码参考始终开启；旧配置中的 `repo.enabled` 不再生效。
+
 | 字段 | 类型 / 默认 | 说明 | 示例 |
 | --- | --- | --- | --- |
-| `enabled` | `bool` / `false` | 是否启用项目代码参考 | `"enabled": true` |
 | `mode` | `string` / `"inject"` | 检索模式：`inject`（预检索后把命中片段拼进提示词，快、省 token）/ `agent`（把仓库读写工具交给 AI，深、耗 token）；其它值按 `inject` | `"mode": "agent"` |
 | `path` | `string` / `""` | 本地仓库目录，**优先于 `url`**，不需要网络与 git，也不会执行仓库代码 | `"path": "E:/Code/MAA/MaaXXX"` |
 | `url` | `string` / `"https://github.com/MAAXYZ/MaaXXX"` | 主 git 地址（GitHub / Gitee / 自建镜像 / `file://` 均可） | `"url": "https://github.com/MAAXYZ/MaaXXX"` |

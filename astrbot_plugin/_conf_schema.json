@@ -113,15 +113,6 @@
       "disabled"
     ]
   },
-  "repo_mode": {
-    "description": "项目代码仓库开关",
-    "type": "string",
-    "default": "disabled",
-    "options": [
-      "enabled",
-      "disabled"
-    ]
-  },
   "llm_provider": {
     "description": "首选 LLM 端点名；仍需在高级 JSON 中声明端点和密钥",
     "type": "string",
