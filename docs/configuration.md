@@ -55,7 +55,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 | `repo_extensions` / `repo_max_file_kb` / `repo_max_scan_files` / `repo_max_files` | 仓库扫描扩展名、大小、文件数与注入文件数 | 空列表 / `-1` 保持原值 |
 | `repo_max_identifiers` / `repo_context_lines` / `repo_max_block_lines` / `repo_max_chars` | inject 模式标识符、上下文、JSON 块与字符限制 | `-1` 保持原值 |
 | `llm_provider` / `llm_model` / `llm_fallback_models` | 所选档案首选候选与备用候选链；备用项格式为 `端点名:模型名` | 保持原值 |
-| `llm_profile_temperature` / `llm_profile_max_tokens` / `llm_profile_top_p` | 所选档案的模型调用参数 | 继承标记保持原值 |
+| `llm_profile_max_tokens` | 所选档案的模型调用参数 | 继承标记保持原值 |
 | `llm_endpoint_selector` / `llm_endpoint_name` / `llm_endpoint_kind` / `llm_endpoint_base_url` / `llm_endpoint_api_key` | 选择并编辑一个全局 LLM 端点 | 留空保持原值 |
 | `llm_endpoint_max_*` / `llm_endpoint_timeout_seconds` / `llm_endpoint_connect_timeout_seconds` / `llm_endpoint_max_retries` | 端点并发、超时与重试 | `-1` 保持原值 |
 | `llm_endpoint_model` / `llm_model_*` | 选择并编辑该端点的一个模型能力、输出、上下文与采样参数 | 继承标记保持原值 |
@@ -206,8 +206,6 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
       }
     ],
     "defaults": {
-      "temperature": 0.2,
-      "top_p": 1.0,
       "max_tokens": 8192,
       "max_context_tokens": 48000
     },
@@ -308,9 +306,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 
       "llm": {
         "models": [{ "name": "default", "model": "gpt-4o-mini" }],
-        "temperature": 0.2,
-        "max_tokens": 8192,
-        "top_p": 1.0
+        "max_tokens": 8192
       },
 
       "vision": { "enabled": true },
@@ -526,9 +522,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
     { "name": "deepseek", "model": "deepseek-v4-pro" },
     { "name": "backup",   "model": "qwen-vl-max" }
   ],
-  "temperature": 0.2,
-  "max_tokens": 8192,
-  "top_p": 1.0
+  "max_tokens": 8192
 }
 ```
 
@@ -537,9 +531,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `models` | `object[]` / `[]` | 候选列表，元素为 `{name, model}`：`name` = `llm.providers[].name`，`model` = 该端点的 `models[].model`。为空则启动报错 | `"models": [{ "name": "default", "model": "gpt-4o-mini" }]` |
 | `models[].name` | `string` / `""` | 端点名，必须与 `llm.providers[].name` 完全一致 | `"name": "deepseek"` |
 | `models[].model` | `string` / `""` | 模型名，必须在该端点的 `models[]` 中声明过 | `"model": "deepseek-v4-pro"` |
-| `temperature` | `float` / `null` | 本配置的采样温度；`null` = 用模型级 → `llm.defaults` | `"temperature": 0.3` |
-| `max_tokens` | `int` / `null` | 本配置单次最大输出 token；`null` = 用模型级 → `llm.defaults` | `"max_tokens": 4096` |
-| `top_p` | `float` / `null` | 核采样；`null` = 用模型级 → `llm.defaults`。Anthropic 协议仅在非默认值时发送 | `"top_p": 0.9` |
+| `max_tokens` | `int` / `null` | 本配置单次最大输出 token；`null` = 用模型级，未设置时由 API 服务端决定 | `"max_tokens": 4096` |
 
 - 引用不存在的端点或模型会在启动时被拒绝（打印具体项并以非 0 退出）
 - 重复的 `{name, model}` 会被去重（保留首次出现）
@@ -808,7 +800,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
       ]
     }
   ],
-  "defaults": { "temperature": 0.2, "top_p": 1.0, "max_tokens": 8192, "max_context_tokens": 48000 },
+  "defaults": { "max_tokens": 8192, "max_context_tokens": 48000 },
   "circuit_breaker": { "failure_threshold": 3, "cooldown_seconds": 300 }
 }
 ```
@@ -837,15 +829,11 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `supports.json_mode` | `bool` / `false` | 声明该模型支持 JSON 模式（当前版本不发送 `response_format`，仅作能力声明与后续扩展） | `"json_mode": true` |
 | `max_tokens` | `int` / `0` | 该模型的单次最大输出；`0` = 用 `llm.defaults.max_tokens` | `"max_tokens": 8192` |
 | `max_context_tokens` | `int` / `0` | 该模型的上下文窗口；`0` = 用 `llm.defaults.max_context_tokens`。输入预算 = 窗口 − 输出 − 安全余量 | `"max_context_tokens": 128000` |
-| `temperature` | `float` / `null` | 模型级温度；`null` = 用 `llm.defaults.temperature` | `"temperature": 0.1` |
-| `top_p` | `float` / `null` | 模型级 `top_p`；`null` = 用 `llm.defaults.top_p` | `"top_p": 0.95` |
 
 ### llm.defaults
 
 | 字段 | 类型 / 默认 | 说明 | 示例 |
 | --- | --- | --- | --- |
-| `temperature` | `float` / `0.2` | 全局兜底温度 | `"temperature": 0.3` |
-| `top_p` | `float` / `1.0` | 全局兜底 `top_p` | `"top_p": 0.9` |
 | `max_tokens` | `int` / `8192` | 全局兜底最大输出 | `"max_tokens": 4096` |
 | `max_context_tokens` | `int` / `48000` | 全局兜底上下文窗口（最小 1024） | `"max_context_tokens": 96000` |
 
@@ -870,18 +858,16 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 Anthropic 协议的自动适配：
 
 - 强制要求 `max_tokens`，用 `models[].max_tokens` 或 `llm.defaults.max_tokens` 填充
-- `temperature` 钳制在 0–1；`top_p` 仅在非默认值时发送
 - 端点要求显式 `thinking` 时，自动补 `{"type": "disabled"}` 后重试
 - `stop_reason` 映射为统一的结束原因，`cache_read_input_tokens` / `cache_creation_input_tokens` 计入缓存统计
 
-OpenAI 端点的参数降级：遇到新模型参数差异时自动重试一次，`max_tokens` → `max_completion_tokens`，并丢弃不支持的 `temperature` / `top_p` / `tool_choice`。
+OpenAI 端点的参数降级：遇到新模型参数差异时自动重试一次，`max_tokens` → `max_completion_tokens`，并丢弃不支持的 `tool_choice`。
 
 ### 参数优先级
 
 低 → 高：
 
 ```text
-temperature / top_p：llm.defaults → providers[].models[] → bot.configs.<名称>.llm
 max_tokens：         llm.defaults → providers[].models[] → bot.configs.<名称>.llm
 上下文窗口：          llm.defaults → providers[].models[] → settings.max_context_tokens
 ```

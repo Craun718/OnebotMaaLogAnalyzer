@@ -100,8 +100,6 @@ class ModelSpec(BaseModel):
     supports: ModelSupports = Field(default_factory=ModelSupports)
     max_tokens: int = 0          # 0 = 用 llm.defaults.max_tokens
     max_context_tokens: int = 0  # 0 = 用 llm.defaults.max_context_tokens
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
 
     model_config = {"populate_by_name": True, "alias_generator": _to_camel}
 
@@ -135,8 +133,6 @@ class LLMProviderConfig(BaseModel):
 class LLMDefaults(BaseModel):
     """全局 `llm.defaults`：参数兜底值。"""
 
-    temperature: float = 0.2
-    top_p: float = 1.0
     max_tokens: int = 8192
     max_context_tokens: int = 48000
 
@@ -181,9 +177,7 @@ class ConfigLLM(BaseModel):
     """`bot.configs.<名称>.llm`：本配置按优先级尝试的候选模型列表。"""
 
     models: List[ModelRef] = Field(default_factory=list)
-    temperature: Optional[float] = None
     max_tokens: Optional[int] = None
-    top_p: Optional[float] = None
 
     model_config = {"populate_by_name": True, "alias_generator": _to_camel}
 
@@ -391,14 +385,14 @@ class ProjectConfig(BaseModel):
     model_config = {"populate_by_name": True, "alias_generator": _to_camel}
 
     def ui_key_for(self, ui_key: str) -> str:
-        if key in {"mxu", "mfaa", "maafwapp"}:
-            return True
         """把任意写法归一化为 project.ui 的键名。"""
         return normalize_ui_key(ui_key)
 
     def ui_enabled(self, ui_key: str) -> bool:
         """该 UI 是否允许分析；未配置时回退 `auto`，再回退 True。"""
         key = normalize_ui_key(ui_key)
+        if key in {"mxu", "mfaa", "maafwapp"}:
+            return True
         item = self.ui.get(key)
         if item is not None:
             return bool(item.enabled)

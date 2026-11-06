@@ -345,11 +345,6 @@ def validate_document(cfg: Any) -> dict:
         if count > 1:
             errors.append(f"llm.providers 中端点名重复：{name}")
 
-    defaults = llm.get("defaults") if isinstance(llm.get("defaults"), dict) else {}
-    for key, low, high in (("temperature", 0, 2), ("top_p", 0, 1)):
-        if key in defaults:
-            _check_number(defaults.get(key), f"llm.defaults.{key}", low, high, errors)
-
     # 候选模型与能力
     capability: dict[tuple[str, str], dict] = {}
     for provider in providers:
@@ -1044,11 +1039,7 @@ const LABELS = {
   'llm.models': '候选模型（按优先级）',
   'llm.name': '端点',
   'llm.model': '模型',
-  'llm.temperature': '温度覆盖',
   'llm.max_tokens': '输出 token 覆盖',
-  'llm.top_p': 'top_p 覆盖',
-  'defaults.temperature': '默认温度',
-  'defaults.top_p': '默认 top_p',
   'defaults.max_tokens': '默认输出 token',
   'defaults.max_context_tokens': '默认上下文 token',
   'circuit_breaker.failure_threshold': '失败阈值',
@@ -1069,8 +1060,6 @@ const LABELS = {
   'model.supports.json_mode': '支持 JSON 模式',
   'model.max_tokens': '输出 token 上限',
   'model.max_context_tokens': '上下文 token 上限',
-  'model.temperature': '温度',
-  'model.top_p': 'top_p',
   'debug.enabled': '启用调试面板',
   'debug.http_port': '调试端口',
   'debug.data_dir': '调试数据目录',
@@ -1456,7 +1445,7 @@ function specFor(key, value, path) {
   if (path === 'report.template') { spec.type = 'template'; }
   if (path === 'report.browser_path') { spec.type = 'browser'; }
   if ((path === 'provider.api_key') || path === 'model.api_key') { spec.secret = true; }
-  if (path.startsWith('llm.') && (key === 'temperature' || key === 'top_p' || key === 'max_tokens')) {
+  if (path.startsWith('llm.') && key === 'max_tokens') {
     spec.nullable = true;
   }
   if (META.enums[path]) { spec.enums = META.enums[path]; }
@@ -1465,8 +1454,7 @@ function specFor(key, value, path) {
     || key === 'history_period_hours') {
     spec.type = 'number';
   }
-  if (path.endsWith('temperature') || path.endsWith('top_p')
-    || path.endsWith('device_scale_factor') || path.endsWith('settle_seconds')
+  if (path.endsWith('device_scale_factor') || path.endsWith('settle_seconds')
     || path === 'settings.file_list_delay_seconds') {
     spec.float = true;
   }
@@ -1611,7 +1599,6 @@ function renderConfigGroups(host, spec, name) {
 
   const projectDefaults = META.defaults.bot.configs[DEFAULT_TEMPLATE_NAME].project;
   renderGroups(host, spec.project, projectDefaults, 'project', PROJECT_GROUPS);
-    if (['mxu', 'mxuapp', 'mfaa', 'mfaavalonia', 'maafwapp', 'maafw'].includes(key.toLowerCase().replace(/[^a-z0-9]/g, ''))) continue;
   renderProjectUI(host, spec.project);
 }
 
@@ -1624,6 +1611,7 @@ function renderProjectUI(host, project) {
   const ui = isPlainObject(project.ui) ? project.ui : (project.ui = {});
   const keys = Array.from(new Set([...UI_KEYS, ...Object.keys(ui)]));
   for (const key of keys) {
+    if (['mxu', 'mxuapp', 'mfaa', 'mfaavalonia', 'maafwapp', 'maafw'].includes(key.toLowerCase().replace(/[^a-z0-9]/g, ''))) continue;
     const current = isPlainObject(ui[key]) ? !!ui[key].enabled : true;
     const wrap = el('div', 'field');
     const line = el('div', 'switch');
@@ -1787,9 +1775,9 @@ function renderConfigModels(host, spec, name) {
   host.appendChild(box);
 
   const overrides = el('section', 'group');
-  overrides.appendChild(el('h3', '', '本配置的参数覆盖（留空 = 跟随全局）'));
+  overrides.appendChild(el('h3', '', '本配置的参数覆盖（留空 = 跟随模型或服务端默认值）'));
   const grid = el('div', 'grid');
-  for (const key of ['temperature', 'top_p', 'max_tokens']) {
+  for (const key of ['max_tokens']) {
     renderField(grid, llm, key, 'llm.' + key, {
       nullable: true,
       float: key !== 'max_tokens',
@@ -1864,11 +1852,6 @@ function renderLLM(host) {
       renderField(mGrid, spec, 'model', 'model.model', { mono: true });
       for (const key of ['max_tokens', 'max_context_tokens']) {
         renderField(mGrid, spec, key, 'model.' + key, specFor(key, spec[key], 'model.' + key));
-      }
-      for (const key of ['temperature', 'top_p']) {
-        renderField(mGrid, spec, key, 'model.' + key, {
-          type: 'number', float: true, nullable: true,
-        });
       }
       box.appendChild(mGrid);
 

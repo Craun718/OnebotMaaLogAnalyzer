@@ -902,20 +902,10 @@
       "type": "string"
     }
   },
-  "llm_profile_temperature": {
-    "description": "当前档案采样温度；留空沿用高级 JSON",
-    "type": "string",
-    "default": ""
-  },
   "llm_profile_max_tokens": {
     "description": "当前档案最大输出 token；-1 沿用高级 JSON",
     "type": "int",
     "default": -1
-  },
-  "llm_profile_top_p": {
-    "description": "当前档案 top_p；留空沿用高级 JSON",
-    "type": "string",
-    "default": ""
   },
   "llm_endpoint_selector": {
     "description": "要编辑的全局端点名；留空选择第一个",
@@ -1008,26 +998,6 @@
     "description": "模型上下文窗口 token",
     "type": "int",
     "default": 0
-  },
-  "llm_model_temperature": {
-    "description": "模型级温度；留空沿用高级 JSON",
-    "type": "string",
-    "default": ""
-  },
-  "llm_model_top_p": {
-    "description": "模型级 top_p；留空沿用高级 JSON",
-    "type": "string",
-    "default": ""
-  },
-  "llm_defaults_temperature": {
-    "description": "全局兜底温度",
-    "type": "string",
-    "default": "0.2"
-  },
-  "llm_defaults_top_p": {
-    "description": "全局兜底 top_p",
-    "type": "string",
-    "default": "1.0"
   },
   "llm_defaults_max_tokens": {
     "description": "全局兜底最大输出 token",

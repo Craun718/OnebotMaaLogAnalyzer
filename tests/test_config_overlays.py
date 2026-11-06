@@ -261,13 +261,9 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(model["supports"], {"tools": True, "vision": True, "json_mode": False})
         self.assertEqual(model["max_tokens"], 8192)
         self.assertEqual(model["max_context_tokens"], 128000)
-        self.assertEqual(model["temperature"], 0.1)
-        self.assertEqual(model["top_p"], 0.95)
         self.assertEqual(
             result["llm"]["defaults"],
             {
-                "temperature": 0.25,
-                "top_p": 0.9,
                 "max_tokens": 4096,
                 "max_context_tokens": 96000,
             },
@@ -289,9 +285,7 @@ class PanelOverrideTests(unittest.TestCase):
                 {"name": "backup", "model": "backup-model"},
             ],
         )
-        self.assertEqual(profile_llm["temperature"], 0.3)
         self.assertEqual(profile_llm["max_tokens"], 4096)
-        self.assertEqual(profile_llm["top_p"], 0.9)
 
     def test_llm_endpoint_rename_updates_profile_references(self):
         result = apply_panel_overrides(
@@ -312,7 +306,6 @@ class PanelOverrideTests(unittest.TestCase):
         for panel, message in (
             ({"llm_endpoint_selector": "missing"}, "端点不存在"),
             ({"llm_endpoint_kind": "grpc"}, "llm_endpoint_kind"),
-            ({"llm_model_temperature": "hot"}, "llm_model_temperature"),
             ({"llm_fallback_models": ["bad"]}, "llm_fallback_models"),
         ):
             with self.subTest(panel=panel):

@@ -66,8 +66,6 @@ PANEL_PROFILE_FLOAT_OVERRIDES: dict[str, tuple[str, ...]] = {
         "settings", "context_compact_ratio"
     ),
     "settings_context_retain_ratio": ("settings", "context_retain_ratio"),
-    "llm_profile_temperature": ("llm", "temperature"),
-    "llm_profile_top_p": ("llm", "top_p"),
 }
 PANEL_PROFILE_INT_OVERRIDES: dict[str, tuple[str, ...]] = {
     "vision_max_images": ("vision", "max_images"),
@@ -218,12 +216,8 @@ PANEL_LLM_MODEL_FIELDS = {
     "llm_model_support_json_mode_mode",
     "llm_model_max_tokens",
     "llm_model_max_context_tokens",
-    "llm_model_temperature",
-    "llm_model_top_p",
 }
 PANEL_LLM_GLOBAL_FIELDS = {
-    "llm_defaults_temperature",
-    "llm_defaults_top_p",
     "llm_defaults_max_tokens",
     "llm_defaults_max_context_tokens",
     "llm_circuit_failure_threshold",
@@ -270,9 +264,7 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "llm_provider": "",
     "llm_model": "",
     "llm_fallback_models": [],
-    "llm_profile_temperature": "",
     "llm_profile_max_tokens": -1,
-    "llm_profile_top_p": "",
     "llm_endpoint_selector": "",
     "llm_endpoint_name": "",
     "llm_endpoint_kind": 'openai',
@@ -288,10 +280,6 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "llm_model_support_json_mode_mode": 'disabled',
     "llm_model_max_tokens": 0,
     "llm_model_max_context_tokens": 0,
-    "llm_model_temperature": "",
-    "llm_model_top_p": "",
-    "llm_defaults_temperature": '0.2',
-    "llm_defaults_top_p": '1.0',
     "llm_defaults_max_tokens": 8192,
     "llm_defaults_max_context_tokens": 48000,
     "llm_circuit_failure_threshold": 3,
@@ -582,8 +570,6 @@ def default_config() -> dict:
                 }
             ],
             "defaults": {
-                "temperature": 0.2,
-                "top_p": 1.0,
                 "max_tokens": 8192,
                 "max_context_tokens": 48000,
             },
@@ -1015,22 +1001,10 @@ def _apply_llm_panel_overrides(result: dict, panel: Mapping[str, Any]) -> None:
         ):
             if _changed(panel, key):
                 model[setting] = _nonnegative_int(panel, key)
-        for key, setting in (
-            ("llm_model_temperature", "temperature"),
-            ("llm_model_top_p", "top_p"),
-        ):
-            if _changed(panel, key):
-                model[setting] = _float(panel, key)
 
     if any(_changed(panel, key) for key in PANEL_LLM_GLOBAL_FIELDS):
         defaults = _ensure_dict(llm_cfg, "defaults")
         circuit = _ensure_dict(llm_cfg, "circuit_breaker")
-        for key, setting in (
-            ("llm_defaults_temperature", "temperature"),
-            ("llm_defaults_top_p", "top_p"),
-        ):
-            if _changed(panel, key):
-                defaults[setting] = _float(panel, key)
         for key, setting in (
             ("llm_defaults_max_tokens", "max_tokens"),
             ("llm_defaults_max_context_tokens", "max_context_tokens"),

@@ -361,7 +361,6 @@ class CommandHandler:
         lines = [
             "模型配置：",
             f"  候选顺序 = {candidates}",
-            f"  温度 = {cfg.llm.temperature if cfg.llm.temperature is not None else '（跟随模型）'}",
             f"  输出上限 = {cfg.llm.max_tokens or '（跟随模型）'}",
             "看图（vision）："
             f"{'开' if cfg.vision.enabled else '关'}"
@@ -504,9 +503,9 @@ class CommandHandler:
 
         # ui.<名称>.<字段>
         if len(parts) == 3 and parts[0].lower() == "ui":
+            ui_key = normalize_ui_key(parts[1])
             if ui_key in {"mxu", "mfaa", "maafwapp"}:
                 return CommandResult(text="已知 UI 的日志包始终启用，无法修改开关。", ok=False)
-            ui_key = normalize_ui_key(parts[1])
             field_name = parts[2]
             field = ProjectUISettings.model_fields.get(field_name)
             if field is None or not _is_simple_type(field.annotation):
