@@ -550,8 +550,6 @@ class AnalysisSettings(BaseModel):
     max_recognition_evidence_lines: int = 60
     max_recognition_evidence_chars: int = 35000
     log_head_lines: int = 16
-    context_before_lines: int = 80
-    context_after_lines: int = 60
 
     model_config = {"populate_by_name": True, "alias_generator": _to_camel}
 

@@ -1025,8 +1025,6 @@ const LABELS = {
   'settings.max_recognition_evidence_lines': '识别证据行数上限',
   'settings.max_recognition_evidence_chars': '识别证据字符上限',
   'settings.log_head_lines': '日志头部行数',
-  'settings.context_before_lines': '命中前文行数',
-  'settings.context_after_lines': '命中后文行数',
   'commands.enabled': '启用指令',
   'commands.prefix': '指令前缀',
   'commands.owners': '超级管理员 QQ',
@@ -1125,8 +1123,7 @@ const SETTINGS_GROUPS = [
     'small_log_full_read_mb', 'stream_medium_logs', 'large_log_threshold_mb',
     'max_large_log_read_kb', 'stream_large_logs', 'max_stream_log_mb',
     'max_sections_per_log', 'max_log_chars', 'compress_context_noise',
-    'max_recognition_evidence_lines', 'max_recognition_evidence_chars', 'log_head_lines',
-    'context_before_lines', 'context_after_lines']],
+    'max_recognition_evidence_lines', 'max_recognition_evidence_chars', 'log_head_lines']],
 ];
 
 const REPO_GROUPS = [

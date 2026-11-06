@@ -884,16 +884,6 @@
     "type": "int",
     "default": 16
   },
-  "settings_context_before_lines": {
-    "description": "错误命中前保留行数",
-    "type": "int",
-    "default": 80
-  },
-  "settings_context_after_lines": {
-    "description": "错误命中后保留行数",
-    "type": "int",
-    "default": 60
-  },
   "llm_fallback_models": {
     "description": "备用候选，格式 端点名:模型名；留空沿用高级 JSON",
     "type": "list",

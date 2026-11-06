@@ -691,8 +691,6 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `max_recognition_evidence_lines` | `int` / `60` | OCR 重点证据行数上限 | `"max_recognition_evidence_lines": 30` |
 | `max_recognition_evidence_chars` | `int` / `35000` | OCR 重点证据块字符上限 | `"max_recognition_evidence_chars": 20000` |
 | `log_head_lines` | `int` / `16` | 每个日志小节额外保留的开头行数（版本、路径、控制器等环境信息） | `"log_head_lines": 24` |
-| `context_before_lines` | `int` / `80` | 错误命中前保留行数（按折叠后行数计） | `"context_before_lines": 120` |
-| `context_after_lines` | `int` / `60` | 错误命中后保留行数 | `"context_after_lines": 90` |
 
 > 模型选择与采样参数不在 `settings` 中，而在 `bot.configs.<名称>.llm`（见 [llm](#llm候选模型)）。
 > 上下文压缩与提示词缓存的组织方式见 [上下文与缓存](context.md)。

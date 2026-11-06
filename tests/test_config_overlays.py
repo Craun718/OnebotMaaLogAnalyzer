@@ -350,7 +350,6 @@ class PanelOverrideTests(unittest.TestCase):
             "max_log_chars", "compress_context_noise",
             "max_recognition_evidence_lines",
             "max_recognition_evidence_chars", "log_head_lines",
-            "context_before_lines", "context_after_lines",
         }
         self.assertLessEqual(expected, mapped_settings)
         for field in expected:

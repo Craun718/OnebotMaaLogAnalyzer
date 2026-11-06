@@ -132,8 +132,6 @@ PANEL_PROFILE_INT_OVERRIDES: dict[str, tuple[str, ...]] = {
     "settings_max_recognition_evidence_lines": ("settings", "max_recognition_evidence_lines"),
     "settings_max_recognition_evidence_chars": ("settings", "max_recognition_evidence_chars"),
     "settings_log_head_lines": ("settings", "log_head_lines"),
-    "settings_context_before_lines": ("settings", "context_before_lines"),
-    "settings_context_after_lines": ("settings", "context_after_lines"),
     "settings_duplicate_window_seconds": ("settings", "duplicate_window_seconds"),
     "llm_profile_max_tokens": ("llm", "max_tokens"),
 }
@@ -384,8 +382,6 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "settings_max_recognition_evidence_lines": 60,
     "settings_max_recognition_evidence_chars": 35000,
     "settings_log_head_lines": 16,
-    "settings_context_before_lines": 80,
-    "settings_context_after_lines": 60,
     "settings_duplicate_window_seconds": 120,
     "settings_send_progress_message_mode": 'enabled',
     "settings_send_summary_mode": 'enabled',
