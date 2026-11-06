@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from maa_analyzer.platform import (
+from ...platform import (
     GroupFileMetadata,
     GroupMessageEvent,
     GroupUploadNotice,

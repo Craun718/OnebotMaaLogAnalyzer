@@ -48,7 +48,13 @@
   连续 `archive_part_settle_seconds` 秒没有新分卷后才开始分析一次
 - 分卷静默期内到达的新分卷会取消上一次计时，因此上传顺序、间隔都不影响合并结果
 - 同一分卷经 `notice.group_upload` 与 `message.file` 重复上报不会重置静默计时
-- 分析进行中到达的分卷会被忽略；分析结束后的 `duplicate_window_seconds` 内不再重复触发
+- **齐全性判定** = 编号连续 + 内容特征（合并后至少有一卷含日志正文/配置）。
+  静默期到期仍判为不完整时，最多额外等 `archive_part_wait_extra_rounds` 轮；
+  仍不完整则按 `archive_part_incomplete_action` 处理（`analyze` = 照常分析并标注缺失，
+  `cancel` = 取消并提示补齐后重传）。注意编号看不出"后面的卷还没上传"，
+  所以只收到 `part01`（且没有日志正文）时会被保守地当作不完整、多等一轮。
+- 分析进行中到达的分卷仍会被忽略（入口即拦截）；分析结束后
+  `duplicate_window_seconds` 内不再重复触发
 
 ## 日志包命名与 UI 自动识别
 
@@ -95,11 +101,11 @@ Bot 会从文件名、`maafw.log` 头部、MFAA 的 `logs/log-*.log`、MaaFwApp 
 | 设置项 | 默认 | 说明 |
 | --- | --- | --- |
 | `send_images` | `true` | 是否允许模型附图 |
-| `max_report_images` | `4` | 最多附带图片数 |
+| `max_report_images` | `4` | 最多附带图片数（`0` = 不发图片；与文件上限分别计数） |
 | `send_repo_images` | `true` | 是否允许从仓库取模板图 |
 | `send_files` | `true` | 是否允许附带任意文件 |
-| `max_report_files` | `2` | 最多附带文件数 |
-| `max_file_attachment_mb` | `20` | 单个**非图片**附件大小上限 MB |
+| `max_report_files` | `2` | 最多附带文件数（`0` = 不发文件；与图片上限分别计数） |
+| `max_file_attachment_mb` | `20` | 单个**非图片**附件大小上限 MB；`0` = 关闭文件附件 |
 | `inline_attachments` | `true` | 附件是否插在文字中间（旧配置兼容项） |
 
 > 图片没有单张体积上限：渲染时按正文宽度等比缩放。呈现方式（内联 / 单独发送、
@@ -127,14 +133,20 @@ Bot 会从文件名、`maafw.log` 头部、MFAA 的 `logs/log-*.log`、MaaFwApp 
 | `history_period_hours` | `24` | 历史保留周期（小时） |
 | `history_keep_periods` | `2` | 保留周期数，超出即删除 |
 | `history_max_records` | `200` | 历史记录条数上限 |
-| `history_max_total_mb` | `4096` | 历史目录占用上限 MB |
+| `history_max_total_mb` | `4096` | 历史目录占用上限 MB（按目录实际占用现算，含追问阶段补解压的 `extracted/`） |
 
 ## 摘要提取
+
+> **两道门槛，各自管一件事**：`max_zip_size_mb` 限制**下载体积**（协议端流量）；
+> `max_total_uncompressed_mb` 限制**解压后总大小**，在下载完成、摘要与 AI 之前
+> 只读 zip 中央目录求和判定，超限直接回「内容过多」并跳过本次分析。
+> 两者都通过之后，摘要与日志工具不再各自比对总量——解压时只按实际写出字节
+> 复核一次（防止 zip 头造假），超限即整次中止。
 
 | 设置项 | 默认 | 说明 |
 | --- | --- | --- |
 | `max_zip_size_mb` | `100` | zip 下载大小上限 MB |
-| `max_total_uncompressed_mb` | `120` | 解压总大小上限 MB |
+| `max_total_uncompressed_mb` | `1024` | **解压后总大小上限 MB**：下载后只读 zip 目录求和，超限直接跳过整次分析（不提取摘要、不调用 AI）；通过后下游不再比对总量 |
 | `max_zip_members` | `300` | 压缩包内成员数上限 |
 | `max_prompt_chars` | `200000` | 摘要字符上限（作为 token 预算的兜底；按优先级裁剪，不会先丢关键证据） |
 | `max_log_files` | `6` | 最多处理日志文件数（按 UI 布局优先选择框架日志 / UI 日志 / 运行记录） |
@@ -142,6 +154,9 @@ Bot 会从文件名、`maafw.log` 头部、MFAA 的 `logs/log-*.log`、MaaFwApp 
 | `max_maafw_bak_mb` | `64` | 单个 `maafw.bak` 大小上限 MB；`0` = 不限制 |
 | `merge_archive_parts` | `true` | 自动合并 `*-partNN.zip` 分卷日志包 |
 | `archive_part_settle_seconds` | `30` | 分卷静默期：每来一个新分卷重新计时，连续该秒数无新分卷后才开始分析；`0` = 收到首个分卷立即分析 |
+| `archive_part_require_content` | `true` | 分卷齐全性是否要求"内容特征"（合并后至少一卷含日志正文/配置）；关掉则只按编号连续判定 |
+| `archive_part_wait_extra_rounds` | `1` | 判定分卷不完整时额外等待的轮数（每轮再等 `archive_part_settle_seconds` 秒）；`0` = 不额外等待 |
+| `archive_part_incomplete_action` | `analyze` | 额外等待用尽后仍不完整：`analyze` = 照常分析并在提示词/报告里标注缺失；`cancel` = 取消分析并提示补齐后重传 |
 | `max_log_chars` | `120000` | 单个日志摘要字符上限 |
 | `max_recognition_evidence_chars` | `35000` | OCR 重点证据块字符上限 |
 | `max_recognition_evidence_lines` | `60` | OCR 重点证据行数上限 |
@@ -169,7 +184,7 @@ MaaFramework 的日志按大小轮转：写满当前 `maafw.log` 后把它改名
 | 设置项 | 默认 | 说明 |
 | --- | --- | --- |
 | `small_log_full_read_mb` | `5` | 小于该值完整读取 MB |
-| `max_log_file_read_kb` | `512` | 普通模式单文件读取上限 KB |
+| `max_log_file_read_kb` | `512` | 日志包单文件读取/工具返回窗口上限 KB（`log_search` 流式全量扫描，不受此限） |
 | `stream_medium_logs` | `true` | 流式扫描中等日志 |
 | `large_log_threshold_mb` | `50` | 巨型日志判定阈值 MB |
 | `max_large_log_read_kb` | `256` | 仅前缀模式读取上限 KB |
@@ -190,7 +205,7 @@ MaaFramework 的日志按大小轮转：写满当前 `maafw.log` 后把它改名
 | `context_compact_enabled` | `true` | 估算输入超过阈值时自动压缩历史；端点返回超限时也会强制压缩并重试 |
 | `context_compact_ratio` | `0.8` | 触发压缩的预算占比（0.5–0.95） |
 | `context_retain_ratio` | `0.25` | 压缩后保留最近对话的 token 占比（0.1–0.5） |
-| `context_prune_tool_result_tokens` | `512` | 压缩时把历史工具结果裁剪到的 token 上限；`0` = 不裁剪 |
+| `context_prune_tool_result_tokens` | `512` | 压缩时把历史工具结果裁剪到的 token 上限；`0` = 不裁剪，非 0 时最小按 64 处理 |
 | `context_summary_tokens` | `1500` | 压缩摘要本身的目标 token 上限 |
 | `digest_timeout_seconds` | `0` | 摘要提取超时，`0` = 不限制 |
 | `analysis_cache_hours` | `0` | 分析结果缓存小时数（进程内，按 file_id 命中，重载即清空）；`0` = 关闭 |
@@ -205,9 +220,11 @@ MaaFramework 的日志按大小轮转：写满当前 `maafw.log` 后把它改名
 
 | 设置项 | 默认 | 说明 |
 | --- | --- | --- |
-| `analysis_concurrency` | `2` | 同时进行的 AI 分析数（仓库状态相关的配置仍按配置串行） |
-| `download_concurrency` | `2` | 同时进行的下载数 |
+| `download_concurrency` | `2` | 同一配置内同时进行的下载数（分卷并行下载） |
 | `download_timeout_seconds` | `120` | 下载超时秒数 |
+
+同一配置内的分析**恒为串行**：一份日志的分析、追问与仓库操作排队执行，不并行；
+并发只发生在配置之间，不同配置互不影响。详见[并发模型](architecture.md#并发模型)。
 
 ## 日志包工具
 

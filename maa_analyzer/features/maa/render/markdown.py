@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Callable, Optional
 
-from maa_analyzer.features.maa.attachments import (
+from ....features.maa.attachments import (
     Attachment,
     _ATTACHMENT_DIRECTIVE,
     _split_source_and_path,

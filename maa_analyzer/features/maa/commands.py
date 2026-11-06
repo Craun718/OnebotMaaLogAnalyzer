@@ -2,9 +2,12 @@
 QQ 指令系统 — 群内通过指令查看与修改配置。
 
 指令前缀默认 `/maa`，权限分三级（见 CommandConfig）：
-  - 查看类（read_level，默认 0）：群内任何人可用
+  - 查看类（read_level，默认 1）：管理员及以上可用
+    （status / get / project / repo / jobs / history / ai 会暴露群列表、上传记录、
+    本地仓库路径与用量，默认不再对普通成员开放）
   - 修改类（write_level，默认 2）：仅超管可用
-  - 追问答疑（followup_level，默认 0）
+  - 追问答疑（followup_level，默认 0）：群内任何人可引用报告追问；
+    但"结束会话"（`followup close`）至少需要管理员（1）
 
 设置项从 pydantic 模型动态生成，新增字段自动出现在 `get` / `set` 中，
 无需手工维护清单。
@@ -17,7 +20,7 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from maa_analyzer.core.models import (
+from ...core.models import (
     AnalysisSettings,
     CommandConfig,
     ConfigState,
@@ -26,7 +29,7 @@ from maa_analyzer.core.models import (
     RepoConfig,
     normalize_ui_key,
 )
-from maa_analyzer.features.maa.repo import redact_remote_url
+from ...features.maa.repo import redact_remote_url
 
 logger = logging.getLogger("Maa.Commands")
 
@@ -38,6 +41,9 @@ _FIELD_LABELS: dict[str, str] = {
     "enabled": "是否启用该配置",
     "merge_archive_parts": "自动合并分卷日志包",
     "archive_part_settle_seconds": "分卷静默期（连续无新分卷的秒数）",
+    "archive_part_require_content": "分卷齐全性是否要求含日志正文",
+    "archive_part_wait_extra_rounds": "分卷不完整时额外等待的轮数",
+    "archive_part_incomplete_action": "仍不完整时 analyze / cancel",
     "max_maafw_bak_files": "最多处理几个 maafw.bak",
     "max_maafw_bak_mb": "单个 maafw.bak 大小上限 MB（0=不限）",
     "send_progress_message": "是否发送进度提示",
@@ -59,6 +65,7 @@ _FIELD_LABELS: dict[str, str] = {
     "history_max_records": "历史记录条数上限",
     "history_max_total_mb": "历史占用上限 MB",
     "max_zip_size_mb": "zip 大小上限 MB",
+    "max_total_uncompressed_mb": "解压后总大小上限 MB（超限直接跳过分析）",
     "max_log_files": "最多处理日志文件数",
     "max_prompt_chars": "摘要字符上限（token 预算的兜底）",
     "ai_stage_timeout_seconds": "整个 AI 阶段超时（秒）",
@@ -68,7 +75,6 @@ _FIELD_LABELS: dict[str, str] = {
     "context_retain_ratio": "压缩后保留最近对话的比例（默认 0.25）",
     "context_prune_tool_result_tokens": "历史工具结果裁剪的 token 上限（0=不裁剪）",
     "context_summary_tokens": "压缩摘要的 token 上限",
-    "analysis_concurrency": "同时分析的任务数",
     "analysis_cache_hours": "分析结果缓存小时数（0=关闭）",
     "circuit_breaker_enabled": "连续失败时熔断端点",
 }
@@ -117,6 +123,44 @@ def _format_ui_switches(project: ProjectConfig) -> str:
         f"{key}={'开' if item.enabled else '关'}"
         for key, item in sorted(project.ui.items())
     )
+
+
+# 需要写权限的子指令（保持查看基线不变，只把这些子指令提到 write_level）
+_WRITE_SUBCOMMANDS: dict[str, set] = {
+    "repo": {
+        "mode", "url", "path", "branch", "on", "enable", "开",
+        "off", "disable", "关", "mirror", "preload",
+    },
+    "history": {"clean", "clear", "清理", "purge", "清空"},
+    "project": {"set", "设置"},
+}
+
+# 需要"至少某个等级"的子指令：结束追问会话是写操作，而 followup_level 默认 0
+# （成员仍可追问），所以单独提权，而不是把整个 followup 抬到管理员。
+_MIN_LEVEL_SUBCOMMANDS: dict[str, tuple] = {
+    "followup": ({"close", "end", "结束"}, 1),
+}
+
+
+def required_level(commands: CommandConfig, action: str, rest: list,
+                   base: Optional[int] = None) -> int:
+    """算出某条指令（含子指令）所需的最低等级。
+
+    base 为该指令的基线等级（`handle()` 里从命令配置取：查看类 `read_level`、
+    修改类 `write_level`、追问答疑 `followup_level`）；未给时按查看类算。
+    """
+    if action == "help":
+        return 0
+    if base is None:
+        base = commands.read_level
+    required = int(base or 0)
+    sub = str(rest[0]).strip().lower() if rest else ""
+    if sub and sub in _WRITE_SUBCOMMANDS.get(action, ()):
+        required = max(required, int(commands.write_level or 0))
+    min_sub = _MIN_LEVEL_SUBCOMMANDS.get(action)
+    if min_sub is not None and sub in min_sub[0]:
+        required = max(required, int(min_sub[1]))
+    return required
 
 
 @dataclass
@@ -227,20 +271,7 @@ class CommandHandler:
             )
 
         required, func = entry
-        # repo 的写入子指令需写权限；纯查看保持读权限
-        if action == "repo" and rest and rest[0].lower() in {
-            "mode", "url", "path", "branch", "on", "enable", "开",
-            "off", "disable", "关", "mirror", "preload",
-        }:
-            required = commands.write_level
-        # history clean / purge 需写权限
-        if action == "history" and rest and rest[0].lower() in {
-            "clean", "clear", "清理", "purge", "清空",
-        }:
-            required = commands.write_level
-        # project set 需写权限
-        if action == "project" and rest and rest[0].lower() in {"set", "设置"}:
-            required = commands.write_level
+        required = required_level(commands, action, rest, base=required)
 
         if level < required:
             return CommandResult(
@@ -317,7 +348,10 @@ class CommandHandler:
             f"任务记录：{len(cfg.jobs)} 条",
         ]
         if self.followup is not None:
-            lines.append(f"追问会话总数：{self.followup.count}")
+            lines.append(
+                f"追问会话：本配置 {self.followup.count_for(cfg.name)} 个"
+                f" / 全部 {self.followup.count} 个"
+            )
         return CommandResult(text="\n".join(lines))
 
     async def _cmd_get(self, cfg: ConfigState, args: list[str]) -> CommandResult:
@@ -358,7 +392,7 @@ class CommandHandler:
 
     async def _cmd_ai(self, cfg: ConfigState, args: list[str]) -> CommandResult:
         """`/maa ai [n]`：按会话（分析 + 追问）查看模型用量。"""
-        from maa_analyzer.core.ai_usage import UsageStore, format_tokens
+        from ...core.ai_usage import UsageStore, format_tokens
 
         try:
             limit = int(args[0]) if args else 5
@@ -479,7 +513,7 @@ class CommandHandler:
             if error:
                 return CommandResult(text=f"值无效：{error}", ok=False)
             self.s.set_project_override(cfg.name, field_name, value, nested=f"ui.{ui_key}")
-            self.s.save_config(cfg.name)
+            await self.s.save_config_async(cfg.name)
             return CommandResult(
                 text=f"已设置 project.ui.{ui_key}.{field_name} = {value}"
                      f"（{_UI_LABELS.get(field_name, field_name)}）"
@@ -495,7 +529,7 @@ class CommandHandler:
             if error:
                 return CommandResult(text=f"值无效：{error}", ok=False)
             self.s.set_project_override(cfg.name, field_name, value, nested="repo")
-            self.s.save_config(cfg.name)
+            await self.s.save_config_async(cfg.name)
             shown_value = redact_remote_url(value) if field_name == "url" else value
             return CommandResult(
                 text=f"已设置 project.repo.{field_name} = {shown_value}"
@@ -509,7 +543,7 @@ class CommandHandler:
         if error:
             return CommandResult(text=f"值无效：{error}", ok=False)
         self.s.set_project_override(cfg.name, name, value)
-        self.s.save_config(cfg.name)
+        await self.s.save_config_async(cfg.name)
         return CommandResult(
             text=f"已设置 project.{name} = {value}"
                  f"（{_PROJECT_LABELS.get(name, name)}）"
@@ -570,7 +604,7 @@ class CommandHandler:
         sub = args[0].lower() if args else "status"
 
         if sub in ("clean", "clear", "清理"):
-            result = self.history.cleanup(
+            result = await self.history.cleanup_async(
                 cfg.name,
                 period_hours=settings.history_period_hours,
                 keep_periods=settings.history_keep_periods,
@@ -586,7 +620,7 @@ class CommandHandler:
             )
 
         if sub in ("purge", "清空"):
-            result = self.history.cleanup(
+            result = await self.history.cleanup_async(
                 cfg.name, period_hours=1, keep_periods=0,
                 max_records=0, max_total_mb=0, force=True,
             )
@@ -625,6 +659,11 @@ class CommandHandler:
     async def _cmd_followup(self, cfg: ConfigState, args: list[str]) -> CommandResult:
         if self.followup is None:
             return CommandResult(text="追问答疑功能未启用。", ok=False)
+        # 策略按配置下发：状态与结束都按当前配置自己的窗口 / 轮数口径计算
+        try:
+            self.followup.apply_policy(cfg.name, cfg.settings)
+        except Exception as exc:
+            logger.warning(f"[指令] 下发追问策略失败：{exc}")
         sub = args[0].lower() if args else "status"
         if sub in ("close", "end", "结束"):
             closed = self.followup.close(self._current_group)
@@ -659,7 +698,7 @@ class CommandHandler:
             return CommandResult(text=f"值无效：{error}", ok=False)
 
         self.s.set_setting_override(cfg.name, name, value)
-        self.s.save_config(cfg.name)
+        await self.s.save_config_async(cfg.name)
         label = _FIELD_LABELS.get(name, name)
         logger.info(f"[指令] {cfg.name}: {name} = {value!r}")
         return CommandResult(text=f"已设置 {label}（{name}）= {value}")
@@ -673,12 +712,12 @@ class CommandHandler:
 
     async def _cmd_enable(self, cfg: ConfigState, args: list[str]) -> CommandResult:
         self.s.set_setting_override(cfg.name, "enabled", True)
-        self.s.save_config(cfg.name)
+        await self.s.save_config_async(cfg.name)
         return CommandResult(text=f"已启用配置「{cfg.name}」。")
 
     async def _cmd_disable(self, cfg: ConfigState, args: list[str]) -> CommandResult:
         self.s.set_setting_override(cfg.name, "enabled", False)
-        self.s.save_config(cfg.name)
+        await self.s.save_config_async(cfg.name)
         return CommandResult(text=f"已停用配置「{cfg.name}」。停用后不再自动分析日志包。")
 
     async def _cmd_reload(self, cfg: ConfigState, args: list[str]) -> CommandResult:
@@ -750,7 +789,7 @@ class CommandHandler:
             )
 
         self.s.set_project_override(cfg.name, "mirrors", mirrors, nested="repo")
-        self.s.save_config(cfg.name)
+        await self.s.save_config_async(cfg.name)
         return CommandResult(text="已更新 repo.mirrors（下次准备/更新仓库时生效）。")
 
     async def _set_repo_field(self, cfg: ConfigState, name: str,
@@ -771,7 +810,7 @@ class CommandHandler:
             value = mode
 
         self.s.set_project_override(cfg.name, name, value, nested="repo")
-        self.s.save_config(cfg.name)
+        await self.s.save_config_async(cfg.name)
         label = _REPO_LABELS.get(name, name)
         shown_value = redact_remote_url(value) if name == "url" else value
         logger.info(f"[指令] {cfg.name}: repo.{name} = {shown_value!r}")

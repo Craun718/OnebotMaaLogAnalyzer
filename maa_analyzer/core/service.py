@@ -11,10 +11,12 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any, Awaitable, Callable, Mapping, Optional
 
+from .concurrency import run_blocking
 from .data_manager import DataManager
 from .models import (
     AnalysisSettings,
@@ -30,7 +32,7 @@ from .models import (
     VisionConfig,
     normalize_ui_key,
 )
-from maa_analyzer.platform import (
+from ..platform import (
     GroupMessageEvent,
     GroupUploadNotice,
     PlatformEvent,
@@ -242,6 +244,10 @@ class MaaService:
         self._runtime_reload: Optional[ReloadHandler] = None
         self._reload_loader: Optional[ReloadLoader] = None
         self._pending_reload: Optional[tuple[dict, str]] = None
+
+        # ── 配置写盘：同配置合并成一次线程写入，避免在事件循环里做文件 I/O ──
+        self._save_tasks: dict[str, asyncio.Task] = {}
+        self._save_dirty: set[str] = set()
 
     # ════════════════════════════════════════════════════════════
     # 事件注册
@@ -612,6 +618,49 @@ class MaaService:
         state = self.configs.get(name)
         if state is not None:
             self.dm.save_config(name, state)
+
+    async def save_config_async(self, name: str) -> None:
+        """持久化单个配置（写盘下沉到线程，不阻塞事件循环）。"""
+        state = self.configs.get(name)
+        if state is not None:
+            await run_blocking(self.dm.save_config, name, state)
+
+    def schedule_save_config(self, name: str) -> None:
+        """
+        把配置写盘排进线程（同配置合并）。
+
+        给无法 await 的同步调用点用（例如分析结束写 job 状态）：触发一次后台
+        写入，期间再次调用只会标脏，由同一轮循环补写，不会并发写同一个文件。
+        """
+        if name not in self.configs:
+            return
+        self._save_dirty.add(name)
+        if name in self._save_tasks:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 没有事件循环（启动早期 / 同步测试）：退回同步写
+            self._save_dirty.discard(name)
+            self.save_config(name)
+            return
+        self._save_tasks[name] = loop.create_task(self._flush_config_saves(name))
+
+    async def _flush_config_saves(self, name: str) -> None:
+        """把某个配置的标脏写入合并进线程，直到不再有新改动。"""
+        try:
+            while name in self._save_dirty:
+                self._save_dirty.discard(name)
+                await self.save_config_async(name)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(f"[配置] 异步写回失败（{name}）：{exc}")
+        finally:
+            self._save_tasks.pop(name, None)
+            if name in self._save_dirty:
+                # 写入期间又标脏：再起一轮，避免丢最后一次改动
+                self.schedule_save_config(name)
 
     def register_runtime_reload(self, handler: ReloadHandler) -> None:
         """注册运行时重建回调 async (new_cfg, notify_group) -> (ok, message)。"""

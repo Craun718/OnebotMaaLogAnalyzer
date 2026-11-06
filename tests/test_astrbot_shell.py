@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import re
+import shutil
 import sys
 import tempfile
 import types
@@ -12,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from maa_analyzer.config import PANEL_DEFAULTS
+from maa_analyzer.config import PANEL_DEFAULTS, setup_logging, teardown_logging
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -75,6 +77,7 @@ def _load_shell(plugin_data_dir: Path):
     )
 
     api_module = types.ModuleType("astrbot.api")
+    api_module.logger = MagicMock()
     api_module.event = event_module
     api_module.star = star_module
     astrbot_module = types.ModuleType("astrbot")
@@ -129,6 +132,61 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
         fake_runtime.initialize.assert_awaited()
         self.assertEqual(fake_runtime.initialize.await_count, 2)
 
+    async def test_old_panel_markers_are_replaced_and_saved(self):
+        class SavedConfig(dict):
+            save_config = MagicMock()
+
+        config = SavedConfig(history_mode="inherit", history_period_hours=-1,
+                             repo_mode="disabled", llm_model="custom-model")
+        plugin = self.shell.Main(object(), config)
+        self.assertEqual(config["history_mode"], "enabled")
+        self.assertEqual(config["history_period_hours"], 24)
+        self.assertEqual(config["repo_mode"], "disabled")
+        self.assertEqual(config["llm_model"], "custom-model")
+        self.assertEqual(plugin.config, config)
+        config.save_config.assert_called_once_with()
+
+    async def test_packaged_kernel_uses_plugin_namespace_and_reloads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plugin_dir = Path(directory) / "test_plugin"
+            shutil.copytree(ROOT / "astrbot_plugin", plugin_dir, ignore=shutil.ignore_patterns("__pycache__"))
+            shutil.copytree(ROOT / "maa_analyzer", plugin_dir / "maa_analyzer", ignore=shutil.ignore_patterns("__pycache__"))
+            package = "data.plugins.test_plugin"
+            data = types.ModuleType("data")
+            data.__path__ = []
+            plugins = types.ModuleType("data.plugins")
+            plugins.__path__ = [directory]
+            api = types.ModuleType("astrbot.api")
+            api.logger = MagicMock()
+            event = types.ModuleType("astrbot.api.event")
+            event.AstrMessageEvent = object
+            event.filter = SimpleNamespace(
+                CustomFilter=object,
+                EventMessageType=SimpleNamespace(ALL=object()),
+                PlatformAdapterType=SimpleNamespace(AIOCQHTTP=object()),
+                event_message_type=lambda _: lambda f: f,
+                platform_adapter_type=lambda _: lambda f: f,
+                custom_filter=lambda _: lambda f: f,
+            )
+            star = types.ModuleType("astrbot.api.star")
+            star.Context, star.Star, star.StarTools = object, _FakeStar, object
+            modules = {"data": data, "data.plugins": plugins,
+                       "astrbot": types.ModuleType("astrbot"), "astrbot.api": api,
+                       "astrbot.api.event": event, "astrbot.api.star": star}
+            old_kernel = sys.modules["maa_analyzer"]
+            with patch.dict(sys.modules, modules):
+                first = importlib.import_module(package + ".main")
+                analyzer_name = package + ".maa_analyzer.features.maa.analyzer"
+                first_analyzer = sys.modules[analyzer_name].MaaAnalyzer
+                self.assertTrue(first.AstrBotPluginRuntime.__module__.startswith(package + "."))
+                self.assertIs(sys.modules["maa_analyzer"], old_kernel)
+                for name in list(sys.modules):
+                    if name == package or name.startswith(package + "."):
+                        del sys.modules[name]
+                second = importlib.import_module(package + ".main")
+                self.assertIsNot(first_analyzer, sys.modules[analyzer_name].MaaAnalyzer)
+                self.assertIsNot(first.AstrBotPluginRuntime, second.AstrBotPluginRuntime)
+
     async def test_terminate_releases_runtime_and_is_idempotent(self):
         fake_runtime = _RuntimeStub()
         with patch.object(
@@ -143,6 +201,38 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
 
         fake_runtime.terminate.assert_awaited_once()
         self.assertIsNone(plugin.plugin_runtime)
+
+    async def test_invalid_config_keeps_shell_available_without_activating_runtime(self):
+        fake_runtime = _RuntimeStub(relevant=True)
+        fake_runtime.initialize.side_effect = ValueError("端点不存在")
+        with patch.object(self.shell, "AstrBotPluginRuntime", return_value=fake_runtime):
+            plugin = self.shell.Main(object(), {})
+            with self.assertLogs("Maa.AstrBot", level="ERROR") as logs:
+                await plugin.initialize()
+            self.assertIn("端点不存在", logs.output[0])
+            self.assertFalse(self.shell.MaaEventFilter().filter(object(), {}))
+            await plugin.terminate()
+        fake_runtime.terminate.assert_awaited_once()
+
+    async def test_astrbot_receives_kernel_logs_without_console_duplicate(self):
+        fake_runtime = _RuntimeStub()
+        target = logging.getLogger("Maa")
+        old_level, old_propagate = target.level, target.propagate
+        with patch.object(self.shell, "AstrBotPluginRuntime", return_value=fake_runtime), \
+             patch.object(self.shell, "astrbot_logger") as astrbot_log:
+            plugin = self.shell.Main(object(), {})
+            try:
+                await plugin.initialize()
+                setup_logging({"log_to_file": False}, isolated=True)
+                logging.getLogger("Maa.AstrBot").info("bridge test")
+                astrbot_log.info.assert_called_once()
+                self.assertIn("bridge test", astrbot_log.info.call_args.args[0])
+                self.assertFalse(any(getattr(h, "_maa_plugin_handler", False) for h in target.handlers))
+            finally:
+                teardown_logging(isolated=True)
+                await plugin.terminate()
+                target.setLevel(old_level)
+                target.propagate = old_propagate
 
     async def test_active_runtime_registry_is_cleared_on_terminate(self):
         fake_runtime = _RuntimeStub(relevant=True)
@@ -228,6 +318,7 @@ class AstrBotPackageMetadataTests(unittest.TestCase):
                 default,
                 f"schema default mismatch: {key}",
             )
+            self.assertNotIn("inherit", schema[key].get("options", []), key)
         self.assertEqual(schema["listen_groups"]["type"], "list")
         self.assertIn("aiohttp", requirements)
 

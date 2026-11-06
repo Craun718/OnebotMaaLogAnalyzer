@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from maa_analyzer.core.llm import ContextOverflowError
-from maa_analyzer.core.llm_pool import LLMPool
-from maa_analyzer.core.models import (
+from ...core.llm import ContextOverflowError
+from ...core.llm_pool import LLMPool
+from ...core.models import (
     AnalysisSettings,
     ConfigLLM,
     ProjectConfig,
@@ -26,56 +26,59 @@ from maa_analyzer.core.models import (
     RepoConfig,
     VisionConfig,
 )
-from maa_analyzer.core.ai_usage import format_tokens
-from maa_analyzer.core.compaction import (
+from ...core.ai_usage import format_tokens
+from ...core.compaction import (
     COMPACT_SYSTEM_PROMPT,
     CompactionPolicy,
     ConversationCompactor,
     render_messages,
 )
-from maa_analyzer.core.llm_pool import current_session_id, new_session_id, session_context
-from maa_analyzer.core.log_context import config_log_context
-from maa_analyzer.core.tokens import (
+from ...core.concurrency import KeyedLocks
+from ...core.llm_pool import current_session_id, new_session_id, session_context
+from ...core.log_context import config_log_context
+from ...core.tokens import (
+    clamp_tool_result_tokens,
     estimate_messages_tokens,
     estimate_tokens,
     fold_text,
     trim_to_tokens,
 )
-from maa_analyzer.features.maa.archive_profile import (
+from ...features.maa.archive_profile import (
     ArchivePart,
     ArchiveProfile,
     parse_archive_part,
 )
-from maa_analyzer.features.maa.log_digest import (
+from ...features.maa.archive_extract import probe_archive
+from ...features.maa.log_digest import (
     IMAGE_SUFFIXES,
     DigestOptions,
     DigestResult,
     build_log_digest,
 )
-from maa_analyzer.features.maa.log_tools import LogArchiveTools
-from maa_analyzer.features.maa.onebot_files import download_group_file, get_all_files
-from maa_analyzer.features.maa.prompts import build_system_prompt, build_tool_hint
-from maa_analyzer.features.maa.render import RenderAttachment, render_report
-from maa_analyzer.core import vision as vision_util
-from maa_analyzer.features.maa.repo import RepoProvider, extract_identifiers, remove_repo_tree
-from maa_analyzer.features.maa.repo_tools import (
+from ...features.maa.log_tools import LogArchiveTools
+from ...features.maa.onebot_files import download_group_file, get_all_files
+from ...features.maa.prompts import build_system_prompt, build_tool_hint
+from ...features.maa.render import RenderAttachment, render_report
+from ...core import vision as vision_util
+from ...features.maa.repo import RepoProvider, extract_identifiers, remove_repo_tree
+from ...features.maa.repo_tools import (
     LOG_TOOL_DEFINITIONS,
     RepoTools,
     repo_tool_definitions,
 )
-from maa_analyzer.features.maa.attachments import (
+from ...features.maa.attachments import (
     OutSegment,
     build_report_segments,
     find_repo_attachment_names,
     parse_vision_requests,
-    split_report,
     strip_attachments,
     strip_vision_requests,
+    text_segments,
 )
-from maa_analyzer.features.maa.text_utils import format_bytes, split_text
+from ...features.maa.text_utils import format_bytes, split_text
 
 if TYPE_CHECKING:
-    from maa_analyzer.core.service import MaaService
+    from ...core.service import MaaService
 
 logger = logging.getLogger("Maa.Analyze")
 
@@ -184,7 +187,7 @@ def build_digest_options(settings: AnalysisSettings,
     return DigestOptions(
         max_prompt_chars=prompt_chars,
         max_zip_members=max(20, int(settings.max_zip_members or 300)),
-        max_total_uncompressed_bytes=max(10, int(settings.max_total_uncompressed_mb or 120)) * 1024 * 1024,
+        max_total_uncompressed_bytes=max(1, int(settings.max_total_uncompressed_mb or 1024)) * 1024 * 1024,
         max_file_read_bytes=max(64, int(settings.max_log_file_read_kb or 512)) * 1024,
         small_log_full_read_bytes=max(1, int(settings.small_log_full_read_mb or 5)) * 1024 * 1024,
         stream_medium_logs=bool(settings.stream_medium_logs),
@@ -225,6 +228,89 @@ class FollowupAnswer:
 
 
 @dataclass
+class ArchivePartsState:
+    """分卷合并结果里可用于「是否齐全」判定的信息。"""
+
+    used: list[int] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    has_log_content: bool = False
+
+    @property
+    def incomplete(self) -> bool:
+        """缺卷/断档，或已收到的卷里没有日志正文。"""
+        return bool(self.missing) or not self.has_log_content
+
+
+def judge_parts_state(zip_path: Path, used: dict[int, str],
+                      candidates: dict[int, tuple[str, str, int]],
+                      ) -> ArchivePartsState:
+    """按「编号连续 + 内容特征」判定分卷是否齐全。
+
+    - 编号：群列表里有但本次没下到的卷、已收编号的断档，都算缺；
+    - 内容：合并后的包里至少要有非图片成员（日志正文/配置）。分卷按整成员
+      切分，主日志可能落在任意一卷，所以"只有图片"说明关键卷还没上来。
+    """
+    missing: list[str] = []
+    numbers = sorted(int(n) for n in used)
+    for number in sorted(set(candidates) - set(numbers)):
+        name = Path(str(candidates[number][0])).name
+        missing.append(name or f"part{number:02d}")
+    if numbers and numbers != list(range(1, len(numbers) + 1)):
+        have = set(numbers)
+        for number in range(1, max(numbers) + 1):
+            if number not in have:
+                missing.append(f"part{number:02d}")
+
+    has_log = False
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            has_log = any(
+                not info.is_dir()
+                and Path(info.filename.replace("\\", "/")).suffix.lower()
+                not in IMAGE_SUFFIXES
+                for info in archive.infolist()
+            )
+    except (OSError, zipfile.BadZipFile):
+        has_log = False
+
+    return ArchivePartsState(
+        used=numbers, missing=sorted(set(missing)), has_log_content=has_log,
+    )
+
+
+def describe_parts_gap(state: ArchivePartsState) -> str:
+    """把「不完整」写成一句人话（同时进 AI 提示词与报告头）。"""
+    bits: list[str] = []
+    if state.missing:
+        bits.append("缺 " + "、".join(state.missing))
+    if not state.has_log_content:
+        bits.append("已收到的卷里没有日志正文")
+    return "；".join(bits) or "编号不连续"
+
+
+def decide_parts_action(state: Optional[ArchivePartsState], *,
+                        require_content: bool, action: str,
+                        defer: bool) -> str:
+    """分卷不完整的处理策略：``ok`` / ``defer`` / ``cancel`` / ``analyze``。
+
+    - ``ok``：齐全，照常分析；
+    - ``defer``：不完整但还有额外等待余量（交 LogWatcher 重排再等一轮）；
+    - ``cancel``：不完整且配置为取消；
+    - ``analyze``：不完整但照常分析（调用方负责把缺失写进提示词与报告）。
+    """
+    if state is None:
+        return "ok"
+    incomplete = bool(state.missing) or (
+        require_content and not state.has_log_content
+    )
+    if not incomplete:
+        return "ok"
+    if defer:
+        return "defer"
+    return "cancel" if str(action or "analyze").strip().lower() == "cancel" else "analyze"
+
+
+@dataclass
 class AnalysisOutcome:
     """一次分析的结构化结果，供上层格式化输出。"""
 
@@ -238,6 +324,10 @@ class AnalysisOutcome:
     error: str = ""
     digest: Optional[DigestResult] = None
     notes: list[str] = field(default_factory=list)
+    # 分卷不完整：内容缺日志正文或卷号有断档（由 judge_parts_state 判定）
+    parts_incomplete: bool = False
+    # 判定不完整时缺的卷名/编号（供日志、提示与延长等待）
+    missing_parts: list[str] = field(default_factory=list)
     # 报告的有序输出片段（文本 / 图片 / 文件，保持模型给出的位置）
     segments: list[OutSegment] = field(default_factory=list)
     # 追问上下文（摘要 + 代码参考），供分析后答疑使用
@@ -323,9 +413,12 @@ class MaaAnalyzer:
     日志包分析器 — 串起下载 → 摘要 → LLM 三段流程。
 
     并发控制:
-      - download_semaphore: 限制同时下载数
-      - analysis_semaphore: 限制同时调用 LLM 数
+      - 同一配置内**排队串行**：分析 / 追问 / 仓库操作共用每个配置一把的工作锁。
+      - 不同配置**互不影响**：信号量、仓库、缓存都按配置名隔离，不共享可变状态。
+      - download_semaphore: 限制同一次分析内的并行下载数。
     """
+    PRELOAD_RETRY_COOLDOWN = 300.0   # canonical 未就绪时，后台完整克隆的最小重试间隔（秒）
+
     def __init__(
         self,
         service: "MaaService",
@@ -339,15 +432,19 @@ class MaaAnalyzer:
         # 历史存储：归档日志包与追问上下文（None 表示不启用）
         self.history = history
         self._template_root_path = Path(template_root) if template_root else None
-        # config_name → (download_n, analysis_n, download_sem, analysis_sem)
-        self._semaphores: dict[str, tuple[int, int, asyncio.Semaphore, asyncio.Semaphore]] = {}
-        # config_name → RepoProvider（复用克隆结果与索引）
+        # config_name → (download_n, download_sem)
+        self._semaphores: dict[str, tuple[int, asyncio.Semaphore]] = {}
+        # config_name → canonical RepoProvider（由后台预下载维护：完整克隆）
         self._repos: dict[str, RepoProvider] = {}
-        self._fallback_repos: dict[str, RepoProvider] = {}
+        # config_name → 分析/追问现场用的临时浅克隆（每配置一份，跨分析复用）
+        self._analysis_repos: dict[str, RepoProvider] = {}
         self._active_repos: dict[str, RepoProvider] = {}
         self._repo_preload_tasks: dict[str, asyncio.Task] = {}
         self._repo_preload_status: dict[str, dict] = {}
-        self._analysis_locks: dict[str, asyncio.Lock] = {}
+        # 后台完整克隆的冷却时间戳（失败后不要每次分析都重来一轮）
+        self._preload_retry_at: dict[str, float] = {}
+        # 按配置的工作锁：同一配置的分析 / 追问 / 仓库操作排队串行
+        self._analysis_locks = KeyedLocks()
         self.active_jobs: set[str] = set()
         # 分析结果缓存（仅缓存 AI 文本，不缓存下载与摘要）
         self._ai_cache: dict[str, tuple[float, str]] = {}
@@ -388,17 +485,32 @@ class MaaAnalyzer:
     # 并发控制
     # ════════════════════════════════════════════════════════════
 
-    def _semaphore_pair(self, config_name: str, settings: AnalysisSettings):
-        """按配置维护下载/分析信号量，设置变更时自动重建。"""
+    def _config_lock(self, config_name: str) -> asyncio.Lock:
+        """按配置取工作锁：同一配置的分析 / 追问 / 仓库操作串行。"""
+        return self._analysis_locks.get(config_name)
+
+    def config_work_lock(self, config_name: str) -> asyncio.Lock:
+        """给追问、指令等外部路径复用同一把按配置工作锁。"""
+        return self._config_lock(config_name)
+
+    def config_queue_depth(self, config_name: str) -> int:
+        """该配置上「排队 + 执行中」的任务数（仅用于状态展示）。"""
+        return self._analysis_locks.busy_depth(config_name)
+
+    def _download_semaphore(self, config_name: str,
+                            settings: AnalysisSettings) -> asyncio.Semaphore:
+        """按配置维护下载信号量。
+
+        分析本身已按配置串行，设置不会在一次分析中途变化——旧实现
+        「热换信号量时旧任务还在跑」的竞态不会发生。
+        """
         download_n = max(1, int(settings.download_concurrency or 1))
-        analysis_n = max(1, int(settings.analysis_concurrency or 1))
         cached = self._semaphores.get(config_name)
-        if cached and cached[0] == download_n and cached[1] == analysis_n:
-            return cached[2], cached[3]
-        download_sem = asyncio.Semaphore(download_n)
-        analysis_sem = asyncio.Semaphore(analysis_n)
-        self._semaphores[config_name] = (download_n, analysis_n, download_sem, analysis_sem)
-        return download_sem, analysis_sem
+        if cached and cached[0] == download_n:
+            return cached[1]
+        sem = asyncio.Semaphore(download_n)
+        self._semaphores[config_name] = (download_n, sem)
+        return sem
 
     # ── 配置访问 ──
 
@@ -440,7 +552,7 @@ class MaaAnalyzer:
     def _template_root(self) -> Path:
         if self._template_root_path is not None:
             return self._template_root_path
-        # maa_analyzer/features/maa/analyzer.py -> 工程根目录/templates
+        # features/maa/analyzer.py → 工程根目录/templates
         return Path(__file__).resolve().parents[3] / "templates"
 
     @staticmethod
@@ -465,8 +577,8 @@ class MaaAnalyzer:
             retain_ratio=_ratio(
                 getattr(settings, "context_retain_ratio", 0.25), 0.1, 0.5
             ),
-            tool_result_tokens=max(
-                0, int(getattr(settings, "context_prune_tool_result_tokens", 512) or 0)
+            tool_result_tokens=clamp_tool_result_tokens(
+                int(getattr(settings, "context_prune_tool_result_tokens", 512) or 0)
             ),
             summary_tokens=max(
                 256, int(getattr(settings, "context_summary_tokens", 1500) or 1500)
@@ -530,24 +642,17 @@ class MaaAnalyzer:
                 "attempt": 0,
                 "detail": "",
             }
-            task = asyncio.create_task(self._preload_repo_task(name, state.project))
+            self._preload_retry_at[name] = time.time()
+            task = asyncio.create_task(self._preload_repo_task(name, repo_cfg))
             self._repo_preload_tasks[name] = task
             tasks.append(task)
         return tasks
 
-    def close(self) -> None:
-        """Cancel repository preloads when the owning runtime stops."""
-        tasks = list(self._repo_preload_tasks.values())
-        self._repo_preload_tasks.clear()
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-
     async def _preload_repo_task(self, config_name: str,
-                                 project: ProjectConfig) -> None:
+                                 repo_cfg: RepoConfig) -> None:
         """预下载任务入口：先绑定配置名，让其日志可区分配置。"""
         with config_log_context(config_name):
-            await self._preload_repo(config_name, project)
+            await self._preload_repo(config_name, repo_cfg)
 
     def repo_preload_status(self, config_name: str) -> str:
         status = self._repo_preload_status.get(config_name)
@@ -560,8 +665,7 @@ class MaaAnalyzer:
         return f"{state}{suffix}" + (f"；{detail}" if detail else "")
 
     async def _preload_repo(self, config_name: str,
-                           project: ProjectConfig) -> None:
-        repo_cfg = project.repo
+                            repo_cfg: RepoConfig) -> None:
         provider = self._repo_provider(config_name, repo_cfg)
         if provider is None:
             return
@@ -571,9 +675,12 @@ class MaaAnalyzer:
             for attempt in range(1, attempts + 1):
                 status.update(state="预下载中", attempt=attempt, detail="")
                 try:
-                    if not await provider.ensure_ready():
+                    budget = float(repo_cfg.preload_timeout_seconds or 0)
+                    if not await provider.ensure_ready(budget=budget):
                         raise RuntimeError(provider.last_error or "仓库不可用")
-                    updated, detail = await provider.update_latest()
+                    updated, detail = await provider.update_latest(
+                        budget=int(repo_cfg.preload_timeout_seconds or 0)
+                    )
                     if not updated:
                         raise RuntimeError(detail)
                     status.update(state="已就绪", detail="")
@@ -595,22 +702,9 @@ class MaaAnalyzer:
             status["state"] = "已取消"
             raise
         finally:
-            lock = self._analysis_locks.setdefault(config_name, asyncio.Lock())
-            async with lock:
-                fallback = self._fallback_repos.get(config_name)
-                if fallback is not None:
-                    if status["state"] == "预下载失败" and fallback.promote_to_cache():
-                        self._fallback_repos.pop(config_name, None)
-                        self._repos[config_name] = fallback
-                        logger.info(f"[仓库] 配置「{config_name}」复用分析期间的临时仓库")
-                    elif fallback.root and fallback.is_temporary:
-                        try:
-                            remove_repo_tree(fallback.root)
-                            self._fallback_repos.pop(config_name, None)
-                        except OSError as exc:
-                            logger.warning(
-                                f"[仓库] 删除配置「{config_name}」临时仓库失败：{exc}"
-                            )
+            # canonical 就绪后顺手清掉分析用的临时浅克隆（持配置锁，确保
+            # 没有分析正在使用它）
+            await self._settle_analysis_repo(config_name)
 
     async def analyze(
         self,
@@ -621,10 +715,11 @@ class MaaAnalyzer:
         group_id: int,
         file_name: str,
         file_id: Optional[str],
-        file_url: Optional[str] = None,
         file_size: Optional[int],
+        file_url: str = "",
         uploader: str = "",
         progress: Optional[callable] = None,
+        defer_incomplete_parts: bool = False,
     ) -> AnalysisOutcome:
         project = project or ProjectConfig()
         part = parse_archive_part(file_name)
@@ -636,31 +731,23 @@ class MaaAnalyzer:
         if job_key in self.active_jobs:
             return AnalysisOutcome(ok=False, file_name=file_name, error="这个日志包正在分析中，请稍等。")
         self.active_jobs.add(job_key)
-        # 只有需要仓库状态的配置才按配置串行（切换 tag / 还原位置会互相干扰）；
-        # 纯日志包分析不再被这把锁串行化，analysis_concurrency 才能真正生效。
-        needs_repo_lock = bool(project.repo.enabled)
-        lock = self._analysis_locks.setdefault(config_name, asyncio.Lock())
+        # 同一配置内的分析一律排队串行：仓库工作区、渲染浏览器、历史目录都归
+        # 该配置独占，并行只会互相切版本、串图、抢历史。不同配置互不影响。
+        # 追问与仓库指令共用同一把锁（见 config_work_lock）。
+        lock = self._config_lock(config_name)
         # 一次分析 + 其后续追问共用一个会话 ID，用量与报告页脚统计都按它聚合
         session_id = new_session_id(config_name)
+        depth = self.config_queue_depth(config_name)
+        if depth >= 1:
+            logger.info(
+                f"[分析] 配置「{config_name}」已有 {depth} 个任务在跑/排队，"
+                f"本次排队等待：{file_name}"
+            )
         try:
             with config_log_context(config_name), session_context(
                 session_id, config_name, file_name
             ):
-                if needs_repo_lock:
-                    async with lock:
-                        outcome = await self._analyze_serialized(
-                            config_name=config_name,
-                            settings=settings,
-                            project=project,
-                            group_id=group_id,
-                            file_name=file_name,
-                            file_id=file_id,
-                            file_url=file_url,
-                            file_size=file_size,
-                            uploader=uploader,
-                            progress=progress,
-                        )
-                else:
+                async with lock:
                     outcome = await self._analyze_serialized(
                         config_name=config_name,
                         settings=settings,
@@ -672,6 +759,7 @@ class MaaAnalyzer:
                         file_size=file_size,
                         uploader=uploader,
                         progress=progress,
+                        defer_incomplete_parts=defer_incomplete_parts,
                     )
             outcome.session_id = outcome.session_id or session_id
             return outcome
@@ -687,22 +775,28 @@ class MaaAnalyzer:
         group_id: int,
         file_name: str,
         file_id: Optional[str],
-        file_url: Optional[str] = None,
         file_size: Optional[int],
+        file_url: str = "",
         uploader: str = "",
         progress: Optional[callable] = None,
+        defer_incomplete_parts: bool = False,
     ) -> AnalysisOutcome:
         """
         下载并分析一个日志包。
 
         project: 项目配置（名称 / 识别方式 / UI 开关 / 仓库）。
         progress: 可选异步回调 async (text: str) -> None，用于发送进度消息。
+        defer_incomplete_parts: 分卷内容不完整时先不分析，直接返回
+            `parts_incomplete=True`，交给 LogWatcher 额外等待后再试。
         """
         project = project or ProjectConfig()
         part = parse_archive_part(file_name)
         work_dir = self._build_work_dir(config_name, group_id, file_name, file_id)
         zip_path = work_dir / "source.zip"
         job = None
+        # 日志包工具实例：解压目录在分析期间是暂存区，归档后并入历史记录
+        log_tools: Optional[LogArchiveTools] = None
+        extract_persisted = False
 
         try:
             job = self.s.add_job(
@@ -717,9 +811,9 @@ class MaaAnalyzer:
                 status="执行中",
             )
 
-            resolved_id = str(file_id or "")
-            trigger_url = str(file_url or "").strip()
-            if not resolved_id and not trigger_url:
+            resolved_id = file_id
+            file_url = str(file_url or "").strip()
+            if not resolved_id and not file_url:
                 await asyncio.sleep(max(0.0, float(settings.file_list_delay_seconds or 0)))
                 resolved_id = await self._resolve_file_id(group_id, file_name, file_size, settings)
                 if not resolved_id:
@@ -729,15 +823,16 @@ class MaaAnalyzer:
                         error="无法获取该群文件的 file_id，暂时不能下载分析。",
                     )
 
-            download_sem, analysis_sem = self._semaphore_pair(config_name, settings)
+            download_sem = self._download_semaphore(config_name, settings)
 
             extra_notes: list[str] = []
+            parts_state: Optional[ArchivePartsState] = None
             if part is not None and settings.merge_archive_parts:
-                downloaded, extra_notes = await self._download_archive_parts(
+                downloaded, extra_notes, parts_state = await self._download_archive_parts(
                     group_id=group_id,
                     file_name=file_name,
                     file_id=resolved_id,
-                    file_url=trigger_url,
+                    file_url=file_url,
                     file_size=int(file_size or 0),
                     part=part,
                     zip_path=zip_path,
@@ -754,7 +849,8 @@ class MaaAnalyzer:
                     max_bytes=settings.max_zip_bytes(),
                     semaphore=download_sem,
                     timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
-                    url=trigger_url,
+                    url=file_url,
+                    file_name=file_name,
                 )
                 if part is not None:
                     extra_notes.append(
@@ -762,6 +858,66 @@ class MaaAnalyzer:
                         "仅分析当前分卷。"
                     )
             logger.info(f"[分析] 已下载 {file_name}，大小 {format_bytes(downloaded)}")
+
+            # 内容闸门：只读 zip 中央目录，解压后总大小超限的直接跳过，
+            # 不提取摘要、不准备仓库、不调用 AI。通过之后下游无需再比对总量。
+            overflow = self.archive_limit_error(settings, str(zip_path))
+            if overflow:
+                self._finish_job(config_name, job, "已跳过", overflow)
+                logger.info(f"[分析] {overflow}（{file_name}）")
+                return AnalysisOutcome(
+                    ok=False,
+                    skipped=True,
+                    file_name=file_name,
+                    downloaded=downloaded,
+                    error=overflow,
+                )
+            logger.info(f"[分析] 内容检查通过：{file_name}")
+
+            # 分卷齐全性（判据见 judge_parts_state）：不完整时按配置决定
+            # 「再等一轮」/「取消并提示」/「照常分析并标注」。
+            decision = decide_parts_action(
+                parts_state,
+                require_content=bool(
+                    getattr(settings, "archive_part_require_content", True)
+                ),
+                action=str(
+                    getattr(settings, "archive_part_incomplete_action", "analyze")
+                    or "analyze"
+                ),
+                defer=defer_incomplete_parts,
+            )
+            if decision != "ok":
+                gap = describe_parts_gap(parts_state)
+                if decision == "defer":
+                    # 交给 LogWatcher：当作"还没到齐"，额外等待后再试
+                    self._finish_job(
+                        config_name, job, "等待分卷", f"分卷不完整：{gap}"
+                    )
+                    return AnalysisOutcome(
+                        ok=False, file_name=file_name,
+                        parts_incomplete=True,
+                        missing_parts=list(parts_state.missing),
+                        notes=[f"分卷不完整：{gap}"],
+                    )
+                if decision == "cancel":
+                    reason = (
+                        f"日志包不完整（{gap}），已取消本次分析；"
+                        "请补齐分卷后重新上传。"
+                    )
+                    self._finish_job(config_name, job, "已跳过", reason)
+                    return AnalysisOutcome(
+                        ok=False, file_name=file_name, skipped=True,
+                        parts_incomplete=True,
+                        missing_parts=list(parts_state.missing),
+                        error=reason,
+                    )
+                extra_notes.append(
+                    f"注意：日志包不完整（{gap}）；请只基于已收到的 "
+                    f"{len(parts_state.used)} 个分卷分析，"
+                    "并在结论里说明哪些部分可能缺失。"
+                )
+
             if progress:
                 await progress("日志包已下载，正在提取错误摘要。")
 
@@ -833,47 +989,45 @@ class MaaAnalyzer:
                 response_text = cached_text
                 logger.info("[分析] 命中分析缓存，跳过 AI 调用")
             else:
-                async with analysis_sem:
-                    # 需要工具时（agent 模式，或 inject 模式下日志包仍可用）
-                    use_tools = project.repo.use_agent() or bool(settings.log_tools_enabled)
-                    if use_tools and not self.llm.has_capability(
-                        self._llm_cfg(config_name), "tools"
-                    ):
-                        use_tools = False
-                        tool_note = "当前配置没有支持工具调用的模型，已降级为普通对话。"
-                        logger.warning(f"[分析] {tool_note}")
-                    stage_timeout = max(30, int(settings.ai_stage_timeout_seconds or 300))
-                    if use_tools and (repo_prep.provider is not None or zip_path.exists()):
-                        response_text = await asyncio.wait_for(
-                            self._run_repo_agent(
-                                config_name, settings, prompt, repo_prep.provider,
-                                project=project,
-                                user_content=user_content,
-                                vision_state=vision_state,
-                                log_tools=LogArchiveTools(
-                                    str(zip_path),
-                                    max_file_kb=max(64, int(settings.max_log_file_read_kb or 512)),
-                                    max_result_chars=max(
-                                        2000, int(project.repo.max_tool_result_chars or 30000)
-                                    ),
-                                    max_result_tokens=int(project.repo.max_tool_result_tokens or 0),
-                                ) if settings.log_tools_enabled else None,
-                            ),
-                            timeout=stage_timeout,
+                # 需要工具时（agent 模式，或 inject 模式下日志包仍可用）
+                use_tools = project.repo.use_agent() or bool(settings.log_tools_enabled)
+                if use_tools and not self.llm.has_capability(
+                    self._llm_cfg(config_name), "tools"
+                ):
+                    use_tools = False
+                    tool_note = "当前配置没有支持工具调用的模型，已降级为普通对话。"
+                    logger.warning(f"[分析] {tool_note}")
+                stage_timeout = max(30, int(settings.ai_stage_timeout_seconds or 300))
+                if use_tools and (repo_prep.provider is not None or zip_path.exists()):
+                    if settings.log_tools_enabled:
+                        log_tools = self._make_log_tools(
+                            config_name, settings, project,
+                            current_session_id() or new_session_id(config_name),
+                            str(zip_path),
                         )
-                    else:
-                        response_text = await asyncio.wait_for(
-                            self._call_ai(
-                                settings, prompt, project,
-                                config_name=config_name, content=user_content,
-                            ),
-                            timeout=stage_timeout,
-                        )
-                        # AI 可请求切换到其他 tag 复核（受 max_tag_switch_rounds 限制）
-                        response_text = await self._maybe_recheck_with_other_tag(
-                            config_name, settings, prompt, response_text,
-                            repo_prep.context, project,
-                        )
+                    response_text = await asyncio.wait_for(
+                        self._run_repo_agent(
+                            config_name, settings, prompt, repo_prep.provider,
+                            project=project,
+                            user_content=user_content,
+                            vision_state=vision_state,
+                            log_tools=log_tools,
+                        ),
+                        timeout=stage_timeout,
+                    )
+                else:
+                    response_text = await asyncio.wait_for(
+                        self._call_ai(
+                            settings, prompt, project,
+                            config_name=config_name, content=user_content,
+                        ),
+                        timeout=stage_timeout,
+                    )
+                    # AI 可请求切换到其他 tag 复核（受 max_tag_switch_rounds 限制）
+                    response_text = await self._maybe_recheck_with_other_tag(
+                        config_name, settings, prompt, response_text,
+                        repo_prep.context, project,
+                    )
                 if response_text:
                     self._cache_put(
                         config_name, file_id or "", file_size or 0, response_text
@@ -941,10 +1095,17 @@ class MaaAnalyzer:
             )
 
             followup_context = self._build_followup_context(
-                file_name, prompt, repo_prep.context, response_text
+                file_name, prompt, repo_prep.context,
+                budget=max(
+                    1024,
+                    int(self._context_budget(
+                        settings, self.llm, self._llm_cfg(config_name)
+                    ) * 0.7),
+                ),
             )
-            # 归档日志包与上下文（使追问可跨天）。必须在 finally 清理前完成。
-            history_id, archived_zip = self._archive_history(
+            # 归档日志包、解压结果与上下文（使追问可跨天）。
+            # 解压目录会整体并入历史记录，因此追问期间不必重复解压。
+            history_id, archived_zip = await self._archive_history(
                 config_name=config_name,
                 settings=settings,
                 group_id=group_id,
@@ -956,11 +1117,17 @@ class MaaAnalyzer:
                 report=response_text,
                 log_count=len(digest.log_files),
                 image_count=len(digest.error_images),
+                extract_dir=log_tools.extract_dir if log_tools is not None else None,
             )
             # 归档后 zip 已移出工作目录（工作目录稍后会被清理），
             # 把 digest 的路径指向归档副本，使追问仍能从日志包取附件。
             if archived_zip:
                 digest.zip_path = archived_zip
+            if history_id:
+                extract_persisted = True
+                digest.extract_dir = str(
+                    self.history.extracted_dir(config_name, history_id)
+                ) if self.history is not None else ""
 
             return AnalysisOutcome(
                 ok=True,
@@ -998,10 +1165,18 @@ class MaaAnalyzer:
                 self._finish_job(config_name, job, "执行失败", str(exc)[:300])
             return AnalysisOutcome(ok=False, file_name=file_name, error=str(exc))
         finally:
+            # 解压结果：已并入历史记录的保留（追问期间直接复用），
+            # 其余（历史关闭 / 归档失败 / 提前跳过）立即删除，避免残留。
+            if log_tools is not None:
+                if extract_persisted:
+                    log_tools.close()
+                else:
+                    log_tools.discard()
             # 无论成功失败，都还原仓库位置，避免影响下一次分析
             await self._restore_repo_latest(config_name, settings)
             self._active_repos.pop(config_name, None)
-            await self._cleanup_finished_fallback(config_name)
+            # 此刻仍持配置工作锁：canonical 已就绪就顺手清掉临时浅克隆
+            self._settle_analysis_repo_now(config_name)
             if bool(settings.cleanup_after_done):
                 self._cleanup_work_dir(work_dir)
 
@@ -1023,7 +1198,7 @@ class MaaAnalyzer:
         job.detail = detail
         job.finished_at = int(time.time())
         self.s.trim_jobs(config_name)
-        self.s.save_config(config_name)
+        self.s.schedule_save_config(config_name)
 
     # ════════════════════════════════════════════════════════════
     # 子步骤
@@ -1032,12 +1207,52 @@ class MaaAnalyzer:
     async def _resolve_file_id(self, group_id: int, file_name: str,
                                file_size: Optional[int],
                                settings: AnalysisSettings) -> Optional[str]:
-        from maa_analyzer.features.maa.onebot_files import find_group_file_by_name
+        from ...features.maa.onebot_files import find_group_file_by_name
 
         found = await find_group_file_by_name(
             self.s, group_id, file_name, file_size=file_size
         )
         return found.file_id if found else None
+
+    def _make_log_tools(self, config_name: str, settings: AnalysisSettings,
+                        project: ProjectConfig, session_id: str,
+                        zip_path: str) -> LogArchiveTools:
+        """
+        构造日志包工具。
+
+        解压目录：历史归档开启时放在 `data/<配置>/history/.staging/<会话>`，
+        分析成功后整体并入记录目录（`history/<记录>/extracted`），
+        于是“解压结果保留到不能再追问”由历史清理统一负责；历史关闭时
+        退化为系统临时目录，分析结束即删除。
+        """
+        extract_dir = ""
+        if self.history is not None and settings.history_enabled:
+            extract_dir = str(self.history.staging_dir(config_name, session_id))
+        return LogArchiveTools(
+            zip_path,
+            max_file_kb=max(64, int(settings.max_log_file_read_kb or 512)),
+            max_result_chars=max(
+                2000, int(project.repo.max_tool_result_chars or 30000)
+            ),
+            max_result_tokens=int(project.repo.max_tool_result_tokens or 0),
+            max_total_mb=int(settings.max_total_uncompressed_mb or 0),
+            extract_dir=extract_dir,
+        )
+
+    @staticmethod
+    def archive_limit_error(settings: AnalysisSettings, zip_path: str) -> str:
+        """
+        内容闸门：解压后总大小超限时返回给用户看的提示，否则空串。
+
+        下载完成后、摘要与 AI 之前调用一次即可——通过之后，摘要与日志工具
+        都不再比对总量；解压时只按实际写出字节复核，防止 zip 头造假。
+        """
+        probe = probe_archive(
+            zip_path, int(settings.max_total_uncompressed_mb or 0)
+        )
+        if probe.ok:
+            return ""
+        return probe.reason or "日志包内容无法分析。"
 
     @staticmethod
     def _skip_reason(digest: DigestResult, project: ProjectConfig) -> str:
@@ -1064,14 +1279,14 @@ class MaaAnalyzer:
         group_id: int,
         file_name: str,
         file_id: str,
-        file_url: str = "",
         file_size: int,
+        file_url: str = "",
         part: ArchivePart,
         zip_path: Path,
         work_dir: Path,
         settings: AnalysisSettings,
         semaphore: asyncio.Semaphore,
-    ) -> tuple[int, list[str]]:
+    ) -> tuple[int, list[str], ArchivePartsState]:
         """
         下载并合并同一组分卷日志包（*-part01.zip / *-part02.zip）。
 
@@ -1082,7 +1297,9 @@ class MaaAnalyzer:
         candidates: dict[int, tuple[str, str, int, str]] = {}
         list_failed = False
         try:
+            logger.info(f"[分析] 开始获取群文件列表以查找分卷：{file_name}")
             files = await get_all_files(self.s, group_id)
+            logger.info(f"[分析] 群文件列表获取完成：{file_name}（{len(files)} 个文件）")
         except Exception as exc:
             logger.warning(f"[分析] 获取群文件列表失败，无法合并分卷：{exc}")
             files = []
@@ -1094,19 +1311,9 @@ class MaaAnalyzer:
                 continue
             candidates.setdefault(
                 parsed.number,
-                (
-                    item.file_name,
-                    item.file_id,
-                    int(item.size or 0),
-                    item.url,
-                ),
+                (item.file_name, item.file_id, int(item.size or 0), item.url),
             )
-        candidates[part.number] = (
-            file_name,
-            file_id,
-            int(file_size or 0),
-            file_url,
-        )
+        candidates[part.number] = (file_name, file_id, int(file_size or 0), file_url)
 
         if len(candidates) <= 1:
             downloaded = await download_group_file(
@@ -1115,16 +1322,22 @@ class MaaAnalyzer:
                 semaphore=semaphore,
                 timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
                 url=file_url,
+                file_name=file_name,
             )
             reason = "无法获取群文件列表" if list_failed else "群内未找到其他分卷"
-            return downloaded, [
-                f"检测到分卷日志包 {file_name}，但{reason}，仅分析当前分卷。"
-            ]
+            state = judge_parts_state(
+                zip_path, {int(part.number): file_name}, candidates
+            )
+            note = f"检测到分卷日志包 {file_name}，但{reason}，仅分析当前分卷。"
+            if state.incomplete:
+                note += f"（{describe_parts_gap(state)}，日志包不完整）"
+            return downloaded, [note], state
 
         parts_dir = work_dir / "parts"
         parts_dir.mkdir(parents=True, exist_ok=True)
         downloaded_paths: list[Path] = []
         merged_names: list[str] = []
+        used: dict[int, str] = {}
         failures: list[str] = []
         for number in sorted(candidates):
             name, part_id, _, part_url = candidates[number]
@@ -1136,9 +1349,12 @@ class MaaAnalyzer:
                     semaphore=semaphore,
                     timeout_seconds=max(10, int(settings.download_timeout_seconds or 120)),
                     url=part_url,
+                    file_name=name,
                 )
+                logger.info(f"[分析] 分卷下载完成：{name}")
                 downloaded_paths.append(target)
                 merged_names.append(name)
+                used[number] = name
             except Exception as exc:
                 failures.append(f"{name}（{exc}）")
                 logger.warning(f"[分析] 分卷下载失败：{name}：{exc}")
@@ -1151,13 +1367,17 @@ class MaaAnalyzer:
         else:
             await asyncio.to_thread(self._merge_zip_parts, downloaded_paths, zip_path)
 
-        notes = [
+        state = judge_parts_state(zip_path, used, candidates)
+        parts_note = (
             f"检测到分卷日志包，已合并 {len(downloaded_paths)} 个分卷："
             + "、".join(merged_names)
-        ]
+        )
+        if state.incomplete:
+            parts_note += f"（{describe_parts_gap(state)}，日志包不完整）"
+        notes = [parts_note]
         if failures:
             notes.append("以下分卷下载失败，结果可能不完整：" + "；".join(failures))
-        return zip_path.stat().st_size, notes
+        return zip_path.stat().st_size, notes, state
 
     @staticmethod
     def _merge_zip_parts(parts: list[Path], target: Path) -> None:
@@ -1685,21 +1905,23 @@ class MaaAnalyzer:
     # 分析历史
     # ════════════════════════════════════════════════════════════
 
-    def _archive_history(self, *, config_name: str, settings: AnalysisSettings,
+    async def _archive_history(self, *, config_name: str, settings: AnalysisSettings,
                          group_id: int, file_name: str, file_id: str,
                          uploader: str, zip_path: Path, context: str,
                          report: str, log_count: int,
-                         image_count: int) -> tuple[str, str]:
+                         image_count: int,
+                         extract_dir: Optional[Path] = None) -> tuple[str, str]:
         """
-        归档日志包与追问上下文到历史目录。
+        归档日志包、解压结果与追问上下文到历史目录。
 
         返回 (history_id, 归档后的 zip 路径)；未启用或失败时返回 ("", "")。
-        归档成功后工作目录中的 source.zip 会被移走，因此 cleanup 不会误删。
+        归档成功后工作目录中的 source.zip 会被移走，因此 cleanup 不会误删；
+        `extract_dir` 会整体移入记录目录，其生命周期与追问能力一致。
         """
         if self.history is None or not settings.history_enabled:
             return "", ""
         try:
-            record = self.history.add(
+            record = await self.history.add_async(
                 config_name=config_name,
                 group_id=str(group_id),
                 file_name=file_name,
@@ -1711,6 +1933,7 @@ class MaaAnalyzer:
                 uploader=uploader,
                 log_count=log_count,
                 image_count=image_count,
+                extract_dir=extract_dir,
             )
             if record is None:
                 return "", ""
@@ -1740,19 +1963,24 @@ class MaaAnalyzer:
         if not report:
             return [], []
         try:
-            max_images = max(0, int(settings.max_report_images or 0))
-            max_files = max(0, int(settings.max_report_files or 0))
-            if not settings.send_images:
-                max_images = 0
-            if not (settings.send_files and allow_files):
+            max_images = (
+                0 if not settings.send_images
+                else max(0, int(settings.max_report_images or 0))
+            )
+            max_files = (
+                0 if not (settings.send_files and allow_files)
+                else max(0, int(settings.max_report_files or 0))
+            )
+            # 单文件体积上限：0 = 关闭文件附件（与 send_files=false 等价），
+            # 不再静默回退成 20 MB。
+            raw_mb = settings.max_file_attachment_mb
+            file_limit_mb = 20 if raw_mb is None else int(raw_mb)
+            if file_limit_mb <= 0:
                 max_files = 0
+            max_file_bytes = max(1, file_limit_mb) * 1024 * 1024
             if max_images <= 0 and max_files <= 0:
-                # 不允许任何附件，但仍需剥离指令行
-                return split_report(report), []
-
-            max_file_bytes = max(
-                64, int(settings.max_file_attachment_mb or 20)
-            ) * 1024 * 1024
+                # 两类附件都关闭：只保留文本片段，不能留下空数据的附件段
+                return text_segments(report), []
 
             # 从本地仓库取附件（仅 @项目 来源；@日志 由压缩包直接读取）
             repo_files: dict[str, bytes] = {}
@@ -1771,15 +1999,15 @@ class MaaAnalyzer:
             return build_report_segments(
                 report, digest,
                 repo_files=repo_files,
-                max_attachments=max_images + max_files,
+                max_images=max_images,
+                max_files=max_files,
                 # 图片不再按体积裁剪：渲染时按内容宽度等比缩放
                 max_image_bytes=0,
                 max_file_bytes=max_file_bytes,
-                allow_files=max_files > 0,
             )
         except Exception as exc:
             logger.warning(f"[附件] 解析失败，已跳过：{exc}", exc_info=True)
-            return split_report(report), []
+            return text_segments(report), []
 
     @staticmethod
     def _limit_attachment_requests(paths: list[str], max_images: int,
@@ -1802,24 +2030,112 @@ class MaaAnalyzer:
 
     @staticmethod
     def _build_followup_context(file_name: str, prompt: str, repo_context: str,
-                                report: str) -> str:
+                                *, budget: int = 0) -> str:
         """
         构造追问会话的首轮上下文。
 
         **顺序很重要**：把日志摘要原样放在最前面，使其与分析阶段的首条
         user 消息共享前缀，从而命中 provider 的提示词缓存；文件名等
         本次分析独有的信息放在末尾，避免开头就发生分歧。
+
+        `budget > 0` 时按 token 预算裁剪：先保留开头（日志摘要/代码参考，
+        与缓存前缀一致），再补末尾说明；预算不足时从尾部开始丢，
+        绝不让追问种子无声超限。
         """
         parts = [prompt]
         # analyze() 传入的 prompt 已经拼接了代码参考；只有确实缺失时才补
         if repo_context and repo_context.strip() and repo_context.strip() not in prompt:
             parts.extend(["", repo_context])
-        parts.extend([
-            "",
+        tail = (
             f"【本次分析信息】日志包：{file_name}。"
-            "以上内容是分析时提供的原始摘要，可直接引用，无需重新上传日志。",
-        ])
-        return "\n".join(parts)
+            "以上内容是分析时提供的原始摘要，可直接引用，无需重新上传日志。"
+        )
+        body = "\n".join(parts)
+        if budget <= 0:
+            return body + "\n\n" + tail
+        if estimate_tokens(body) + estimate_tokens(tail) <= budget:
+            return body + "\n\n" + tail
+
+        tail_budget = estimate_tokens(tail)
+        if tail_budget >= budget:
+            return trim_to_tokens(body, budget)
+        trimmed = trim_to_tokens(
+            body, budget - tail_budget,
+            suffix="\n...[原始摘要已按追问预算裁剪，可用工具重新检索]",
+        )
+        logger.info(
+            f"[追问] 种子上下文按预算裁剪：{estimate_tokens(body)} → "
+            f"{estimate_tokens(trimmed)} tokens（预算 {budget}）"
+        )
+        return (trimmed + "\n\n" + tail).strip()
+
+    @staticmethod
+    def _budget_followup_seed(messages: list[dict], budget: int) -> list[dict]:
+        """
+        按优先级把追问种子消息裁到预算内。
+
+        种子 = `[system, user(日志摘要), assistant(上次报告), …QA]`。
+        日志摘要与分析阶段共享前缀缓存，优先保留；上次报告只占剩余预算，
+        被裁时明确告知模型“可用工具重新检索”，避免它拿残报告当全文引用。
+        其余 QA 历史交给压缩器。
+        """
+        if budget <= 0 or len(messages) < 3:
+            return messages
+        result = list(messages)
+        head = result[0]
+        system_tokens = (
+            estimate_tokens(str(head.get("content") or ""))
+            if head.get("role") == "system" else 0
+        )
+        # 末尾还要追加追问指令（约 200 tokens），先预留
+        available = budget - system_tokens - 256
+        if available <= 0:
+            return result
+
+        index = next(
+            (i for i, message in enumerate(result) if message.get("role") == "user"),
+            None,
+        )
+        if index is None:
+            return result
+        summary = result[index].get("content")
+        if not isinstance(summary, str):
+            return result
+
+        summary_tokens = estimate_tokens(summary)
+        summary_budget = max(1024, int(available * 0.7))
+        if summary_tokens > summary_budget:
+            trimmed = trim_to_tokens(
+                summary, summary_budget,
+                suffix="\n...[追问摘要已按预算裁剪，可用工具重新检索]",
+            )
+            result[index] = {**result[index], "content": trimmed}
+            summary_tokens = estimate_tokens(trimmed)
+            logger.info(
+                f"[追问] 首轮摘要按预算裁剪："
+                f"{estimate_tokens(summary)} → {summary_tokens} tokens"
+            )
+
+        report_index = index + 1
+        if (report_index < len(result)
+                and result[report_index].get("role") == "assistant"):
+            report = result[report_index].get("content")
+            if isinstance(report, str):
+                remaining = max(256, available - summary_tokens)
+                if estimate_tokens(report) > remaining:
+                    result[report_index] = {
+                        **result[report_index],
+                        "content": trim_to_tokens(
+                            report, remaining,
+                            suffix="\n...[上次报告已按追问预算裁剪，"
+                                   "结论请以本次回答为准]",
+                        ),
+                    }
+                    logger.info(
+                        f"[追问] 上次报告按预算裁剪："
+                        f"{estimate_tokens(report)} → {remaining} tokens 以内"
+                    )
+        return result
 
     async def answer_followup(self, *, settings: AnalysisSettings,
                               messages: list[dict], question: str,
@@ -1836,18 +2152,37 @@ class MaaAnalyzer:
         同一次分析及其后续追问共用一个 `session_id`，用量因此可以按会话聚合。
         """
         sid = session_id or new_session_id(config_name)
+        # 与主分析同一层预算：追问的模型调用段（普通调用 / 工具循环 / 收敛 /
+        # 上下文压缩 / 截断重试）统一受 ai_stage_timeout_seconds 约束，到点即
+        # 放弃本次回答，并给出可操作的提示（此前这一段完全没有超时判定）。
+        stage_timeout = max(30, int(settings.ai_stage_timeout_seconds or 300))
         with config_log_context(config_name), session_context(
             sid, config_name, file_name
         ):
-            return await self._answer_followup_inner(
-                settings=settings,
-                messages=messages,
-                question=question,
-                digest=digest,
-                provider=provider,
-                project=project,
-                config_name=config_name,
-            )
+            try:
+                return await asyncio.wait_for(
+                    self._answer_followup_inner(
+                        settings=settings,
+                        messages=messages,
+                        question=question,
+                        digest=digest,
+                        provider=provider,
+                        project=project,
+                        config_name=config_name,
+                    ),
+                    timeout=stage_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[追问] AI 阶段超时（{stage_timeout}s），放弃本次回答"
+                )
+                return FollowupAnswer(
+                    text=(
+                        f"这次追问超时了（AI 阶段超过 {stage_timeout} 秒）。\n"
+                        "可以稍后重试；把问题拆小一点，或调大 "
+                        "`ai_stage_timeout_seconds` 会更容易拿到结果。"
+                    ),
+                )
 
     async def _answer_followup_inner(self, *, settings: AnalysisSettings,
                                      messages: list[dict], question: str,
@@ -1881,6 +2216,9 @@ class MaaAnalyzer:
                         2000, int(repo_cfg.max_tool_result_chars or 30000)
                     ),
                     max_result_tokens=int(repo_cfg.max_tool_result_tokens or 0),
+                    max_total_mb=int(settings.max_total_uncompressed_mb or 0),
+                    # 归档目录里的解压结果：存在就直接复用，不重复解压
+                    extract_dir=str(getattr(digest, "extract_dir", "") or ""),
                 )
                 if candidate.available():
                     log_tools = candidate
@@ -1913,11 +2251,12 @@ class MaaAnalyzer:
         schema_tokens = (
             estimate_tokens(json.dumps(tools, ensure_ascii=False)) if tools else 0
         )
-        compactor = self._compactor(
-            config_name, settings, "followup",
-            max(2048, self._context_budget(settings, self.llm, config_llm)
-                - schema_tokens),
+        budget = max(
+            2048,
+            self._context_budget(settings, self.llm, config_llm) - schema_tokens,
         )
+        base = self._budget_followup_seed(base, budget)
+        compactor = self._compactor(config_name, settings, "followup", budget)
         base = compactor.prepare(
             base,
             first_user_ratio=(
@@ -1995,7 +2334,7 @@ class MaaAnalyzer:
             return None
         finally:
             if log_tools is not None:
-                log_tools.close()
+                log_tools.release()
 
         if not raw:
             return None
@@ -2376,13 +2715,17 @@ class MaaAnalyzer:
     # 项目代码参考
     # ════════════════════════════════════════════════════════════
 
+    @staticmethod
+    def _repo_cache_key(config_name: str, repo_cfg: RepoConfig) -> str:
+        """整个 repo 配置参与缓存键：字段变更时重建 provider。"""
+        return f"{config_name}|{repo_cfg.model_dump_json()}"
+
     def _repo_provider(self, config_name: str,
                        repo_cfg: RepoConfig) -> Optional[RepoProvider]:
-        """按配置缓存 RepoProvider，来源变化时自动重建。"""
+        """canonical provider：由后台预下载维护（完整克隆）。"""
         if not repo_cfg or not repo_cfg.enabled or not repo_cfg.usable():
             return None
-        # 整个 repo 配置参与缓存键：字段变更时重建 provider
-        cache_key = f"{config_name}|{repo_cfg.model_dump_json()}"
+        cache_key = self._repo_cache_key(config_name, repo_cfg)
         cached = self._repos.get(config_name)
         if cached and getattr(cached, "_cache_key", "") == cache_key:
             return cached
@@ -2394,24 +2737,58 @@ class MaaAnalyzer:
     def _repo_data_dir(self) -> Path:
         return Path(self.s.dm._dir)
 
+    @staticmethod
+    def _canonical_ready(provider: RepoProvider) -> bool:
+        """canonical 能否直接用于分析。
+
+        - 本地 path → 可以；
+        - 预下载模式（preload_enabled）→ 必须是完整克隆（浅克隆会被后台升级）；
+        - 非预下载模式 → 浅克隆就是最终形态，可以直接用。
+        """
+        if provider.cfg.path:
+            return True
+        root = provider.root
+        if root is None or not (root / ".git").exists():
+            return False
+        if not provider.cfg.preload_enabled:
+            return True
+        # git 对浅克隆会写 .git/shallow；完整克隆没有这个文件
+        return not (root / ".git" / "shallow").exists()
+
+    def _analysis_repo(self, config_name: str, repo_cfg: RepoConfig,
+                       canonical: RepoProvider) -> RepoProvider:
+        """每配置一份的临时浅克隆 provider（跨分析复用，canonical 就绪后清掉）。"""
+        cache_key = self._repo_cache_key(config_name, repo_cfg)
+        existing = self._analysis_repos.get(config_name)
+        if existing is not None and getattr(existing, "_cache_key", "") == cache_key:
+            return existing
+        provider = RepoProvider(
+            repo_cfg, self._repo_data_dir(), config_name=config_name,
+            repo_root=canonical.temporary_root(),
+        )
+        provider._cache_key = cache_key  # type: ignore[attr-defined]
+        self._analysis_repos[config_name] = provider
+        logger.info(f"[仓库] 配置「{config_name}」canonical 未就绪，分析使用临时浅克隆")
+        return provider
+
     async def ensure_repo_provider(self, config_name: str,
                                    project: ProjectConfig,
                                    ) -> Optional[RepoProvider]:
         """
         取（必要时重建）**就绪**的 RepoProvider，供追问使用。
 
-        进程内分析后 `_repos` 里已有就绪的 provider，直接复用；
-        但**重启后内存缓存为空**，这里按当前配置重建并确保仓库可用 ——
-        否则仓库工具与 `@项目` 附件都会静默失效，AI 只能回答
-        「项目仓库不可用」。
-
-        任何失败只记日志并返回 None（追问退化为仅用摘要与日志包）。
+        只做浅克隆（`shallow_only=True`）：完整克隆属于后台预下载，追问不该
+        在这里等几十分钟。任何失败只记日志并返回 None（追问退化为仅用摘要与
+        日志包），不影响本次回答。
         """
         provider = self._provider_for_analysis(config_name, project.repo)
         if provider is None:
             return None
         try:
-            if not await provider.ensure_ready():
+            if not await provider.ensure_ready(
+                shallow_only=True,
+                budget=float(project.repo.shallow_clone_timeout_seconds or 0),
+            ):
                 logger.warning(f"[追问] 项目代码不可用：{provider.last_error}")
                 return None
         except Exception as exc:
@@ -2421,43 +2798,70 @@ class MaaAnalyzer:
 
     def _provider_for_analysis(self, config_name: str,
                                repo_cfg: RepoConfig) -> Optional[RepoProvider]:
+        """分析/追问用哪个仓库（规则见 docs/repo.md 的并发/获取路径一节）。
+
+        - canonical 已是完整克隆 → 直接用它；
+        - 否则用「每配置一份」的临时浅克隆，并确保后台在跑完整克隆。
+        分析现场**绝不**做完整克隆。
+        """
+        canonical = self._repo_provider(config_name, repo_cfg)
+        if canonical is None:
+            return None
+        if self._canonical_ready(canonical):
+            return canonical
+        self._ensure_preload_task(config_name, canonical)
+        return self._analysis_repo(config_name, repo_cfg, canonical)
+
+    def _ensure_preload_task(self, config_name: str,
+                             canonical: RepoProvider) -> None:
+        """canonical 未就绪时，确保后台有一个完整克隆任务在跑。
+
+        - 已有任务在跑 → 不动（单克隆互斥）；
+        - 冷却期内 → 不重复起（失败后不要每次分析都重来一轮完整克隆）。
+        """
+        repo_cfg = canonical.cfg
+        if not (repo_cfg.preload_enabled and not repo_cfg.path):
+            return
         task = self._repo_preload_tasks.get(config_name)
         if task is not None and not task.done():
-            fallback = self._fallback_repos.get(config_name)
-            if fallback is None:
-                canonical = self._repo_provider(config_name, repo_cfg)
-                if canonical is None:
-                    return None
-                fallback = RepoProvider(
-                    repo_cfg, self._repo_data_dir(), config_name=config_name,
-                    repo_root=canonical.temporary_root(),
-                )
-                self._fallback_repos[config_name] = fallback
-            return fallback
-        if self._repo_preload_status.get(config_name, {}).get("state") == "预下载失败":
-            fallback = self._fallback_repos.get(config_name)
-            if fallback is not None:
-                return fallback
-        return self._repo_provider(config_name, repo_cfg)
+            return
+        now = time.time()
+        if now - float(self._preload_retry_at.get(config_name, 0.0)) < self.PRELOAD_RETRY_COOLDOWN:
+            return
+        self._preload_retry_at[config_name] = now
+        status = self._repo_preload_status.setdefault(config_name, {
+            "state": "等待预下载", "attempt": 0, "detail": "",
+        })
+        status.update(state="等待预下载", detail="")
+        logger.info(
+            f"[仓库] 配置「{config_name}」canonical 未就绪，后台安排完整克隆"
+        )
+        self._repo_preload_tasks[config_name] = asyncio.create_task(
+            self._preload_repo_task(config_name, repo_cfg)
+        )
 
-    async def _cleanup_finished_fallback(self, config_name: str) -> None:
-        task = self._repo_preload_tasks.get(config_name)
-        if task is None or not task.done():
+    def _settle_analysis_repo_now(self, config_name: str) -> None:
+        """canonical 已就绪时清掉临时浅克隆。调用方需已持配置工作锁。"""
+        provider = self._analysis_repos.get(config_name)
+        if provider is None or provider.root is None:
             return
-        fallback = self._fallback_repos.get(config_name)
-        if fallback is None or not fallback.is_temporary or fallback.root is None:
-            return
-        status = self._repo_preload_status.get(config_name, {})
-        if status.get("state") == "预下载失败" and fallback.promote_to_cache():
-            self._fallback_repos.pop(config_name, None)
-            self._repos[config_name] = fallback
-            logger.info(f"[仓库] 配置「{config_name}」临时仓库已转为缓存")
+        canonical = self._repos.get(config_name)
+        if canonical is None or not self._canonical_ready(canonical):
             return
         try:
-            remove_repo_tree(fallback.root)
-            self._fallback_repos.pop(config_name, None)
+            remove_repo_tree(provider.root)
         except OSError as exc:
             logger.warning(f"[仓库] 删除配置「{config_name}」临时仓库失败：{exc}")
+            return
+        self._analysis_repos.pop(config_name, None)
+        logger.info(
+            f"[仓库] 配置「{config_name}」canonical 已就绪，临时浅克隆已清理"
+        )
+
+    async def _settle_analysis_repo(self, config_name: str) -> None:
+        """同一收尾的加锁版本（后台预下载任务结束时调用）。"""
+        async with self._config_lock(config_name):
+            self._settle_analysis_repo_now(config_name)
 
     async def _prepare_repo(self, config_name: str,
                             repo_cfg: RepoConfig,
@@ -2476,14 +2880,20 @@ class MaaAnalyzer:
             return prep
 
         try:
-            if not await provider.ensure_ready():
+            # 分析现场只浅克隆：完整克隆属于后台预下载，这里绝不等全量
+            if not await provider.ensure_ready(
+                shallow_only=True,
+                budget=float(repo_cfg.shallow_clone_timeout_seconds or 0),
+            ):
                 logger.warning(f"[分析] 项目代码不可用：{provider.last_error}")
                 return prep
 
             self._active_repos[config_name] = provider
 
             if repo_cfg.update_on_analyze and not repo_cfg.path:
-                updated, detail = await provider.update_latest()
+                updated, detail = await provider.update_latest(
+                    budget=int(repo_cfg.update_timeout_seconds or 0)
+                )
                 if updated:
                     logger.info(f"[分析] {detail}")
                 else:
@@ -2563,7 +2973,7 @@ class MaaAnalyzer:
             )
         finally:
             if log_tools is not None:
-                log_tools.close()
+                log_tools.release()
 
     @staticmethod
     async def _dispatch_agent_tool(name: str, arguments: dict,

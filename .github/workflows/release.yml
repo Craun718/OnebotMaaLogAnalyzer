@@ -183,7 +183,7 @@ jobs:
           find "$ASTRBOT" -type f -name '*.log' -delete
 
           check_forbidden "$ASTRBOT" "AstrBot 插件包"
-          for required in main.py metadata.yaml _conf_schema.json requirements.txt \
+          for required in main.py README.md metadata.yaml _conf_schema.json requirements.txt \
                           maa_analyzer/__init__.py maa_analyzer/runtime.py \
                           maa_analyzer/core/__init__.py \
                           maa_analyzer/features/maa/__init__.py \

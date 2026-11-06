@@ -67,6 +67,7 @@ OnebotMaaLogAnalyzer-light/
 ```text
 OnebotMaaLogAnalyzer/
 ├── main.py
+├── README.md
 ├── metadata.yaml
 ├── _conf_schema.json
 ├── requirements.txt

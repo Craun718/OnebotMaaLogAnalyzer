@@ -20,7 +20,7 @@ import logging
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
-from maa_analyzer.core.tokens import estimate_messages_tokens, estimate_tokens, trim_to_tokens
+from ..core.tokens import estimate_messages_tokens, estimate_tokens, trim_to_tokens
 
 logger = logging.getLogger("Maa.Compaction")
 

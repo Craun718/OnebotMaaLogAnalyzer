@@ -23,7 +23,7 @@ from typing import Any, Optional
 
 import aiohttp
 
-from maa_analyzer.core.models import LLMProviderConfig, ModelSpec
+from ..core.models import LLMProviderConfig, ModelSpec
 
 logger = logging.getLogger("Maa.LLM")
 

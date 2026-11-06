@@ -26,7 +26,7 @@
 - **AstrBot AIOCQHTTP**：忽略 `onebot` 段，由 AstrBot 接收事件和调用协议 API；`bot`、`llm`、
   `log` 及配置档案语义保持不变。
 
-AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON：
+AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON。新建面板配置时，有固定程序默认值的字段直接显示这些默认值，面板值会覆盖所选档案或端点的对应配置。下表说明手动使用旧继承标记时的行为：
 
 | 面板字段 | 临时覆盖的 JSON 位置 | 留空时 |
 | --- | --- | --- |
@@ -65,8 +65,8 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 | `send_images_mode` / `send_repo_images_mode` / `send_files_mode` | 所选档案的对应 `settings.send_*` | `inherit` 保持原值 |
 | `followup_mode` | 所选档案的 `settings.followup_enabled` | `inherit` 保持原值 |
 | `followup_window_minutes` | 所选档案的 `settings.followup_window_minutes` | `-1` 保持原值 |
-| `history_mode` | 所选档案的 `settings.history_enabled` | `inherit` 保持原值 |
-| `history_period_hours` | 所选档案的 `settings.history_period_hours` | `-1` 保持原值 |
+| `history_mode` | 所选档案的 `settings.history_enabled` | 默认 `enabled`；旧值 `inherit` 保持原值 |
+| `history_period_hours` | 所选档案的 `settings.history_period_hours` | 默认 `24`；旧值 `-1` 保持原值 |
 | `history_keep_periods` | 所选档案的 `settings.history_keep_periods` | `-1` 保持原值 |
 | `settings_*` | 分析触发、去重、反馈、附图、附件、追问、历史、并发、超时、上下文压缩与缓存等高级设置 | 继承标记保持原值 |
 | `settings_max_zip_*` / `settings_max_log_*` / `settings_*_lines` | 压缩包、日志文件、摘要与证据提取上限 | `-1` 保持原值 |
@@ -77,7 +77,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 | `log_dir` | `log.log_dir` | 保持原值 |
 | `log_level` | `log.log_level` | 保持原值 |
 
-空字符串、空列表、数值 `-1` 和各 `*_mode: inherit` 都是继承标记。面板覆盖不会回写 `config.json`，
+没有固定值的字段（如端点、密钥和可选的模型级采样参数）仍可留空。插件启动时会将已保存面板中的旧 `inherit` 和 `-1` 标记替换为对应的固定程序默认值，并保存面板配置；已填写的具体值保留。没有固定值的字段和空字符串、空列表仍可沿用高级配置。面板覆盖不会回写 `config.json`，
 未选中的配置档案、未被 `llm_endpoint_selector` / `llm_endpoint_model`
 选中的端点与模型、Provider/Model 数组顺序和自定义高级字段保持原值。`llm_provider`
 与 `llm_model` 负责首选候选；`llm_endpoint_*` 与 `llm_model_*` 只编辑选中的一个端点和模型。
@@ -170,8 +170,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
           "history_period_hours": 24,
           "history_keep_periods": 2,
           "ai_stage_timeout_seconds": 300,
-          "max_context_tokens": 0,
-          "analysis_concurrency": 2
+          "max_context_tokens": 0
         },
         "commands": {
           "enabled": true,
@@ -333,8 +332,8 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 
 | 字段 | 类型 / 默认 | 说明 | 示例 |
 | --- | --- | --- | --- |
-| `data_dir` | `string` / `"data"` | 数据根目录。裸模式相对启动工作目录，AstrBot 相对插件数据目录；调试模式下不生效 | `"data_dir": "data"` |
-| `configs` | `object` / — | 多群配置：键是**配置名**，值是下面这组字段。配置名同时用于日志前缀 `[配置名]` 与数据子目录 `data/<配置名>/`，改名等于换一套数据 | `"configs": { "官服": { "listen_groups": ["111111111"] } }` |
+| `data_dir` | `string` / `"data"` | 数据根目录。裸模式相对启动工作目录，AstrBot 相对插件数据目录。设置、历史、仓库缓存、用量都写在下面；调试模式下不生效 | `"data_dir": "data"` |
+| `configs` | `object` / — | 多群配置：键是**配置名**，值是下面这组字段。配置名同时用于日志前缀 `[配置名]` 与数据子目录 `data/<配置名>/`，改名等于换一套数据；目录名会被清洗（只留字母数字与 `._-`，其余替换为 `_`），升级前已有的老目录名继续沿用 | `"configs": { "官服": { "listen_groups": ["111111111"] } }` |
 | `configs.<名称>.listen_groups` | `string[]` / `[]` | 要监听的群号（字符串）。为空则该配置不接收任何群 | `"listen_groups": ["111111111"]` |
 | `configs.<名称>.notify_group` | `string` / `null` | 分析结果额外推送的群号；`null` / 空串 = 只发回原群 | `"notify_group": "111111111"` |
 | `configs.<名称>.project` | `object` / — | 项目名、日志包识别方式、UI 开关、代码仓库，见 [project](#project项目配置) | `"project": { "name": "MaaXXX" }` |
@@ -431,7 +430,7 @@ data/
 | `mirrors` | `string[]` / `[]` | 备用地址，按顺序依次尝试，直到一个来源成功 | `"mirrors": ["https://gitee.com/xx/MaaXXX.git"]` |
 | `branch` | `string` / `""` | 克隆时使用的分支 / tag；空 = 仓库默认分支 | `"branch": "dev"` |
 | `default_branch` | `string` / `""` | 分析结束还原时的兜底目标；空 = 自动探测 | `"default_branch": "main"` |
-| `preload_enabled` | `bool` / `true` | 启动后后台完整克隆（含全部历史 / tag）并初始化子模块；关闭则首次分析时浅克隆、按需拉 tag | `"preload_enabled": false` |
+| `preload_enabled` | `bool` / `true` | 启动后后台完整克隆（含全部历史 / tag）并初始化子模块；**分析现场始终浅克隆**，关闭则不做完整克隆、tag 按需拉取 | `"preload_enabled": false` |
 | `preload_retries` | `int` / `3` | 启动预下载失败的重试次数（最大 5，间隔递增） | `"preload_retries": 5` |
 | `update_on_analyze` | `bool` / `false` | 每份日志分析前先更新默认分支，再对齐日志版本 tag | `"update_on_analyze": true` |
 | `allow_ai_update` | `bool` / `true` | 允许 AI 用 `pull_latest` 更新当前仓库的默认分支（不接受 URL 或 Git 命令） | `"allow_ai_update": false` |
@@ -443,9 +442,12 @@ data/
 | `max_tool_rounds` | `int` / `8` | **agent** 工具调用最大轮次 | `"max_tool_rounds": 6` |
 | `max_tool_calls_per_round` | `int` / `6` | **agent** 单轮最多执行的工具数 | `"max_tool_calls_per_round": 4` |
 | `max_tool_result_chars` | `int` / `30000` | **agent** 单次工具结果字符上限 | `"max_tool_result_chars": 12000` |
-| `max_tool_result_tokens` | `int` / `0` | **agent** 单次工具结果 token 上限；`0` = 由 `max_tool_result_chars` 估算 | `"max_tool_result_tokens": 4000` |
+| `max_tool_result_tokens` | `int` / `0` | **agent** 单次工具结果 token 上限；`0` = 由 `max_tool_result_chars` 估算，非 0 时最小 64 | `"max_tool_result_tokens": 4000` |
 | `max_tool_context_tokens` | `int` / `0` | 工具结果累计 token 预算；`0` = 不超过本次上下文预算的 50% | `"max_tool_context_tokens": 16000` |
 | `agent_deadline_seconds` | `int` / `600` | **agent** 循环总时长上限 | `"agent_deadline_seconds": 900` |
+| `shallow_clone_timeout_seconds` | `int` / `600` | 分析/追问现场**浅克隆**的单次上限（秒）；`0` = 内置 600 | `"shallow_clone_timeout_seconds": 300` |
+| `preload_timeout_seconds` | `int` / `1800` | 后台预下载一次**完整克隆**（含子模块）的总上限（秒）；`0` = 内置 1800 | `"preload_timeout_seconds": 900` |
+| `update_timeout_seconds` | `int` / `600` | 分析/追问里「更新默认分支」的总预算（探测 + fetch，秒）；`0` = 内置 | `"update_timeout_seconds": 120` |
 | `extensions` | `string[]` / `json/jsonc/yaml/yml/toml/md/txt` | 参与扫描的文件扩展名 | `"extensions": [".json", ".yaml"]` |
 | `max_file_kb` | `int` / `256` | 跳过大于该值的文件（KB） | `"max_file_kb": 512` |
 | `max_scan_files` | `int` / `20000` | 单次扫描文件数上限 | `"max_scan_files": 5000` |
@@ -512,7 +514,7 @@ project： config.json 的 project
 | MFAAvalonia | `log_20261019_110324.zip`、`log_20261019_141709-part01.zip` | `mfaa` |
 | MaaFwApp | `maafw_logs_20261022_195657.zip` | `maafwapp` |
 
-Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版本，并写入摘要和报告头；分卷包 `*-partNN.zip` 会先等待上传（连续 `archive_part_settle_seconds` 秒无新分卷），再自动下载并合并分析。
+Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版本，并写入摘要和报告头；分卷包 `*-partNN.zip` 会先等待上传（连续 `archive_part_settle_seconds` 秒无新分卷），再自动下载并合并分析。合并后按「编号连续 + 内容特征」判断是否齐全：不完整时最多额外等 `archive_part_wait_extra_rounds` 轮，仍不完整则按 `archive_part_incomplete_action` 处理（照常分析并标注缺失，或取消并提示补齐后重传）。
 
 > 旧字段 `settings.file_prefix` / `extra_file_prefixes` / `auto_detect_archive` / `display_name` / `archive_match_mode` / `require_log_layout` / `repo` 已移除，写在 `settings` 里会被静默忽略；日志包匹配、UI 开关、项目名、项目仓库只在 `project` 中生效。
 
@@ -629,11 +631,11 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
   "followup_enabled": true,
   "history_period_hours": 12,
   "context_compact_ratio": 0.75,
-  "analysis_concurrency": 3
+  "download_concurrency": 4
 }
 ```
 
-`settings` 接受下列全部 63 个分析设置项（顺序与代码一致），逐项行为与调优建议见 [分析设置](settings.md)：
+`settings` 接受下列全部 62 个分析设置项（顺序与代码一致），逐项行为与调优建议见 [分析设置](settings.md)：
 
 | 设置项 | 类型 / 默认 | 说明 | 示例 |
 | --- | --- | --- | --- |
@@ -644,11 +646,11 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `send_summary` | `bool` / `true` | 是否发送分析结果 | `"send_summary": true` |
 | `reply_chunk_chars` | `int` / `3500` | 回复分段字符数（最小 1000） | `"reply_chunk_chars": 2000` |
 | `send_images` | `bool` / `true` | 是否允许模型附图 | `"send_images": false` |
-| `max_report_images` | `int` / `4` | 最多附带图片数 | `"max_report_images": 6` |
+| `max_report_images` | `int` / `4` | 最多附带图片数；`0` = 不发图片（与文件上限分别计数） | `"max_report_images": 6` |
 | `send_repo_images` | `bool` / `true` | 是否允许从仓库取模板图 | `"send_repo_images": false` |
 | `send_files` | `bool` / `true` | 是否允许附带任意文件（如配置、pipeline JSON） | `"send_files": false` |
-| `max_report_files` | `int` / `2` | 最多附带文件数 | `"max_report_files": 4` |
-| `max_file_attachment_mb` | `int` / `20` | 单个非图片附件大小上限 MB | `"max_file_attachment_mb": 50` |
+| `max_report_files` | `int` / `2` | 最多附带文件数；`0` = 不发文件（与图片上限分别计数） | `"max_report_files": 4` |
+| `max_file_attachment_mb` | `int` / `20` | 单个非图片附件大小上限 MB；`0` = 关闭文件附件 | `"max_file_attachment_mb": 50` |
 | `inline_attachments` | `bool` / `true` | 旧配置兼容项：附件位置由渲染流程决定，当前版本不读取该字段 | `"inline_attachments": false` |
 | `followup_enabled` | `bool` / `true` | 是否允许分析后追问答疑 | `"followup_enabled": false` |
 | `followup_window_minutes` | `int` / `0` | 追问会话有效分钟数；`0` = 跟随历史保留期 | `"followup_window_minutes": 120` |
@@ -658,9 +660,8 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `history_period_hours` | `int` / `24` | 历史保留周期（小时） | `"history_period_hours": 12` |
 | `history_keep_periods` | `int` / `2` | 保留周期数，超出即删除 | `"history_keep_periods": 3` |
 | `history_max_records` | `int` / `200` | 每配置历史记录条数上限；`0` = 不限 | `"history_max_records": 100` |
-| `history_max_total_mb` | `int` / `4096` | 历史目录总大小上限 MB；`0` = 不限 | `"history_max_total_mb": 2048` |
-| `analysis_concurrency` | `int` / `2` | 同时进行的 AI 分析数（仓库状态相关的配置仍串行） | `"analysis_concurrency": 3` |
-| `download_concurrency` | `int` / `2` | 同时进行的下载数 | `"download_concurrency": 4` |
+| `history_max_total_mb` | `int` / `4096` | 历史目录总大小上限 MB；按记录目录实际占用现算（含追问阶段补解压的 `extracted/`）；`0` = 不限 | `"history_max_total_mb": 2048` |
+| `download_concurrency` | `int` / `2` | 同一配置内同时进行的下载数（分卷并行下载） | `"download_concurrency": 4` |
 | `download_timeout_seconds` | `int` / `120` | 下载超时秒数 | `"download_timeout_seconds": 300` |
 | `digest_timeout_seconds` | `int` / `0` | 摘要提取超时；`0` = 不限制 | `"digest_timeout_seconds": 120` |
 | `ai_stage_timeout_seconds` | `int` / `300` | 整个 AI 阶段（含工具循环与收敛）总时长上限 | `"ai_stage_timeout_seconds": 600` |
@@ -677,7 +678,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `cleanup_after_done` | `bool` / `true` | 分析完成后清理临时文件 | `"cleanup_after_done": false` |
 | `save_digest_debug` | `bool` / `false` | 把实际发送给 AI 的摘要保存到 `data/debug_digests` | `"save_digest_debug": true` |
 | `max_zip_size_mb` | `int` / `100` | zip 下载大小上限 MB | `"max_zip_size_mb": 200` |
-| `max_total_uncompressed_mb` | `int` / `120` | 解压总大小上限 MB | `"max_total_uncompressed_mb": 250` |
+| `max_total_uncompressed_mb` | `int` / `1024` | **解压后总大小上限 MB**：下载后只读 zip 目录求和，超限直接跳过整次分析；通过后下游不再比对总量 | `"max_total_uncompressed_mb": 2048` |
 | `max_prompt_chars` | `int` / `200000` | 摘要字符上限（token 预算的兜底，按优先级裁剪） | `"max_prompt_chars": 150000` |
 | `max_zip_members` | `int` / `300` | 压缩包内成员数上限 | `"max_zip_members": 500` |
 | `max_log_files` | `int` / `6` | 最多处理日志文件数（按 UI 布局优先选框架日志 / UI 日志 / 运行记录） | `"max_log_files": 8` |
@@ -685,7 +686,10 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `max_maafw_bak_mb` | `int` / `64` | 单个 `maafw.bak` 大小上限 MB；`0` = 不限制 | `"max_maafw_bak_mb": 32` |
 | `merge_archive_parts` | `bool` / `true` | 自动合并 `*-partNN.zip` 分卷日志包 | `"merge_archive_parts": false` |
 | `archive_part_settle_seconds` | `float` / `30` | 分卷静默期：连续该秒数无新分卷才开始分析；`0` = 首个分卷立即分析 | `"archive_part_settle_seconds": 60` |
-| `max_log_file_read_kb` | `int` / `512` | 普通模式单文件读取上限 KB | `"max_log_file_read_kb": 1024` |
+| `archive_part_require_content` | `bool` / `true` | 分卷齐全性是否要求内容特征（至少一卷含日志正文/配置）；`false` = 只按编号连续判定 | `"archive_part_require_content": false` |
+| `archive_part_wait_extra_rounds` | `int` / `1` | 判定不完整时额外等待的轮数（每轮再等 `archive_part_settle_seconds` 秒） | `"archive_part_wait_extra_rounds": 2` |
+| `archive_part_incomplete_action` | `str` / `analyze` | 仍不完整时：`analyze`（照常分析并标注缺失）或 `cancel`（取消并提示重传） | `"archive_part_incomplete_action": "cancel"` |
+| `max_log_file_read_kb` | `int` / `512` | 日志包单文件读取/工具返回窗口上限 KB（`log_search` 流式全量扫描，不受此限） | `"max_log_file_read_kb": 1024` |
 | `small_log_full_read_mb` | `int` / `5` | 小于该值完整读取（MB） | `"small_log_full_read_mb": 3` |
 | `stream_medium_logs` | `bool` / `true` | 流式扫描中等日志 | `"stream_medium_logs": false` |
 | `large_log_threshold_mb` | `int` / `50` | 巨型日志判定阈值 MB | `"large_log_threshold_mb": 100` |
@@ -726,14 +730,17 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | `prefix` | `string` / `"/maa"` | 指令前缀 | `"prefix": "!maa"` |
 | `owners` | `string[]` / `[]` | 超管 QQ 号列表（等级 2，可修改任何配置） | `"owners": ["10001"]` |
 | `admins` | `string[]` / `[]` | 管理员 QQ 号列表（等级 1，配合 `write_level: 1` 授予写权限） | `"admins": ["10002"]` |
-| `read_level` | `int` / `0` | 查看类指令所需等级（`status` / `get` / `jobs` / `history` / `ai` …） | `"read_level": 1` |
+| `read_level` | `int` / `1` | 查看类指令所需等级（`status` / `get` / `project` / `repo` / `jobs` / `history` / `ai`；默认仅管理员及以上，`0` = 群内任何人） | `"read_level": 0` |
 | `write_level` | `int` / `2` | 修改类指令所需等级（`set` / `project set` / `repo` …） | `"write_level": 1` |
-| `followup_level` | `int` / `0` | 追问答疑所需等级 | `"followup_level": 1` |
+| `followup_level` | `int` / `0` | 追问答疑所需等级；`followup close`（结束会话）另需至少 `1` | `"followup_level": 1` |
 | `reply_chunk_chars` | `int` / `3500` | 指令回复的分段字符数 | `"reply_chunk_chars": 2000` |
 | `max_list_items` | `int` / `40` | `/maa jobs` 列表最多展示的任务条数 | `"max_list_items": 20` |
 
 - 等级 2 = `owners` 中的 QQ；等级 1 = `admins` 中的 QQ，或协议端上报的群管理 / 群主；其余为 0
 - 默认 `write_level: 2`（仅超管可改）是刻意的保守选择：`repo.url` 一旦可改，等于允许让 Bot 去读取任意 git 仓库
+- 默认 `read_level: 1`：查看类指令会暴露群列表、群内上传记录、本地仓库路径与模型用量，因此默认只对管理员开放；想让群成员也能查，显式设 `"read_level": 0`
+- 报告本身照常发到群里（主动推送不走指令），提级只影响手动查询
+- `followup_level` 默认 `0` 表示**群成员仍可引用报告追问**；但 `followup close`（结束会话）是写操作，任何情况下都至少需要等级 `1`
 - `system_prompt` 不允许通过指令修改（避免提示词注入）
 
 指令全集与输出格式见 [QQ 指令](commands.md)。
@@ -888,7 +895,7 @@ max_tokens：         llm.defaults → providers[].models[] → bot.configs.<名
 
 - 过滤在**原列表顺序**上进行，完全相同的 `{name, model}` 会被去重
 - 过滤后为空则该能力降级（不提供工具 / 不注入图片），并在报告中注明，而不是整体失败
-- 每个端点一把并发信号量（`max_concurrency`），跨配置共享；`settings.analysis_concurrency` 控制任务级并发，两者互不替代
+- 每个端点一把并发信号量（`max_concurrency`），跨配置共享；同一配置内的分析恒为串行（见[并发模型](architecture.md#并发模型)），因此端点并发只在该配置内部生效
 
 ### 失败转移与重试
 

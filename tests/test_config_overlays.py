@@ -17,9 +17,35 @@ from maa_analyzer.config import (
     default_config,
     load_effective_config,
 )
+from maa_analyzer.core.models import AnalysisSettings, CommandConfig, ProjectConfig, ReportConfig, VisionConfig
 
 
 class PanelOverrideTests(unittest.TestCase):
+    def test_profile_panel_defaults_match_builtin_models(self):
+        defaults = {
+            "settings": AnalysisSettings().model_dump(),
+            "commands": CommandConfig().model_dump(),
+            "project": ProjectConfig().model_dump(),
+            "report": ReportConfig().model_dump(),
+            "vision": VisionConfig().model_dump(),
+        }
+        for mapping in (PANEL_PROFILE_INT_OVERRIDES, PANEL_PROFILE_FLOAT_OVERRIDES,
+                        PANEL_PROFILE_MODE_OVERRIDES, PANEL_PROFILE_STRING_OVERRIDES):
+            for key, path in mapping.items():
+                value = defaults
+                for component in path:
+                    if not isinstance(value, dict) or component not in value:
+                        break
+                    value = value[component]
+                else:
+                    if value is None:
+                        continue
+                    if isinstance(value, bool):
+                        value = "enabled" if value else "disabled"
+                    elif key in PANEL_PROFILE_FLOAT_OVERRIDES:
+                        value = str(value)
+                    self.assertEqual(PANEL_DEFAULTS[key], value, key)
+
     def _config(self) -> dict:
         cfg = default_config()
         configs = cfg["bot"]["configs"]
@@ -316,7 +342,7 @@ class PanelOverrideTests(unittest.TestCase):
             "max_file_attachment_mb", "inline_attachments",
             "followup_max_turns", "followup_max_sessions",
             "history_max_records", "history_max_total_mb",
-            "analysis_concurrency", "download_concurrency",
+            "download_concurrency",
             "download_timeout_seconds", "digest_timeout_seconds",
             "ai_stage_timeout_seconds", "max_context_tokens",
             "context_compact_enabled", "context_compact_ratio",
@@ -444,11 +470,25 @@ class PanelOverrideTests(unittest.TestCase):
                 {"report_reuse_browser_mode": "sometimes"},
             )
 
-    def test_schema_defaults_are_inheritance_markers(self):
+    def test_history_panel_defaults_override_advanced_values(self):
         cfg = self._config()
+        settings = cfg["bot"]["configs"]["Alpha"]["settings"]
+        settings["history_enabled"] = False
+        settings["history_period_hours"] = 12
         panel = dict(PANEL_DEFAULTS)
 
-        self.assertEqual(apply_panel_overrides(cfg, panel), cfg)
+        result = apply_panel_overrides(cfg, panel)
+        actual = result["bot"]["configs"]["Alpha"]["settings"]
+        self.assertTrue(actual["history_enabled"])
+        self.assertEqual(actual["history_period_hours"], 24)
+
+    def test_absent_history_panel_fields_do_not_override_advanced_values(self):
+        cfg = self._config()
+        settings = cfg["bot"]["configs"]["Alpha"]["settings"]
+        settings["history_enabled"] = False
+        settings["history_period_hours"] = 12
+        result = apply_panel_overrides(cfg, {"default_config": "Alpha"})
+        self.assertEqual(result, cfg)
 
     def test_string_and_list_panel_values_are_trimmed_when_applied(self):
         cfg = self._config()
@@ -512,6 +552,16 @@ class EffectiveConfigLoadTests(unittest.TestCase):
             json.dumps(default_config(), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+    def test_empty_config_file_uses_default_in_plugin_data_dir(self):
+        for panel in ({}, {"config_file": ""}, {"config_file": "  "}):
+            with self.subTest(panel=panel):
+                effective, config_path, _ = load_effective_config(
+                    panel, plugin_data_dir=self.plugin_data
+                )
+                self.assertEqual(config_path, (self.plugin_data / "config.json").resolve())
+                self.assertTrue(config_path.is_file())
+                self.assertIn("bot", effective)
 
     def test_panel_file_data_and_log_paths_take_explicit_priority(self):
         cfg, config_path, data_dir = load_effective_config(

@@ -13,15 +13,15 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from maa_analyzer.features.maa.commands import CommandHandler
-from maa_analyzer.features.maa.followup import FollowupStore
-from maa_analyzer.features.maa.text_utils import split_text
-from maa_analyzer.core.llm_pool import new_session_id
-from maa_analyzer.core.log_context import config_log_context
+from ...features.maa.commands import CommandHandler
+from ...features.maa.followup import FollowupStore, resolve_window_minutes
+from ...features.maa.text_utils import split_text
+from ...core.llm_pool import new_session_id
+from ...core.log_context import config_log_context
 
 if TYPE_CHECKING:
-    from maa_analyzer.core.service import MaaService
-    from maa_analyzer.features.maa.analyzer import MaaAnalyzer
+    from ...core.service import MaaService
+    from ...features.maa.analyzer import MaaAnalyzer
 
 logger = logging.getLogger("Maa.Message")
 
@@ -46,7 +46,7 @@ class MessageHandler:
     # ════════════════════════════════════════════════════════════
 
     async def on_message_text(self, event: dict) -> bool:
-        """处理群内文本消息。"""
+        """处理群内文本消息；返回是否已消费该消息。"""
         group_id = event.get("group_id")
         if group_id is None:
             return False
@@ -108,14 +108,12 @@ class MessageHandler:
             return False   # 未引用任何消息 → 不是追问
 
         settings = cfg.settings if cfg is not None else None
-        if settings is not None:
-            # 会话有效期跟随设置（0 = 跟随历史保留期）
-            self.followup.set_window(self._window_minutes(settings))
-            self.followup.set_max_turns(
-                int(getattr(settings, "followup_max_turns", 10) or 10)
-            )
-
         config_name = cfg.name if cfg is not None else ""
+        if settings is not None:
+            # 策略按配置下发：窗口 / 轮数 / 会话数都是这个配置自己的，
+            # 改一个配置的设置不会动到另一个配置正在进行的会话。
+            self.followup.apply_policy(config_name, settings)
+
         session = self.followup.by_message_id(reply_id, config_name)
         if session is None:
             return False   # 引用的不是 Bot 的分析结果消息
@@ -124,7 +122,7 @@ class MessageHandler:
             return False   # 跨群引用，忽略
 
         if settings is None or not settings.followup_enabled:
-            return False
+            return True
 
         commands = cfg.commands if cfg is not None else None
         if commands is not None:
@@ -143,20 +141,23 @@ class MessageHandler:
         if not getattr(session, "session_id", ""):
             session.session_id = new_session_id(config_name)
 
-        # 复用本次分析已就绪的仓库 provider；重启后内存缓存为空，
-        # 这里按配置重建并确保就绪，否则仓库工具与 @项目 附件都会失效。
-        provider = await self.analyzer.ensure_repo_provider(config_name, cfg.project)
-        answer = await self.analyzer.answer_followup(
-            settings=settings,
-            messages=session.messages,
-            question=question,
-            digest=getattr(session, "digest", None),
-            provider=provider,
-            project=cfg.project,
-            config_name=config_name,
-            session_id=getattr(session, "session_id", ""),
-            file_name=getattr(session, "file_name", ""),
-        )
+        # 同一配置内，追问与主分析共用一把工作锁：追问会读/改仓库工作区
+        # （切版本、取 @项目 附件），必须等当前分析跑完；不同配置互不影响。
+        async with self.analyzer.config_work_lock(config_name):
+            # 复用本次分析已就绪的仓库 provider；重启后内存缓存为空，
+            # 这里按配置重建并确保就绪，否则仓库工具与 @项目 附件都会失效。
+            provider = await self.analyzer.ensure_repo_provider(config_name, cfg.project)
+            answer = await self.analyzer.answer_followup(
+                settings=settings,
+                messages=session.messages,
+                question=question,
+                digest=getattr(session, "digest", None),
+                provider=provider,
+                project=cfg.project,
+                config_name=config_name,
+                session_id=getattr(session, "session_id", ""),
+                file_name=getattr(session, "file_name", ""),
+            )
         if answer is None or not answer.text:
             # 模型没给出任何可用内容（如全程只调工具、收敛也失败）。
             # 给一句可操作、可区分原因的提示，而不是笼统的「无效回复」。
@@ -234,15 +235,8 @@ class MessageHandler:
 
     @staticmethod
     def _window_minutes(settings) -> int:
-        """会话有效期（分钟）；0 表示跟随历史保留期。"""
-        raw = int(getattr(settings, "followup_window_minutes", 0) or 0)
-        if raw > 0:
-            return raw
-        if not getattr(settings, "history_enabled", False):
-            return 30
-        hours = int(getattr(settings, "history_period_hours", 24) or 24)
-        keep = int(getattr(settings, "history_keep_periods", 2) or 2)
-        return max(30, hours * keep * 60)
+        """会话有效期（分钟）；0 表示跟随历史保留期（见 followup.resolve_window_minutes）。"""
+        return resolve_window_minutes(settings)
 
     async def _send_chunks(self, group_id: str, text: str,
                            chunk_chars: int) -> list:
