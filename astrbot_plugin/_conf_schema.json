@@ -943,15 +943,6 @@
     "type": "string",
     "default": ""
   },
-  "llm_model_support_tools_mode": {
-    "description": "模型支持工具调用",
-    "type": "string",
-    "default": "disabled",
-    "options": [
-      "enabled",
-      "disabled"
-    ]
-  },
   "llm_model_support_vision_mode": {
     "description": "模型支持看图",
     "type": "string",

@@ -197,7 +197,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
         "models": [
           {
             "model": "gpt-4o-mini",
-            "supports": { "tools": true, "vision": true, "json_mode": true },
+            "supports": { "vision": true, "json_mode": true },
             "max_tokens": 8192,
             "max_context_tokens": 48000
           }
@@ -775,7 +775,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
       "models": [
         {
           "model": "gpt-4o-mini",
-          "supports": { "tools": true, "vision": true, "json_mode": true },
+          "supports": { "vision": true, "json_mode": true },
           "max_tokens": 8192,
           "max_context_tokens": 128000
         }
@@ -790,7 +790,7 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
       "models": [
         {
           "model": "deepseek-v4-flash",
-          "supports": { "tools": true, "vision": false },
+          "supports": { "vision": false },
           "max_tokens": 8192,
           "max_context_tokens": 128000
         }
@@ -821,7 +821,6 @@ Bot 会自动解析 UI 类型、软件版本、资源版本与 MaaFramework 版�
 | 字段 | 类型 / 默认 | 说明 | 示例 |
 | --- | --- | --- | --- |
 | `model` | `string` / `""` | 端点接受的模型名，原样作为请求的 `model`；同一端点内不可重复 | `"model": "gpt-4o-mini"` |
-| `supports.tools` | `bool` / `false` | 是否支持工具调用。带工具的调用只会在 `true` 的候选上尝试 | `"tools": true` |
 | `supports.vision` | `bool` / `false` | 是否支持图片输入。带图调用只会在 `true` 的候选上尝试 | `"vision": true` |
 | `supports.json_mode` | `bool` / `false` | 声明该模型支持 JSON 模式（当前版本不发送 `response_format`，仅作能力声明与后续扩展） | `"json_mode": true` |
 | `max_tokens` | `int` / `0` | 该模型的单次最大输出；`0` = 用 `llm.defaults.max_tokens` | `"max_tokens": 8192` |
@@ -871,7 +870,7 @@ max_tokens：         llm.defaults → providers[].models[] → bot.configs.<名
 
 ### 能力过滤与降级
 
-`supports.tools` / `supports.vision` 决定候选能否满足带工具 / 带图调用：
+所有模型均按支持工具调用处理，旧配置中的 `supports.tools` 不再生效。请确保所选模型和服务实际支持工具调用。`supports.vision` 决定候选能否满足带图调用：
 
 - 过滤在**原列表顺序**上进行，完全相同的 `{name, model}` 会被去重
 - 过滤后为空则该能力降级（不提供工具 / 不注入图片），并在报告中注明，而不是整体失败

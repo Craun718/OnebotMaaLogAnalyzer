@@ -145,7 +145,7 @@ def default_document() -> dict:
                 "max_retries": 2,
                 "models": [{
                     "model": "gpt-4o-mini",
-                    "supports": {"tools": True, "vision": True, "json_mode": True},
+                    "supports": {"vision": True, "json_mode": True},
                     "max_tokens": 8192,
                     "max_context_tokens": 48000,
                 }],
@@ -363,7 +363,6 @@ def validate_document(cfg: Any) -> dict:
         if not refs:
             continue
         seen: set[tuple[str, str]] = set()
-        any_tools = False
         any_vision = False
         for ref in refs:
             key = (str(ref.get("name") or ""), str(ref.get("model") or ""))
@@ -371,14 +370,8 @@ def validate_document(cfg: Any) -> dict:
                 warnings.append(f"配置「{name}」的候选列表存在重复：{key[0]}/{key[1]}")
             seen.add(key)
             supports = capability.get(key) or {}
-            if supports.get("tools"):
-                any_tools = True
             if supports.get("vision"):
                 any_vision = True
-        if refs and not any_tools:
-            warnings.append(
-                f"配置「{name}」的候选模型都没有声明 supports.tools，工具模式无法使用"
-            )
         vision_cfg = spec.get("vision") if isinstance(spec.get("vision"), dict) else {}
         if vision_cfg.get("enabled", True) and refs and not any_vision:
             warnings.append(
@@ -1052,7 +1045,6 @@ const LABELS = {
   'provider.connect_timeout_seconds': '连接超时（秒）',
   'provider.max_retries': '重试次数',
   'model.model': '模型名',
-  'model.supports.tools': '支持工具调用',
   'model.supports.vision': '支持看图',
   'model.supports.json_mode': '支持 JSON 模式',
   'model.max_tokens': '输出 token 上限',
@@ -1092,7 +1084,6 @@ const HELP = {
   'llm.models': '按顺序尝试：前面的失败（401 除外）会顺延到下一个候选。',
   'provider.base_url': 'openai 填 …/v1；anthropic 填 …（自动补 /v1/messages），例如 https://api.deepseek.com/anthropic。',
   'provider.api_key': '明文保存在 config.json 中，注意不要提交到公开仓库。',
-  'model.supports.tools': '分析默认使用工具循环，关闭后该模型无法承担带工具的调用。',
   'model.max_tokens': '0 = 使用 llm.defaults.max_tokens。',
   'debug.enabled': '开启后可在浏览器访问调试面板，正式部署请关闭。',
 };
@@ -1851,9 +1842,9 @@ function renderLLM(host) {
       }
       box.appendChild(mGrid);
 
-      if (!isPlainObject(spec.supports)) { spec.supports = { tools: true, vision: true, json_mode: true }; }
+      if (!isPlainObject(spec.supports)) { spec.supports = { vision: true, json_mode: true }; }
       const caps = el('div', 'grid');
-      for (const key of ['tools', 'vision', 'json_mode']) {
+      for (const key of ['vision', 'json_mode']) {
         renderField(caps, spec.supports, key, 'model.supports.' + key);
       }
       box.appendChild(el('div', 'sub-title', '能力'));
@@ -1865,7 +1856,7 @@ function renderLLM(host) {
     addModel.addEventListener('click', () => {
       provider.models.push({
         model: '',
-        supports: { tools: true, vision: false, json_mode: true },
+        supports: { vision: false, json_mode: true },
         max_tokens: 0,
         max_context_tokens: 0,
       });
@@ -1889,7 +1880,7 @@ function renderLLM(host) {
       max_retries: 2,
       models: [{
         model: '',
-        supports: { tools: true, vision: false, json_mode: true },
+        supports: { vision: false, json_mode: true },
         max_tokens: 0,
         max_context_tokens: 0,
       }],
@@ -2208,7 +2199,7 @@ function normalizeCfg(doc) {
     if (!Array.isArray(provider.models)) { provider.models = []; }
     for (const spec of provider.models) {
       if (isPlainObject(spec) && !isPlainObject(spec.supports)) {
-        spec.supports = { tools: true, vision: false, json_mode: true };
+        spec.supports = { vision: false, json_mode: true };
       }
     }
   }

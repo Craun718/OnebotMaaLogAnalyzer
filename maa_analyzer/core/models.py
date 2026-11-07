@@ -86,7 +86,11 @@ class CommandConfig(BaseModel):
 class ModelSupports(BaseModel):
     """模型能力声明：决定候选模型能否满足某次调用。"""
 
-    tools: bool = False
+    @property
+    def tools(self) -> bool:
+        """模型始终按支持工具调用处理，忽略旧配置中的声明。"""
+        return True
+
     vision: bool = False
     json_mode: bool = False
 

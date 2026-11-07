@@ -31,7 +31,6 @@ PANEL_BASE_TRISTATE_MODE_FIELDS = {
     "history_mode",
     "commands_mode",
     "log_to_file_mode",
-    "llm_model_support_tools_mode",
     "llm_model_support_vision_mode",
     "llm_model_support_json_mode_mode",
 }
@@ -208,7 +207,6 @@ PANEL_LLM_ENDPOINT_INT_FIELDS = {
 }
 PANEL_LLM_MODEL_FIELDS = {
     "llm_endpoint_model",
-    "llm_model_support_tools_mode",
     "llm_model_support_vision_mode",
     "llm_model_support_json_mode_mode",
     "llm_model_max_tokens",
@@ -271,7 +269,6 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "llm_endpoint_connect_timeout_seconds": 10,
     "llm_endpoint_max_retries": 2,
     "llm_endpoint_model": "",
-    "llm_model_support_tools_mode": 'disabled',
     "llm_model_support_vision_mode": 'disabled',
     "llm_model_support_json_mode_mode": 'disabled',
     "llm_model_max_tokens": 0,
@@ -551,7 +548,6 @@ def default_config() -> dict:
                         {
                             "model": "gpt-4o-mini",
                             "supports": {
-                                "tools": True,
                                 "vision": True,
                                 "json_mode": True,
                             },
@@ -981,7 +977,6 @@ def _apply_llm_panel_overrides(result: dict, panel: Mapping[str, Any]) -> None:
             supports = {}
             model["supports"] = supports
         for key, setting in (
-            ("llm_model_support_tools_mode", "tools"),
             ("llm_model_support_vision_mode", "vision"),
             ("llm_model_support_json_mode_mode", "json_mode"),
         ):

@@ -17,10 +17,25 @@ from maa_analyzer.config import (
     default_config,
     load_effective_config,
 )
-from maa_analyzer.core.models import AnalysisSettings, CommandConfig, ProjectConfig, ReportConfig, VisionConfig
+from maa_analyzer.core.llm_pool import LLMPool
+from maa_analyzer.core.models import AnalysisSettings, CommandConfig, ConfigLLM, ModelSupports, ProjectConfig, ReportConfig, VisionConfig
 
 
 class PanelOverrideTests(unittest.TestCase):
+    def test_model_tools_are_always_enabled_with_legacy_settings(self):
+        for legacy in ({}, {"tools": False}, {"tools": True}):
+            with self.subTest(legacy=legacy):
+                supports = ModelSupports.model_validate(legacy)
+                self.assertTrue(supports.tools)
+                self.assertNotIn("tools", supports.model_dump())
+
+    def test_legacy_disabled_tools_model_remains_a_candidate(self):
+        pool = LLMPool({"providers": [{"name": "main", "base_url": "https://example.com",
+                                      "models": [{"model": "model", "supports": {"tools": False}}]}]})
+        config = ConfigLLM.model_validate({"models": [{"name": "main", "model": "model"}]})
+        self.assertTrue(pool.has_capability(config, "tools"))
+        self.assertFalse(pool.has_capability(config, "vision"))
+
     def test_repo_is_always_enabled_with_legacy_settings(self):
         for legacy in ({}, {"enabled": False}, {"enabled": True}):
             with self.subTest(legacy=legacy):
@@ -236,7 +251,6 @@ class PanelOverrideTests(unittest.TestCase):
                 "llm_endpoint_connect_timeout_seconds": 5,
                 "llm_endpoint_max_retries": 1,
                 "llm_endpoint_model": "beta-model",
-                "llm_model_support_tools_mode": "enabled",
                 "llm_model_support_vision_mode": "enabled",
                 "llm_model_support_json_mode_mode": "disabled",
                 "llm_model_max_tokens": 8192,
@@ -264,7 +278,7 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(beta["connect_timeout_seconds"], 5)
         self.assertEqual(beta["max_retries"], 1)
         model = beta["models"][0]
-        self.assertEqual(model["supports"], {"tools": True, "vision": True, "json_mode": False})
+        self.assertEqual(model["supports"], {"tools": False, "vision": True, "json_mode": False})
         self.assertEqual(model["max_tokens"], 8192)
         self.assertEqual(model["max_context_tokens"], 128000)
         self.assertEqual(

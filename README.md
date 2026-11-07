@@ -60,7 +60,7 @@ python main.py               # 首次运行生成 config.json
         "base_url": "https://api.openai.com/v1",
         "api_key": "sk-...",
         "models": [
-          { "model": "gpt-4o", "supports": { "tools": true, "vision": true } }
+          { "model": "gpt-4o", "supports": { "vision": true } }
         ]
       }
     ]
