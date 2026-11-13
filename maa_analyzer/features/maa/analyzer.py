@@ -26,7 +26,7 @@ from ...core.models import (
     RepoConfig,
     VisionConfig,
 )
-from ...core.ai_usage import format_tokens
+from ...core.ai_usage import format_cache_hit_rate, format_tokens, format_usage
 from ...core.compaction import (
     COMPACT_SYSTEM_PROMPT,
     CompactionPolicy,
@@ -743,7 +743,7 @@ class MaaAnalyzer:
             )
         try:
             with config_log_context(config_name), session_context(
-                session_id, config_name, file_name
+                session_id, config_name, file_name, str(group_id)
             ):
                 async with lock:
                     outcome = await self._analyze_serialized(
@@ -1076,6 +1076,7 @@ class MaaAnalyzer:
                 notes=attach_notes,
                 render_followup=True,
                 session_id=current_session_id(),
+                show_analysis_usage=True,
             )
 
             if not response_text:
@@ -1591,6 +1592,7 @@ class MaaAnalyzer:
         notes: list[str],
         render_followup: bool,
         session_id: str = "",
+        show_analysis_usage: bool = False,
     ) -> tuple[list[OutSegment], str, bool, str]:
         """
         生成最终输出：文本分段或图片化报告。
@@ -1598,6 +1600,10 @@ class MaaAnalyzer:
         返回 (片段, 给用户看的文本, 是否已渲染, 渲染降级提示)。
         """
         report_text = strip_attachments(raw_report) or ""
+        if show_analysis_usage and report_text.strip():
+            session_id = session_id or current_session_id()
+            usage = self.llm.session_summary(session_id) if session_id else {}
+            notes = [*notes, f"本次分析 Token 用量：{format_usage(usage, exact=True)}"]
         if notes:
             report_text = f"{report_text}\n\n" + "\n".join(
                 f"（{note}）" for note in notes
@@ -1648,14 +1654,17 @@ class MaaAnalyzer:
                 else ""
             ),
             "generated_at": generated_at,
-            # 本次会话（分析 + 追问）的用量，供模板页眉/页脚使用
-            "tokens_input": format_tokens(usage.get("prompt_tokens")),
-            "tokens_output": format_tokens(usage.get("completion_tokens")),
-            "tokens_total": format_tokens(usage.get("total_tokens")),
-            "usage_calls": str(usage.get("calls") or 0),
+            # 仅主分析展示用量；追问不显示会话累计 token。
+            "tokens_input": format_tokens(usage.get("prompt_tokens")) if show_analysis_usage else "",
+            "tokens_output": format_tokens(usage.get("completion_tokens")) if show_analysis_usage else "",
+            "tokens_total": format_tokens(usage.get("total_tokens")) if show_analysis_usage else "",
+            "usage_calls": str(usage.get("calls") or 0) if show_analysis_usage else "",
+            "usage_style": "" if show_analysis_usage else "display: none",
+            "cache_hit_rate": format_cache_hit_rate(usage) if show_analysis_usage else "",
+            "usage_summary": format_usage(usage) if show_analysis_usage else "",
             "provider": "、".join(usage.get("providers") or []) or "-",
             "model": "、".join(usage.get("models") or []) or "-",
-            "usage": self._usage_line(usage),
+            "usage": self._usage_line(usage) if show_analysis_usage else "",
         }
         result = await render_report(
             markdown,
@@ -1711,11 +1720,7 @@ class MaaAnalyzer:
                 pairs.items(), key=lambda item: (-item[1], item[0])
             )
         )
-        line = (
-            f"输入 {format_tokens(usage.get('prompt_tokens'))}"
-            f" · 输出 {format_tokens(usage.get('completion_tokens'))}"
-            f" · 合计 {format_tokens(usage.get('total_tokens'))} tokens"
-        )
+        line = format_usage(usage)
         if labels:
             line += f" · {labels}"
         return line
@@ -2144,6 +2149,7 @@ class MaaAnalyzer:
                               config_name: str = "",
                               session_id: str = "",
                               file_name: str = "",
+                              group_id: str = "",
                               ) -> Optional["FollowupAnswer"]:
         """
         回答追问（会话上下文包装）。
@@ -2156,7 +2162,7 @@ class MaaAnalyzer:
         # 放弃本次回答，并给出可操作的提示（此前这一段完全没有超时判定）。
         stage_timeout = max(30, int(settings.ai_stage_timeout_seconds or 300))
         with config_log_context(config_name), session_context(
-            sid, config_name, file_name
+            sid, config_name, file_name, group_id
         ):
             try:
                 return await asyncio.wait_for(

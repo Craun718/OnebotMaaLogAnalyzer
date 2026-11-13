@@ -284,9 +284,10 @@
 }
 
 .footer-usage-right {
-  float: right;
-  max-width: 36%;
+  display: block;
+  clear: both;
+  max-width: 100%;
   font-size: 14px;
   color: #6b7785;
-  text-align: right;
+  text-align: left;
 }

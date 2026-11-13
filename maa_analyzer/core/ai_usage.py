@@ -36,6 +36,7 @@ class UsageRecord:
     ts: float = field(default_factory=time.time)
     # 一次分析 + 其全部追问共用；空 = 旧记录，只能按单次调用统计
     session_id: str = ""
+    group_id: str = ""
     config: str = ""
     file: str = ""
     provider: str = ""
@@ -61,6 +62,7 @@ class SessionUsage:
     """一个会话（分析 + 追问）的用量汇总。"""
 
     session_id: str = ""
+    group_id: str = ""
     config: str = ""
     file: str = ""
     started_at: float = 0.0
@@ -120,6 +122,8 @@ class SessionUsage:
             self.phases[record.phase] = self.phases.get(record.phase, 0) + 1
         if not self.config and record.config:
             self.config = record.config
+        if not self.group_id and record.group_id:
+            self.group_id = str(record.group_id)
         if not self.file and record.file:
             self.file = record.file
 
@@ -176,14 +180,15 @@ class UsageStore:
         except OSError as exc:
             logger.debug(f"[用量] 写入失败：{exc}")
 
-    def sessions(self, limit: int = 10) -> list[SessionUsage]:
+    def sessions(self, limit: Optional[int] = 10) -> list[SessionUsage]:
         """
         按会话聚合最近的记录（按最近活动倒序）。
 
         同一次分析与其后续追问共用 `session_id`，因此会被归为一组。
         旧记录没有 `session_id`，各自单独成组（在展示上标注为单次调用）。
+        limit=None 时读取完整文件并返回全部会话。
         """
-        records = self._read_all()
+        records = self._read_all(full_history=limit is None)
         groups: dict[str, SessionUsage] = {}
         anonymous: list[SessionUsage] = []
         for index, record in enumerate(records):
@@ -208,15 +213,15 @@ class UsageStore:
 
         merged = list(groups.values()) + anonymous
         merged.sort(key=lambda item: item.updated_at, reverse=True)
-        return merged[:max(1, int(limit or 10))]
+        return merged if limit is None else merged[:max(1, int(limit or 10))]
 
-    def _read_all(self) -> list[UsageRecord]:
+    def _read_all(self, *, full_history: bool = False) -> list[UsageRecord]:
         if not self.path.exists():
             return []
         try:
             size = self.path.stat().st_size
             with self.path.open("rb") as handle:
-                if size > _MAX_READ_BYTES:
+                if not full_history and size > _MAX_READ_BYTES:
                     handle.seek(size - _MAX_READ_BYTES)
                 raw = handle.read().decode("utf-8", "ignore")
         except OSError as exc:
@@ -253,3 +258,33 @@ def format_tokens(value: Optional[int]) -> str:
     if number >= 1000:
         return f"{number / 1000:.1f}k"
     return str(number)
+
+
+def format_cache_hit_rate(usage: dict[str, Any]) -> str:
+    """统一缓存命中率文案；无缓存读写记录时不把缺失数据当作零命中。"""
+    read = int(usage.get("cache_read_tokens") or 0)
+    write = int(usage.get("cache_write_tokens") or 0)
+    if not (read or write):
+        return "暂无缓存数据"
+    billed = (
+        int(usage.get("uncached_prompt_tokens") or 0) + read + write
+        if "uncached_prompt_tokens" in usage
+        else int(usage.get("prompt_tokens") or 0)
+    )
+    rate = max(0.0, min(1.0, read / billed)) if billed > 0 else 0.0
+    return f"{rate * 100:.1f}%"
+
+
+def format_usage(usage: dict[str, Any], *, exact: bool = False) -> str:
+    """输入、输出、合计与缓存命中率共用的展示格式。"""
+    def number(value: Any) -> str:
+        return f"{int(value or 0):,}" if exact else format_tokens(value)
+
+    prompt = int(usage.get("prompt_tokens") or 0)
+    completion = int(usage.get("completion_tokens") or 0)
+    total = int(usage.get("total_tokens") or (prompt + completion))
+    return (
+        f"输入 {number(prompt)} · 输出 {number(completion)}"
+        f" · 合计 {number(total)} tokens"
+        f" · 缓存命中率：{format_cache_hit_rate(usage)}"
+    )

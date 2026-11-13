@@ -403,7 +403,8 @@
 }
 
 .footer-usage-right {
-  float: right;
+  display: block;
+  clear: both;
   font-family: var(--gh-mono);
 }
 
