@@ -376,18 +376,16 @@ class MaaService:
         if raw is None:
             overrides: dict = {}
         elif raw.get("version") == self.dm.SETTINGS_VERSION:
-            overrides = raw.get("overrides") if isinstance(raw.get("overrides"), dict) else {}
+            raw_overrides = raw.get("overrides")
+            overrides = raw_overrides if isinstance(raw_overrides, dict) else {}
         else:
             overrides = _settings_delta(self.global_settings, raw)
             legacy = True
 
         settings = self.apply_settings_overrides(self.global_settings, overrides, name)
         raw_project = self.dm.load_config_project(name)
-        project_overrides = (
-            raw_project.get("overrides")
-            if isinstance(raw_project, dict) and isinstance(raw_project.get("overrides"), dict)
-            else {}
-        )
+        raw_project_overrides = raw_project.get("overrides") if isinstance(raw_project, dict) else None
+        project_overrides = raw_project_overrides if isinstance(raw_project_overrides, dict) else {}
         state = ConfigState(
             name=name,
             info=info,

@@ -14,7 +14,7 @@ import time
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Mapping, Optional
 
 from ...core.llm import ContextOverflowError
 from ...core.llm_pool import LLMPool
@@ -240,7 +240,7 @@ class ArchivePartsState:
 
 
 def judge_parts_state(zip_path: Path, used: dict[int, str],
-                      candidates: dict[int, tuple[str, str, int]],
+                      candidates: Mapping[int, tuple[str, str, int] | tuple[str, str, int, str]],
                       ) -> ArchivePartsState:
     """按「编号连续 + 内容特征」判定分卷是否齐全。
 
@@ -716,7 +716,7 @@ class MaaAnalyzer:
         file_size: Optional[int],
         file_url: str = "",
         uploader: str = "",
-        progress: Optional[callable] = None,
+        progress: Optional[Callable[[str], Awaitable[None]]] = None,
         defer_incomplete_parts: bool = False,
     ) -> AnalysisOutcome:
         project = project or ProjectConfig()
@@ -776,7 +776,7 @@ class MaaAnalyzer:
         file_size: Optional[int],
         file_url: str = "",
         uploader: str = "",
-        progress: Optional[callable] = None,
+        progress: Optional[Callable[[str], Awaitable[None]]] = None,
         defer_incomplete_parts: bool = False,
     ) -> AnalysisOutcome:
         """
@@ -885,7 +885,7 @@ class MaaAnalyzer:
                 ),
                 defer=defer_incomplete_parts,
             )
-            if decision != "ok":
+            if decision != "ok" and parts_state is not None:
                 gap = describe_parts_gap(parts_state)
                 if decision == "defer":
                     # 交给 LogWatcher：当作"还没到齐"，额外等待后再试
@@ -983,6 +983,7 @@ class MaaAnalyzer:
                 config_name, file_id or "", file_size or 0,
                 int(settings.analysis_cache_hours or 0),
             )
+            response_text: Optional[str]
             if cached_text is not None:
                 response_text = cached_text
                 logger.info("[分析] 命中分析缓存，跳过 AI 调用")
@@ -1276,7 +1277,7 @@ class MaaAnalyzer:
         *,
         group_id: int,
         file_name: str,
-        file_id: str,
+        file_id: Optional[str],
         file_size: int,
         file_url: str = "",
         part: ArchivePart,
@@ -1311,7 +1312,7 @@ class MaaAnalyzer:
                 parsed.number,
                 (item.file_name, item.file_id, int(item.size or 0), item.url),
             )
-        candidates[part.number] = (file_name, file_id, int(file_size or 0), file_url)
+        candidates[part.number] = (file_name, file_id or "", int(file_size or 0), file_url)
 
         if len(candidates) <= 1:
             downloaded = await download_group_file(
@@ -1643,7 +1644,7 @@ class MaaAnalyzer:
             "project": project_name,
             "file": (
                 Path(str(getattr(digest, "zip_path", "") or "")).name
-                if digest is not None and getattr(digest, "zip_path", "")
+                if digest is not None and bool(getattr(digest, "zip_path", ""))
                 else ""
             ),
             "generated_at": generated_at,
@@ -1843,7 +1844,7 @@ class MaaAnalyzer:
                 return None
         if reply is None:
             return None
-        text = reply.content
+        text: Optional[str] = reply.content
         if reply.truncated:
             text = await self._retry_truncated(
                 config_llm, messages, text, config_name, settings, "analysis"

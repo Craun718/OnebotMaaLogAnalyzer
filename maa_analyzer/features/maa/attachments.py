@@ -341,8 +341,8 @@ def build_report_segments(
 
     # 仓库索引：仅完整相对路径
     repo_full: dict[str, tuple[str, bytes]] = {}
-    for rel, data in (repo_files or {}).items():
-        repo_full.setdefault(rel.replace("\\", "/").lower(), (rel, data))
+    for rel, repo_data in (repo_files or {}).items():
+        repo_full.setdefault(rel.replace("\\", "/").lower(), (rel, repo_data))
 
     used: set[str] = set()
     sent_images = 0

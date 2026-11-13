@@ -28,7 +28,7 @@ import re
 import threading
 import zipfile
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterator, Optional
+from typing import Any, Generator, Optional
 
 from ...core.concurrency import run_blocking
 from ...core.tokens import clamp_tool_result_tokens, trim_to_tokens
@@ -224,7 +224,7 @@ class LogArchiveTools:
     def _iter_file_lines(self, path: Path,
                          state: dict[str, Any],
                          *, truncate: bool = True,
-                         ) -> Iterator[tuple[int, str]]:
+                         ) -> Generator[tuple[int, str], None, None]:
         """
         逐块读取解压后的文件，产出 `(行号, 文本)`。
 

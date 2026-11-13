@@ -391,9 +391,12 @@ class RepoTools:
         if not target.is_dir():
             return f"不是目录（如需读取文件请用 read_file）：{self._display(self.provider.root, target)}"
 
+        root = self.provider.root
+        if root is None:
+            return "仓库不可用"
         entries: list[str] = []
         try:
-            relative_dir = target.relative_to(self.provider.root.resolve())
+            relative_dir = target.relative_to(root.resolve())
             safe_entries: list[tuple[Path, Path]] = []
             for entry in target.iterdir():
                 if entry.name in _SKIP_DIRS:
@@ -460,7 +463,10 @@ class RepoTools:
         scanned = 0
         truncated = False
         stop = False
-        root = self.provider.root.resolve()
+        provider_root = self.provider.root
+        if provider_root is None:
+            return "仓库不可用"
+        root = provider_root.resolve()
 
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [
@@ -471,9 +477,9 @@ class RepoTools:
                 )[0] is not None
             ]
             for filename in filenames:
-                path = Path(dirpath) / filename
+                candidate_path = Path(dirpath) / filename
                 path, _ = self._resolve(
-                    path.relative_to(root).as_posix()
+                    candidate_path.relative_to(root).as_posix()
                 )
                 if path is None:
                     continue

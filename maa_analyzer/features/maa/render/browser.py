@@ -59,9 +59,9 @@ def find_browser(browser_path: str = "") -> Optional[str]:
     """按配置或平台默认顺序探测浏览器可执行文件。"""
     configured = str(browser_path or "").strip()
     if configured:
-        candidate = Path(configured)
-        if candidate.is_file():
-            return str(candidate)
+        configured_path = Path(configured)
+        if configured_path.is_file():
+            return str(configured_path)
         logger.warning(
             f"[渲染] report.browser_path 无效（不是文件）：{configured}，回退自动探测"
         )
@@ -276,10 +276,11 @@ class BrowserRenderer:
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         logger.info(f"[渲染] 启动浏览器：{exe}（profile={self._profile}）")
         # 保留 stderr：浏览器拒绝启动时（沙箱 / 参数 / 依赖缺失）原因只在这里
-        stderr_log: Optional[Path] = self.data_dir / "_browser_stderr.log"
+        stderr_path = self.data_dir / "_browser_stderr.log"
+        stderr_log: Optional[Path] = stderr_path
         stderr_target: Any = subprocess.DEVNULL
         try:
-            stderr_target = open(stderr_log, "wb")
+            stderr_target = stderr_path.open("wb")
         except OSError:
             stderr_log = None
         try:

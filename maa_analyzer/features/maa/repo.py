@@ -38,7 +38,7 @@ import stat
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlsplit, urlunsplit
 
 from ...core.models import RepoConfig

@@ -138,7 +138,7 @@ async def download_group_file(
         if not file_id:
             raise RuntimeError("群文件既没有下载链接，也没有 file_id。")
         logger.info(f"[下载] 开始获取群文件下载链接：{label}（群 {group_id}）")
-        resolved_url = await s.get_group_file_url(group_id, file_id)
+        resolved_url = await s.get_group_file_url(group_id, file_id) or ""
         logger.info(f"[下载] 群文件下载链接获取完成：{label}（群 {group_id}）")
     if not resolved_url:
         raise RuntimeError("无法获取群文件下载链接。")
