@@ -1,12 +1,13 @@
 """Fail on new mypy diagnostics while tracking existing technical debt."""
 from collections import Counter
 from pathlib import Path
+import os
 import re
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE = ROOT / ".github" / "mypy-baseline.txt"
+BASELINE = Path(os.environ.get("MYPY_BASELINE_DIR", ROOT / ".ci-base")).resolve()
 COMMAND = [
     sys.executable, "-m", "mypy", "--python-version", "3.10",
     "--ignore-missing-imports", "--follow-imports=silent", "--no-site-packages",
@@ -31,7 +32,18 @@ def main() -> int:
     if result.returncode == 1 and not current:
         print("mypy failed without recognizable diagnostics", file=sys.stderr)
         return 1
-    baseline = Counter(BASELINE.read_text(encoding="utf-8").splitlines())
+    if not (BASELINE / "maa_analyzer").is_dir():
+        print(f"Baseline checkout not found: {BASELINE}", file=sys.stderr)
+        return 1
+    previous = subprocess.run(COMMAND, cwd=BASELINE, text=True, capture_output=True)
+    if previous.returncode not in (0, 1):
+        print(previous.stdout, end="", file=sys.stderr)
+        print(previous.stderr, end="", file=sys.stderr)
+        return previous.returncode
+    baseline = diagnostics(previous.stdout)
+    if previous.returncode == 1 and not baseline:
+        print("Baseline mypy failed without recognizable diagnostics", file=sys.stderr)
+        return 1
     added = current - baseline
     if added:
         print("\nNew type errors:", file=sys.stderr)
