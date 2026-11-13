@@ -45,11 +45,12 @@ AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 
 | 面板项 | 行为 |
 | --- | --- |
-| `enabled_mode` | `inherit` 继承 JSON 的 `settings.enabled`；`enabled` / `disabled` 显式覆盖 |
+| `enabled_mode` | 插件开关；默认 `enabled`，覆盖所选档案的 `settings.enabled` |
 | `config_file` | 完整配置文件路径；相对路径从插件数据目录解析，留空使用插件数据目录下的 `config.json` |
-| `data_dir` | 运行数据目录；留空继承 JSON 的 `bot.data_dir` |
+| `data_dir` | 运行数据目录；默认 `data`，相对插件数据目录解析 |
 | `default_config` | 面板字段写入哪个配置档案；留空使用第一个档案 |
-| `listen_groups` / `notify_group` | 监听群与额外通知群 |
+| `listen_groups` | 监听群；空列表停止监听 |
+| `notify_group` | 额外通知群；以面板值为准，留空关闭额外通知 |
 | `command_prefix` / `owners` / `admins` | `/maa` 前缀与权限名单 |
 | `report_*` | 报告渲染模式、模板、尺寸、浏览器与渲染回退等高级项 |
 | `project_name` / `archive_match_mode` / `file_prefix` | 项目显示名、日志包识别模式与前缀 |
@@ -63,8 +64,16 @@ AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 | `commands_*` | 管理指令开关、权限等级、回复分段与列表条数 |
 | `log_to_file_mode` / `log_dir` / `log_level` | 文件日志开关、目录与等级 |
 
-空字符串、空列表、数值 `-1` 和各 `*_mode: inherit` 表示继承，不会清空高级 JSON。面板值只覆盖
-所选配置档案中的对应字段；未被选择的端点/模型、Provider/Model 数组顺序和其他档案保持原样；面板不会回写修改 `config.json`。
+面板已提供的字段以面板值为准：空列表清空名单、监听群、镜像或备用模型，可选文本留空清除旧值。
+固定默认字段被清空或保留旧 `inherit` / `-1` 标记时，启动会恢复对应默认值并保存到 WebUI。
+LLM 可选采样参数留空、档案 token 上限为 `-1` 时，清除同级参数并使用模型或全局值；
+档案、端点和模型选择器仍可留空自动选择，具体规则见[配置](configuration.md)。
+面板不会回写 `config.json`，未选中的档案、端点、模型和未映射的高级字段保持原样。
+
+首次生成的配置不含群号，需在面板填写实际监听群；未设置通知群时，报告只发回原群。
+旧版本生成的 `config.json` 可能仍含示例群号 `123456789`，升级不会覆盖已有文件；
+所选档案的群号现在以 WebUI 为准，空通知群会覆盖旧 JSON 值。其他未选档案仍按 JSON 配置运行，应清理其中的示例群号。
+如果此前通过面板留空继承 JSON 中的密钥、名单、仓库等值，请在 WebUI 填写所需值，保存并重载插件。
 
 ### 复用裸模式配置与数据
 

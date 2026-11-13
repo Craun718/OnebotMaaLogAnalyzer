@@ -14,9 +14,9 @@
     "default": ""
   },
   "data_dir": {
-    "description": "运行数据目录；留空沿用 config.json 的 bot.data_dir",
+    "description": "运行数据目录；相对路径从插件数据目录解析，留空恢复默认 data",
     "type": "string",
-    "default": ""
+    "default": "data"
   },
   "default_config": {
     "description": "面板字段写入的配置档案；留空使用第一个档案",
@@ -24,7 +24,7 @@
     "default": ""
   },
   "listen_groups": {
-    "description": "监听群号；留空沿用当前配置档案",
+    "description": "监听群号；空列表表示不监听任何群，覆盖所选档案的 JSON 配置",
     "type": "list",
     "default": [],
     "items": {
@@ -32,7 +32,7 @@
     }
   },
   "notify_group": {
-    "description": "通知群号；留空沿用当前配置档案",
+    "description": "额外通知群号；填写后额外转发报告，留空关闭额外通知（覆盖所选档案的 JSON 配置）",
     "type": "string",
     "default": ""
   },
@@ -42,7 +42,7 @@
     "default": "/maa"
   },
   "owners": {
-    "description": "超管 QQ 号；留空沿用当前配置档案",
+    "description": "超管 QQ 号；空列表清空所选档案的超管名单",
     "type": "list",
     "default": [],
     "items": {
@@ -50,7 +50,7 @@
     }
   },
   "admins": {
-    "description": "管理员 QQ 号；留空沿用当前配置档案",
+    "description": "管理员 QQ 号；空列表清空所选档案的管理员名单",
     "type": "list",
     "default": [],
     "items": {
@@ -74,7 +74,7 @@
     "default": "default"
   },
   "project_name": {
-    "description": "项目显示名；留空沿用当前配置档案",
+    "description": "项目显示名；留空自动从日志识别",
     "type": "string",
     "default": ""
   },
@@ -91,7 +91,7 @@
     ]
   },
   "file_prefix": {
-    "description": "prefix 模式的日志包文件名前缀；留空沿用当前配置档案",
+    "description": "prefix 模式的日志包文件名前缀；留空清空前缀",
     "type": "string",
     "default": ""
   },
@@ -150,12 +150,12 @@
     ]
   },
   "llm_provider": {
-    "description": "首选 LLM 端点名；仍需在高级 JSON 中声明端点和密钥",
+    "description": "首选 LLM 端点名；留空自动使用面板选中的全局端点",
     "type": "string",
     "default": ""
   },
   "llm_model": {
-    "description": "首选 LLM 模型名；必须存在于所选端点的模型清单",
+    "description": "首选 LLM 模型名；留空自动使用首选端点中面板选中的模型或第一个模型",
     "type": "string",
     "default": ""
   },
@@ -347,12 +347,12 @@
     "default": "1.0"
   },
   "report_font_family": {
-    "description": "报告 CSS 字体",
+    "description": "报告 CSS 字体；留空清除此项，使用程序的自动选择或默认行为",
     "type": "string",
     "default": ""
   },
   "report_browser_path": {
-    "description": "报告浏览器路径",
+    "description": "报告浏览器路径；留空清除此项，使用程序的自动选择或默认行为",
     "type": "string",
     "default": ""
   },
@@ -427,7 +427,7 @@
     ]
   },
   "repo_path": {
-    "description": "本地仓库目录",
+    "description": "本地仓库目录；留空清除此项，使用程序的自动选择或默认行为",
     "type": "string",
     "default": ""
   },
@@ -437,7 +437,7 @@
     "default": "https://github.com/MAAXYZ/MaaXXX"
   },
   "repo_mirrors": {
-    "description": "备用仓库地址",
+    "description": "备用仓库地址；空列表清空此项",
     "type": "list",
     "default": [],
     "items": {
@@ -445,12 +445,12 @@
     }
   },
   "repo_branch": {
-    "description": "克隆分支或 tag",
+    "description": "克隆分支或 tag；留空清除此项，使用程序的自动选择或默认行为",
     "type": "string",
     "default": ""
   },
   "repo_default_branch": {
-    "description": "分析结束还原分支",
+    "description": "分析结束还原分支；留空清除此项，使用程序的自动选择或默认行为",
     "type": "string",
     "default": ""
   },
@@ -558,7 +558,7 @@
     "default": 600
   },
   "repo_extensions": {
-    "description": "仓库扫描扩展名",
+    "description": "仓库扫描扩展名；空列表清空此项",
     "type": "list",
     "default": [
       ".json",
@@ -763,7 +763,7 @@
     ]
   },
   "settings_system_prompt": {
-    "description": "自定义系统提示词",
+    "description": "自定义系统提示词；留空清除此项，使用程序的自动选择或默认行为",
     "type": "string",
     "default": ""
   },
@@ -931,7 +931,7 @@
     "default": 60
   },
   "llm_fallback_models": {
-    "description": "备用候选，格式 端点名:模型名；留空沿用高级 JSON",
+    "description": "备用候选，格式 端点名:模型名；空列表清空备用候选",
     "type": "list",
     "default": [],
     "items": {
@@ -939,17 +939,17 @@
     }
   },
   "llm_profile_temperature": {
-    "description": "当前档案采样温度；留空沿用高级 JSON",
+    "description": "当前档案采样温度；留空使用模型或全局参数，不继承 JSON 中的同级值",
     "type": "string",
     "default": ""
   },
   "llm_profile_max_tokens": {
-    "description": "当前档案最大输出 token；-1 沿用高级 JSON",
+    "description": "当前档案最大输出 token；-1 使用模型或全局参数，不继承 JSON 中的档案值",
     "type": "int",
     "default": -1
   },
   "llm_profile_top_p": {
-    "description": "当前档案 top_p；留空沿用高级 JSON",
+    "description": "当前档案 top_p；留空使用模型或全局参数，不继承 JSON 中的同级值",
     "type": "string",
     "default": ""
   },
@@ -959,7 +959,7 @@
     "default": ""
   },
   "llm_endpoint_name": {
-    "description": "端点显示名/引用名；留空沿用高级 JSON",
+    "description": "端点显示名/引用名；留空保留所选端点名称",
     "type": "string",
     "default": ""
   },
@@ -974,12 +974,12 @@
     ]
   },
   "llm_endpoint_base_url": {
-    "description": "端点根地址；留空沿用高级 JSON",
+    "description": "端点根地址；留空恢复默认 https://api.openai.com/v1",
     "type": "string",
-    "default": ""
+    "default": "https://api.openai.com/v1"
   },
   "llm_endpoint_api_key": {
-    "description": "端点 API Key；留空沿用高级 JSON",
+    "description": "端点 API Key；留空清空所选端点密钥",
     "type": "string",
     "default": ""
   },
@@ -1046,12 +1046,12 @@
     "default": 0
   },
   "llm_model_temperature": {
-    "description": "模型级温度；留空沿用高级 JSON",
+    "description": "模型级温度；留空使用全局参数，不继承 JSON 中的同级值",
     "type": "string",
     "default": ""
   },
   "llm_model_top_p": {
-    "description": "模型级 top_p；留空沿用高级 JSON",
+    "description": "模型级 top_p；留空使用全局参数，不继承 JSON 中的同级值",
     "type": "string",
     "default": ""
   },
