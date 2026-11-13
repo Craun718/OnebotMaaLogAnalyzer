@@ -36,6 +36,7 @@ class UsageRecord:
     ts: float = field(default_factory=time.time)
     # 一次分析 + 其全部追问共用；空 = 旧记录，只能按单次调用统计
     session_id: str = ""
+    group_id: str = ""
     config: str = ""
     file: str = ""
     provider: str = ""
@@ -61,6 +62,7 @@ class SessionUsage:
     """一个会话（分析 + 追问）的用量汇总。"""
 
     session_id: str = ""
+    group_id: str = ""
     config: str = ""
     file: str = ""
     started_at: float = 0.0
@@ -120,6 +122,8 @@ class SessionUsage:
             self.phases[record.phase] = self.phases.get(record.phase, 0) + 1
         if not self.config and record.config:
             self.config = record.config
+        if not self.group_id and record.group_id:
+            self.group_id = str(record.group_id)
         if not self.file and record.file:
             self.file = record.file
 
@@ -176,14 +180,15 @@ class UsageStore:
         except OSError as exc:
             logger.debug(f"[用量] 写入失败：{exc}")
 
-    def sessions(self, limit: int = 10) -> list[SessionUsage]:
+    def sessions(self, limit: Optional[int] = 10) -> list[SessionUsage]:
         """
         按会话聚合最近的记录（按最近活动倒序）。
 
         同一次分析与其后续追问共用 `session_id`，因此会被归为一组。
         旧记录没有 `session_id`，各自单独成组（在展示上标注为单次调用）。
+        limit=None 时读取完整文件并返回全部会话。
         """
-        records = self._read_all()
+        records = self._read_all(full_history=limit is None)
         groups: dict[str, SessionUsage] = {}
         anonymous: list[SessionUsage] = []
         for index, record in enumerate(records):
@@ -208,15 +213,15 @@ class UsageStore:
 
         merged = list(groups.values()) + anonymous
         merged.sort(key=lambda item: item.updated_at, reverse=True)
-        return merged[:max(1, int(limit or 10))]
+        return merged if limit is None else merged[:max(1, int(limit or 10))]
 
-    def _read_all(self) -> list[UsageRecord]:
+    def _read_all(self, *, full_history: bool = False) -> list[UsageRecord]:
         if not self.path.exists():
             return []
         try:
             size = self.path.stat().st_size
             with self.path.open("rb") as handle:
-                if size > _MAX_READ_BYTES:
+                if not full_history and size > _MAX_READ_BYTES:
                     handle.seek(size - _MAX_READ_BYTES)
                 raw = handle.read().decode("utf-8", "ignore")
         except OSError as exc:

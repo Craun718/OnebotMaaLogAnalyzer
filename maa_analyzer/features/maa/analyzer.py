@@ -743,7 +743,7 @@ class MaaAnalyzer:
             )
         try:
             with config_log_context(config_name), session_context(
-                session_id, config_name, file_name
+                session_id, config_name, file_name, str(group_id)
             ):
                 async with lock:
                     outcome = await self._analyze_serialized(
@@ -2144,6 +2144,7 @@ class MaaAnalyzer:
                               config_name: str = "",
                               session_id: str = "",
                               file_name: str = "",
+                              group_id: str = "",
                               ) -> Optional["FollowupAnswer"]:
         """
         回答追问（会话上下文包装）。
@@ -2156,7 +2157,7 @@ class MaaAnalyzer:
         # 放弃本次回答，并给出可操作的提示（此前这一段完全没有超时判定）。
         stage_timeout = max(30, int(settings.ai_stage_timeout_seconds or 300))
         with config_log_context(config_name), session_context(
-            sid, config_name, file_name
+            sid, config_name, file_name, group_id
         ):
             try:
                 return await asyncio.wait_for(

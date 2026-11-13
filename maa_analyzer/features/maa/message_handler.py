@@ -158,6 +158,7 @@ class MessageHandler:
                 config_name=config_name,
                 session_id=getattr(session, "session_id", ""),
                 file_name=getattr(session, "file_name", ""),
+                group_id=str(group_id),
             )
         if answer is None or not answer.text:
             # 模型没给出任何可用内容（如全程只调工具、收敛也失败）。

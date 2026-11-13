@@ -302,7 +302,7 @@ class CommandHandler:
             f"  {prefix} repo              查看项目代码仓库设置",
             f"  {prefix} jobs              查看最近分析记录",
             f"  {prefix} history           查看分析历史归档（可跨天追问）",
-            f"  {prefix} ai [n]            查看最近 n 个会话（分析 + 追问）的用量",
+            f"  {prefix} ai [n|all]        查看最近 n 个会话的用量或全部历史按群汇总",
             f"  {prefix} followup          查看追问答疑会话状态",
             "",
             "修改类（需权限）：",
@@ -391,14 +391,15 @@ class CommandHandler:
         return CommandResult(text="\n".join(lines))
 
     async def _cmd_ai(self, cfg: ConfigState, args: list[str]) -> CommandResult:
-        """`/maa ai [n]`：按会话（分析 + 追问）查看模型用量。"""
+        """`/maa ai [n|all]`：查看最近会话用量或全部历史汇总。"""
         from ...core.ai_usage import UsageStore, format_tokens
+        from ...core.llm import cache_hit_rate
 
+        all_history = bool(args and args[0].lower() == "all")
         try:
-            limit = int(args[0]) if args else 5
+            limit = None if all_history else max(1, min(20, int(args[0]) if args else 5))
         except (TypeError, ValueError):
-            return CommandResult(text="用法：/maa ai [会话数]", ok=False)
-        limit = max(1, min(20, limit))
+            return CommandResult(text="用法：/maa ai [会话数|all]", ok=False)
 
         store = UsageStore(getattr(self.s.dm, "_dir", "data"))
         sessions = store.sessions(limit)
@@ -409,11 +410,59 @@ class CommandHandler:
         total_calls = sum(item.calls for item in sessions)
         failed = sum(item.failed for item in sessions)
         header = (
-            f"最近 {len(sessions)} 个会话 · 共 {total_calls} 次调用"
+            f"{'全部历史' if all_history else '最近'} {len(sessions)} 个会话 · 共 {total_calls} 次调用"
             f" · 合计 {format_tokens(total_tokens)} tokens"
         )
         if failed:
             header += f" · 失败 {failed} 次"
+        if all_history:
+            uncached = sum(item.uncached_prompt_tokens for item in sessions)
+            cache_read = sum(item.cache_read_tokens for item in sessions)
+            cache_write = sum(item.cache_write_tokens for item in sessions)
+            lines = [
+                header,
+                f"输入 {format_tokens(sum(item.prompt_tokens for item in sessions))}"
+                f" · 输出 {format_tokens(sum(item.completion_tokens for item in sessions))}"
+                f" · 合计 {format_tokens(total_tokens)} tokens",
+            ]
+            if cache_read or cache_write:
+                rate = cache_hit_rate(uncached, cache_read, cache_write)
+                lines.append(
+                    f"缓存命中 {rate * 100:.0f}%"
+                    f" · 读取 {format_tokens(cache_read)}"
+                    f" · 未命中 {format_tokens(uncached)}"
+                    f" · 写入 {format_tokens(cache_write)} tokens"
+                )
+            lines.append(f"累计用时 {sum(item.elapsed_ms for item in sessions) / 1000:.1f}s")
+            groups = {}
+            for item in sessions:
+                groups.setdefault(item.group_id, []).append(item)
+            lines.extend(["", "按群统计："])
+            for group_id, items in sorted(
+                groups.items(),
+                key=lambda pair: (-sum(item.total() for item in pair[1]), pair[0]),
+            ):
+                label = f"群 {group_id}" if group_id else "未知群（记录无群号）"
+                lines.append(
+                    f"{label} · {len(items)} 个会话"
+                    f" · {sum(item.calls for item in items)} 次调用"
+                    f" · 失败 {sum(item.failed for item in items)} 次"
+                )
+                lines.append(
+                    f"  输入 {format_tokens(sum(item.prompt_tokens for item in items))}"
+                    f" · 输出 {format_tokens(sum(item.completion_tokens for item in items))}"
+                    f" · 合计 {format_tokens(sum(item.total() for item in items))} tokens"
+                )
+                group_read = sum(item.cache_read_tokens for item in items)
+                group_write = sum(item.cache_write_tokens for item in items)
+                if group_read or group_write:
+                    rate = cache_hit_rate(
+                        sum(item.uncached_prompt_tokens for item in items),
+                        group_read, group_write,
+                    )
+                    lines.append(f"  缓存命中 {rate * 100:.0f}%")
+                lines.append(f"  累计用时 {sum(item.elapsed_ms for item in items) / 1000:.1f}s")
+            return CommandResult(text="\n".join(lines))
         lines = [header, ""]
         for item in sessions:
             stamp = time.strftime("%m-%d %H:%M", time.localtime(item.updated_at))

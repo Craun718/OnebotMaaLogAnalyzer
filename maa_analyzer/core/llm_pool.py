@@ -46,17 +46,17 @@ logger = logging.getLogger("Maa.LLMPool")
 
 # 当前会话（分析或某次追问）的标识。用 ContextVar 而非实例属性，
 # 这样多个配置 / 多份分析并发时不会互相串号。
-_SESSION: ContextVar[tuple[str, str, str]] = ContextVar(
-    "maa_llm_session", default=("", "", "")
+_SESSION: ContextVar[tuple[str, str, str, str]] = ContextVar(
+    "maa_llm_session", default=("", "", "", "")
 )
 
 
 @contextmanager
 def session_context(session_id: str, config_name: str = "",
-                    file_name: str = "") -> Iterator[None]:
+                    file_name: str = "", group_id: str = "") -> Iterator[None]:
     """在 with 块内发起的模型调用都归入同一个会话。"""
     token = _SESSION.set((str(session_id or ""), str(config_name or ""),
-                          str(file_name or "")))
+                          str(file_name or ""), str(group_id or "")))
     try:
         yield
     finally:
@@ -538,7 +538,7 @@ class LLMPool:
         上下文超限会抛出 `ContextOverflowError`（不切换候选）。
         """
         config_llm = config_llm or ConfigLLM()
-        context_session, context_config, context_file = _SESSION.get()
+        context_session, context_config, context_file, context_group = _SESSION.get()
         session_id = str(session_id or context_session)
         record_config = config_name or context_config
         record_file = context_file if context_session else ""
@@ -591,6 +591,7 @@ class LLMPool:
                     self._record_usage(
                         UsageRecord(
                             session_id=session_id,
+                            group_id=context_group,
                             config=record_config,
                             file=record_file,
                             provider=candidate.provider.name,
@@ -620,6 +621,7 @@ class LLMPool:
                     self._record_usage(
                         UsageRecord(
                             session_id=session_id,
+                            group_id=context_group,
                             config=record_config,
                             file=record_file,
                             provider=candidate.provider.name,
