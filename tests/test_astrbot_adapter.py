@@ -1,6 +1,7 @@
 """AstrBot AIOCQHTTP adapter compatibility tests."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import tempfile
 import unittest
@@ -181,6 +182,88 @@ class AstrBotEventMappingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AstrBotOutboundTests(unittest.IsolatedAsyncioTestCase):
+    async def test_concurrent_events_and_child_tasks_keep_their_account(self):
+        adapter = AstrBotPlatformAdapter()
+        ready = asyncio.Event()
+        release = asyncio.Event()
+        first_bot = SimpleNamespace(
+            send_group_msg=AsyncMock(return_value={"message_id": 1})
+        )
+        second_bot = SimpleNamespace(
+            send_group_msg=AsyncMock(return_value={"message_id": 2})
+        )
+
+        async def delayed_send():
+            await release.wait()
+            return await adapter.send_text(12345, "first")
+
+        async def first_event():
+            event = _message_event({"group_id": 12345, "self_id": 111})
+            event.bot = first_bot
+            with adapter.event_context(event):
+                adapter.bind_bot(event.bot)
+                child = asyncio.create_task(delayed_send())
+                ready.set()
+            return await child
+
+        async def second_event():
+            await ready.wait()
+            event = _message_event({"group_id": 12345, "self_id": 222})
+            event.bot = second_bot
+            with adapter.event_context(event):
+                adapter.bind_bot(event.bot)
+                result = await adapter.send_text(12345, "second")
+            release.set()
+            return result
+
+        self.assertEqual(await asyncio.gather(first_event(), second_event()), ["1", "2"])
+        first_bot.send_group_msg.assert_awaited_once_with(
+            group_id=12345, self_id=111,
+            message=[{"type": "text", "data": {"text": "first"}}],
+        )
+        second_bot.send_group_msg.assert_awaited_once_with(
+            group_id=12345, self_id=222,
+            message=[{"type": "text", "data": {"text": "second"}}],
+        )
+        self.assertIsNone(adapter._event_route.get())
+
+    async def test_background_group_actions_use_saved_connection_and_self_id(self):
+        bot = SimpleNamespace(call_action=AsyncMock(return_value={"message_id": 9}))
+        adapter = AstrBotPlatformAdapter()
+        # Upload notices also carry account routing, with message_obj as fallback.
+        event = _upload_event({"group_id": 12345})
+        event.message_obj.self_id = "111"
+        event.bot = bot
+        with adapter.event_context(event):
+            adapter.bind_bot(bot)
+        other_bot = SimpleNamespace(call_action=AsyncMock())
+        adapter.bind_bot(other_bot)
+
+        self.assertEqual(await adapter.send_text(12345, "timer"), "9")
+        await adapter.get_group_member_info(12345, 20002)
+        await adapter.get_group_file_url(12345, "file-id")
+        await adapter.upload_group_file(12345, "/tmp/log.zip", "log.zip")
+
+        self.assertEqual(bot.call_action.await_count, 4)
+        for call in bot.call_action.await_args_list:
+            self.assertEqual(call.kwargs["self_id"], 111)
+            self.assertEqual(call.kwargs["group_id"], 12345)
+        other_bot.call_action.assert_not_awaited()
+
+    async def test_rejected_send_is_logged_with_route_and_is_not_retried(self):
+        bot = SimpleNamespace(
+            send_group_msg=AsyncMock(side_effect=RuntimeError("result=110")),
+            call_action=AsyncMock(),
+        )
+        adapter = AstrBotPlatformAdapter(bot=bot)
+        event = _message_event({"group_id": 801637524, "self_id": 111})
+        event.bot = bot
+        with adapter.event_context(event), self.assertLogs("Maa.AstrBot", level="WARNING") as logs:
+            self.assertIsNone(await adapter.send_text(801637524, "report"))
+        bot.send_group_msg.assert_awaited_once()
+        bot.call_action.assert_not_awaited()
+        self.assertIn("group=801637524 self_id=111", logs.output[0])
+
     async def test_send_text_uses_send_group_msg_and_extracts_message_id(self):
         bot = SimpleNamespace(
             send_group_msg=AsyncMock(
