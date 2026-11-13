@@ -18,11 +18,33 @@ from maa_analyzer.config import (
     load_effective_config,
     normalize_panel_values,
 )
-from maa_analyzer.core.models import AnalysisSettings, CommandConfig, ProjectConfig, ReportConfig, VisionConfig
+from maa_analyzer.core.models import AnalysisSettings, CommandConfig, ConfigLLM, ModelSupports, ProjectConfig, ReportConfig, VisionConfig
+from maa_analyzer.core.llm_pool import LLMPool
 from tools.config.editor import _config_defaults
 
 
 class PanelOverrideTests(unittest.TestCase):
+    def test_model_tools_are_always_enabled_with_legacy_settings(self):
+        for legacy in ({}, {"tools": False}, {"tools": True}):
+            with self.subTest(legacy=legacy):
+                supports = ModelSupports.model_validate(legacy)
+                self.assertTrue(supports.tools)
+                self.assertNotIn("tools", supports.model_dump())
+
+    def test_legacy_disabled_tools_model_remains_a_candidate(self):
+        pool = LLMPool({"providers": [{"name": "main", "base_url": "https://example.com",
+                                      "models": [{"model": "model", "supports": {"tools": False}}]}]})
+        config = ConfigLLM.model_validate({"models": [{"name": "main", "model": "model"}]})
+        self.assertTrue(pool.has_capability(config, "tools"))
+        self.assertFalse(pool.has_capability(config, "vision"))
+
+    def test_repo_is_always_enabled_with_legacy_settings(self):
+        for legacy in ({}, {"enabled": False}, {"enabled": True}):
+            with self.subTest(legacy=legacy):
+                repo = ProjectConfig.model_validate({"repo": legacy}).repo
+                self.assertTrue(repo.enabled)
+                self.assertNotIn("enabled", repo.model_dump())
+
     def test_clearing_lists_and_text_removes_hidden_json_values(self):
         cfg = self._config()
         alpha = cfg["bot"]["configs"]["Alpha"]
@@ -64,32 +86,20 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(result["bot"]["configs"]["Beta"], cfg["bot"]["configs"]["Beta"])
         self.assertEqual(alpha["settings"]["system_prompt"], "hidden prompt")
 
-    def test_llm_optional_parameters_clear_instead_of_inheriting_same_level(self):
+    def test_llm_profile_token_limit_clears_instead_of_inheriting_same_level(self):
         cfg = self._config()
-        cfg["bot"]["configs"]["Alpha"]["llm"].update(
-            temperature=0.8, top_p=0.8, max_tokens=1234
-        )
-        provider = cfg["llm"]["providers"][0]
-        provider["api_key"] = "hidden-key"
-        provider["models"][0].update(temperature=0.9, top_p=0.9)
+        cfg["bot"]["configs"]["Alpha"]["llm"]["max_tokens"] = 1234
+        cfg["llm"]["providers"][0]["api_key"] = "hidden-key"
         result = apply_panel_overrides(cfg, {
-            "llm_endpoint_api_key": "", "llm_profile_temperature": "",
-            "llm_profile_top_p": "", "llm_profile_max_tokens": -1,
-            "llm_model_temperature": "", "llm_model_top_p": "",
+            "llm_endpoint_api_key": "", "llm_profile_max_tokens": -1,
         })
         self.assertEqual(result["llm"]["providers"][0]["api_key"], "")
-        for key in ("temperature", "top_p", "max_tokens"):
-            self.assertIsNone(result["bot"]["configs"]["Alpha"]["llm"][key])
-        for key in ("temperature", "top_p"):
-            self.assertIsNone(result["llm"]["providers"][0]["models"][0][key])
-        zero = apply_panel_overrides(cfg, {"llm_profile_temperature": 0, "llm_model_temperature": 0})
-        self.assertEqual(zero["bot"]["configs"]["Alpha"]["llm"]["temperature"], 0)
-        self.assertEqual(zero["llm"]["providers"][0]["models"][0]["temperature"], 0)
+        self.assertIsNone(result["bot"]["configs"]["Alpha"]["llm"]["max_tokens"])
 
     def test_blank_fixed_defaults_replace_hidden_json_and_are_visible(self):
         panel = {"log_dir": "", "log_level": "", "report_mode": "",
                  "report_device_scale_factor": "", "history_period_hours": -1,
-                 "repo_mode": "inherit", "data_dir": ""}
+                 "enabled_mode": "inherit", "data_dir": ""}
         normalized = normalize_panel_values(panel)
         for key in panel:
             self.assertEqual(normalized[key], PANEL_DEFAULTS[key], key)
@@ -135,8 +145,8 @@ class PanelOverrideTests(unittest.TestCase):
     def test_global_llm_parameters_do_not_require_selecting_an_endpoint(self):
         cfg = self._config()
         cfg["llm"]["providers"] = []
-        result = apply_panel_overrides(cfg, {"llm_defaults_temperature": "0.5"})
-        self.assertEqual(result["llm"]["defaults"]["temperature"], 0.5)
+        result = apply_panel_overrides(cfg, {"llm_defaults_max_tokens": 4096})
+        self.assertEqual(result["llm"]["defaults"]["max_tokens"], 4096)
         self.assertEqual(result["llm"]["providers"], [])
 
     def test_clearing_panel_notification_only_disables_selected_profile(self):
@@ -235,7 +245,6 @@ class PanelOverrideTests(unittest.TestCase):
             "ui_mfaa_mode": "enabled",
             "ui_maafwapp_mode": "disabled",
             "ui_auto_mode": "enabled",
-            "repo_mode": "enabled",
             "llm_provider": "default",
             "llm_model": "gpt-4o-mini",
             "vision_mode": "disabled",
@@ -275,13 +284,10 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(
             beta["project"]["ui"],
             {
-                "mxu": {"enabled": False},
-                "mfaa": {"enabled": True},
-                "maafwapp": {"enabled": False},
                 "auto": {"enabled": True},
             },
         )
-        self.assertIs(beta["project"]["repo"]["enabled"], True)
+        self.assertTrue(ProjectConfig.model_validate(beta["project"]).repo.enabled)
         self.assertEqual(
             beta["llm"]["models"],
             [
@@ -376,7 +382,6 @@ class PanelOverrideTests(unittest.TestCase):
                 "llm_endpoint_connect_timeout_seconds": 5,
                 "llm_endpoint_max_retries": 1,
                 "llm_endpoint_model": "beta-model",
-                "llm_model_support_tools_mode": "enabled",
                 "llm_model_support_vision_mode": "enabled",
                 "llm_model_support_json_mode_mode": "disabled",
                 "llm_model_max_tokens": 8192,
@@ -404,16 +409,12 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(beta["connect_timeout_seconds"], 5)
         self.assertEqual(beta["max_retries"], 1)
         model = beta["models"][0]
-        self.assertEqual(model["supports"], {"tools": True, "vision": True, "json_mode": False})
+        self.assertEqual(model["supports"], {"tools": False, "vision": True, "json_mode": False})
         self.assertEqual(model["max_tokens"], 8192)
         self.assertEqual(model["max_context_tokens"], 128000)
-        self.assertEqual(model["temperature"], 0.1)
-        self.assertEqual(model["top_p"], 0.95)
         self.assertEqual(
             result["llm"]["defaults"],
             {
-                "temperature": 0.25,
-                "top_p": 0.9,
                 "max_tokens": 4096,
                 "max_context_tokens": 96000,
             },
@@ -435,9 +436,7 @@ class PanelOverrideTests(unittest.TestCase):
                 {"name": "backup", "model": "backup-model"},
             ],
         )
-        self.assertEqual(profile_llm["temperature"], 0.3)
         self.assertEqual(profile_llm["max_tokens"], 4096)
-        self.assertEqual(profile_llm["top_p"], 0.9)
 
     def test_llm_endpoint_rename_updates_profile_references(self):
         result = apply_panel_overrides(
@@ -458,7 +457,6 @@ class PanelOverrideTests(unittest.TestCase):
         for panel, message in (
             ({"llm_endpoint_selector": "missing"}, "端点不存在"),
             ({"llm_endpoint_kind": "grpc"}, "llm_endpoint_kind"),
-            ({"llm_model_temperature": "hot"}, "llm_model_temperature"),
             ({"llm_fallback_models": ["bad"]}, "llm_fallback_models"),
         ):
             with self.subTest(panel=panel):
@@ -503,7 +501,6 @@ class PanelOverrideTests(unittest.TestCase):
             "max_log_chars", "compress_context_noise",
             "max_recognition_evidence_lines",
             "max_recognition_evidence_chars", "log_head_lines",
-            "context_before_lines", "context_after_lines",
         }
         self.assertLessEqual(expected, mapped_settings)
         for field in expected:
@@ -663,9 +660,6 @@ class PanelOverrideTests(unittest.TestCase):
         )
 
     def test_invalid_panel_modes_are_rejected(self):
-        with self.assertRaisesRegex(ValueError, "repo_mode"):
-            apply_panel_overrides(self._config(), {"repo_mode": "maybe"})
-
         with self.assertRaisesRegex(ValueError, "archive_match_mode"):
             apply_panel_overrides(
                 self._config(), {"archive_match_mode": "everything"}

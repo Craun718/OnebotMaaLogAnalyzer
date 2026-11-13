@@ -54,8 +54,8 @@ AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 | `command_prefix` / `owners` / `admins` | `/maa` 前缀与权限名单 |
 | `report_*` | 报告渲染模式、模板、尺寸、浏览器与渲染回退等高级项 |
 | `project_name` / `archive_match_mode` / `file_prefix` | 项目显示名、日志包识别模式与前缀 |
-| `require_log_layout_mode` / `ui_*_mode` | 日志布局校验与各 UI 日志包开关 |
-| `repo_*` | 项目代码仓库开关、来源、分支、检索模式、版本切换与扫描限制 |
+| `require_log_layout_mode` / `ui_*_mode` | 日志布局校验与 UI 自动识别开关 |
+| `repo_*` | 项目代码仓库来源、分支、检索模式、版本切换与扫描限制 |
 | `llm_*` | 首选/备用候选、调用参数、端点、密钥、模型能力、全局兜底与熔断配置 |
 | `vision_*` / `send_*_mode` | 看图开关、数量、细节、索图与报告图片、附件发送开关 |
 | `followup_mode` / `followup_window_minutes` | 追问开关与窗口 |
@@ -66,7 +66,7 @@ AstrBot/data/plugins/OnebotMaaLogAnalyzer/
 
 面板已提供的字段以面板值为准：空列表清空名单、监听群、镜像或备用模型，可选文本留空清除旧值。
 固定默认字段被清空或保留旧 `inherit` / `-1` 标记时，启动会恢复对应默认值并保存到 WebUI。
-LLM 可选采样参数留空、档案 token 上限为 `-1` 时，清除同级参数并使用模型或全局值；
+LLM 档案 token 上限为 `-1` 时，清除同级参数并使用模型或全局值；
 档案、端点和模型选择器仍可留空自动选择，具体规则见[配置](configuration.md)。
 面板不会回写 `config.json`，未选中的档案、端点、模型和未映射的高级字段保持原样。
 
