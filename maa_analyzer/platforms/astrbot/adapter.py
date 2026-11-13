@@ -14,6 +14,8 @@ import os
 import tempfile
 import time
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -235,6 +237,10 @@ class AstrBotPlatformAdapter:
         self.role_cache_seconds = max(0, int(role_cache_seconds or 0))
         self._role_cache: dict[tuple[str, str], tuple[str, float]] = {}
         self._session: aiohttp.ClientSession | None = None
+        self._event_route: ContextVar[tuple[str, Any, str] | None] = ContextVar(
+            "astrbot_event_route", default=None
+        )
+        self._group_routes: dict[str, tuple[Any, str]] = {}
 
     def bind_bot(self, bot: Any | None) -> None:
         """Bind or refresh the AIOCQHTTP client used for outbound operations."""
@@ -243,6 +249,39 @@ class AstrBotPlatformAdapter:
 
     def clear_role_cache(self) -> None:
         self._role_cache.clear()
+
+    @contextmanager
+    def event_context(self, event: Any):
+        """Keep the inbound connection/account through awaits and child tasks."""
+        raw = self._raw_event(event)
+        group_id = self.event_hints(event)["group_id"]
+        bot = _get(event, "bot")
+        if bot is None:
+            bot = self.bot
+        self_id = _text(
+            _get(raw, "self_id") or _get(_get(event, "message_obj"), "self_id")
+        )
+        route = (group_id, bot, self_id)
+        if group_id and bot is not None:
+            # Timers created before an event have no event context of their own.
+            self._group_routes[group_id] = (bot, self_id)
+        token = self._event_route.set(route)
+        try:
+            yield
+        finally:
+            self._event_route.reset(token)
+
+    def _action_route(self, params: Mapping[str, Any]) -> tuple[Any, dict[str, Any]]:
+        group_id = _text(params.get("group_id"))
+        route = self._event_route.get()
+        if route is not None and (not group_id or route[0] == group_id):
+            _, bot, self_id = route
+        else:
+            bot, self_id = self._group_routes.get(group_id, (self.bot, ""))
+        routed = dict(params)
+        if self_id:
+            routed["self_id"] = _api_id(self_id)
+        return bot, routed
 
     @staticmethod
     def _raw_event(event: Any) -> Any:
@@ -535,7 +574,7 @@ class AstrBotPlatformAdapter:
         successful call can still carry a ``None`` payload, and the value is
         whatever the implementation handed back.
         """
-        bot = self.bot
+        bot, params = self._action_route(params)
         if bot is None:
             return False, None
         call_action = getattr(bot, "call_action", None)
@@ -543,7 +582,10 @@ class AstrBotPlatformAdapter:
             try:
                 return True, await call_action(action, **params)
             except Exception as exc:
-                logger.warning("[AstrBot] %s 调用失败：%s", action, exc)
+                logger.warning(
+                    "[AstrBot] %s 调用失败 group=%s self_id=%s：%s",
+                    action, params.get("group_id"), params.get("self_id"), exc,
+                )
                 return False, None
         api = getattr(bot, "api", None)
         api_call = getattr(api, "call_action", None)
@@ -551,7 +593,10 @@ class AstrBotPlatformAdapter:
             try:
                 return True, await api_call(action, **params)
             except Exception as exc:
-                logger.warning("[AstrBot] %s 调用失败：%s", action, exc)
+                logger.warning(
+                    "[AstrBot] %s 调用失败 group=%s self_id=%s：%s",
+                    action, params.get("group_id"), params.get("self_id"), exc,
+                )
         return False, None
 
     async def _call_action(self, action: str, **params: Any) -> Any:
@@ -561,16 +606,23 @@ class AstrBotPlatformAdapter:
     async def _send_group(
         self, group_id: int, message: Sequence[Mapping[str, Any]]
     ) -> Any:
-        if self.bot is None:
+        bot, params = self._action_route({
+            "group_id": _api_id(group_id), "message": list(message),
+        })
+        if bot is None:
             return None
-        send_group = getattr(self.bot, "send_group_msg", None)
+        send_group = getattr(bot, "send_group_msg", None)
         if callable(send_group):
             try:
-                return await send_group(
-                    group_id=_api_id(group_id), message=list(message)
-                )
+                return await send_group(**params)
             except Exception as exc:
-                logger.warning("[AstrBot] send_group_msg 失败：%s", exc)
+                logger.warning(
+                    "[AstrBot] send_group_msg 失败 group=%s self_id=%s：%s",
+                    group_id, params.get("self_id"), exc,
+                )
+                # AIOCQHTTP's dynamic send_group_msg is already call_action.
+                # Retrying a rejected/uncertain send can duplicate the message.
+                return None
         return await self._call_action(
             "send_group_msg",
             group_id=_api_id(group_id),
@@ -780,6 +832,7 @@ class AstrBotPlatformAdapter:
         return _response_mapping(result)
 
     async def close(self) -> None:
+        self._group_routes.clear()
         session, self._session = self._session, None
         if session is not None and not session.closed:
             await session.close()

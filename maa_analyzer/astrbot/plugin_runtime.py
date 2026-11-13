@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -154,13 +155,15 @@ class AstrBotPluginRuntime:
         if adapter is None or runtime is None or not runtime.running:
             return False
 
-        bind_bot = getattr(adapter, "bind_bot", None)
-        if callable(bind_bot):
-            bind_bot(getattr(event, "bot", None))
-        mapped = await adapter.map_event(event)
-        if mapped is None or runtime.service is None:
-            return False
-        return bool(await runtime.service.handle_platform_event(mapped))
+        event_context = getattr(adapter, "event_context", None)
+        with event_context(event) if callable(event_context) else nullcontext():
+            bind_bot = getattr(adapter, "bind_bot", None)
+            if callable(bind_bot):
+                bind_bot(getattr(event, "bot", None))
+            mapped = await adapter.map_event(event)
+            if mapped is None or runtime.service is None:
+                return False
+            return bool(await runtime.service.handle_platform_event(mapped))
 
     def is_relevant_event(self, event: Any) -> bool:
         """

@@ -146,6 +146,23 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(plugin.config, config)
         config.save_config.assert_called_once_with()
 
+    async def test_blank_fixed_values_are_saved_back_to_webui(self):
+        class SavedConfig(dict):
+            def save_config(self):
+                self.saved = dict(self)
+
+        config = SavedConfig(PANEL_DEFAULTS)
+        config.update(data_dir="", log_dir="", report_mode="",
+                      report_device_scale_factor="", listen_groups=[],
+                      llm_endpoint_api_key="", llm_profile_temperature="")
+        plugin = self.shell.Main(object(), config)
+        for key in ("data_dir", "log_dir", "report_mode", "report_device_scale_factor"):
+            self.assertEqual(config[key], PANEL_DEFAULTS[key], key)
+            self.assertEqual(config.saved[key], plugin.config[key], key)
+        self.assertEqual(config.saved["listen_groups"], [])
+        self.assertEqual(config.saved["llm_endpoint_api_key"], "")
+        self.assertEqual(config.saved["llm_profile_temperature"], "")
+
     async def test_packaged_kernel_uses_plugin_namespace_and_reloads(self):
         with tempfile.TemporaryDirectory() as directory:
             plugin_dir = Path(directory) / "test_plugin"

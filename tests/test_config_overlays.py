@@ -16,9 +16,11 @@ from maa_analyzer.config import (
     apply_panel_overrides,
     default_config,
     load_effective_config,
+    normalize_panel_values,
 )
-from maa_analyzer.core.llm_pool import LLMPool
 from maa_analyzer.core.models import AnalysisSettings, CommandConfig, ConfigLLM, ModelSupports, ProjectConfig, ReportConfig, VisionConfig
+from maa_analyzer.core.llm_pool import LLMPool
+from tools.config.editor import _config_defaults
 
 
 class PanelOverrideTests(unittest.TestCase):
@@ -42,6 +44,135 @@ class PanelOverrideTests(unittest.TestCase):
                 repo = ProjectConfig.model_validate({"repo": legacy}).repo
                 self.assertTrue(repo.enabled)
                 self.assertNotIn("enabled", repo.model_dump())
+
+    def test_clearing_lists_and_text_removes_hidden_json_values(self):
+        cfg = self._config()
+        alpha = cfg["bot"]["configs"]["Alpha"]
+        alpha["listen_groups"] = ["10001"]
+        alpha["commands"].update(owners=["1"], admins=["2"])
+        alpha["project"].update(name="HiddenProject", file_prefix="hidden")
+        alpha["project"]["repo"].update(
+            path="/hidden/repo", mirrors=["https://hidden.example"],
+            branch="hidden", default_branch="hidden", extensions=[".hidden"],
+        )
+        alpha["report"].update(font_family="HiddenFont", browser_path="/hidden/browser")
+        alpha["settings"]["system_prompt"] = "hidden prompt"
+        alpha["llm"]["models"].append({"name": "beta", "model": "beta-model"})
+        panel = {
+            "listen_groups": [], "owners": [], "admins": [],
+            "project_name": "", "file_prefix": "", "repo_path": "",
+            "repo_mirrors": [], "repo_branch": "", "repo_default_branch": "",
+            "repo_extensions": [], "report_font_family": "",
+            "report_browser_path": "", "settings_system_prompt": "",
+            "llm_fallback_models": [],
+        }
+
+        result = apply_panel_overrides(cfg, panel)
+        actual = result["bot"]["configs"]["Alpha"]
+        self.assertEqual(actual["listen_groups"], [])
+        self.assertEqual(actual["commands"]["owners"], [])
+        self.assertEqual(actual["commands"]["admins"], [])
+        self.assertEqual(actual["project"]["name"], "")
+        self.assertEqual(actual["project"]["file_prefix"], "")
+        self.assertEqual(actual["project"]["repo"]["path"], "")
+        self.assertEqual(actual["project"]["repo"]["mirrors"], [])
+        self.assertEqual(actual["project"]["repo"]["branch"], "")
+        self.assertEqual(actual["project"]["repo"]["default_branch"], "")
+        self.assertEqual(actual["project"]["repo"]["extensions"], [])
+        self.assertEqual(actual["report"]["font_family"], "")
+        self.assertEqual(actual["report"]["browser_path"], "")
+        self.assertEqual(actual["settings"]["system_prompt"], "")
+        self.assertEqual(actual["llm"]["models"], [{"name": "default", "model": "gpt-4o-mini"}])
+        self.assertEqual(result["bot"]["configs"]["Beta"], cfg["bot"]["configs"]["Beta"])
+        self.assertEqual(alpha["settings"]["system_prompt"], "hidden prompt")
+
+    def test_llm_profile_token_limit_clears_instead_of_inheriting_same_level(self):
+        cfg = self._config()
+        cfg["bot"]["configs"]["Alpha"]["llm"]["max_tokens"] = 1234
+        cfg["llm"]["providers"][0]["api_key"] = "hidden-key"
+        result = apply_panel_overrides(cfg, {
+            "llm_endpoint_api_key": "", "llm_profile_max_tokens": -1,
+        })
+        self.assertEqual(result["llm"]["providers"][0]["api_key"], "")
+        self.assertIsNone(result["bot"]["configs"]["Alpha"]["llm"]["max_tokens"])
+
+    def test_blank_fixed_defaults_replace_hidden_json_and_are_visible(self):
+        panel = {"log_dir": "", "log_level": "", "report_mode": "",
+                 "report_device_scale_factor": "", "history_period_hours": -1,
+                 "enabled_mode": "inherit", "data_dir": ""}
+        normalized = normalize_panel_values(panel)
+        for key in panel:
+            self.assertEqual(normalized[key], PANEL_DEFAULTS[key], key)
+        cfg = self._config()
+        cfg["log"].update(log_dir="hidden", log_level="DEBUG")
+        cfg["bot"]["data_dir"] = "hidden"
+        result = apply_panel_overrides(cfg, panel)
+        self.assertEqual(result["log"]["log_dir"], "logs")
+        self.assertEqual(result["log"]["log_level"], "INFO")
+        self.assertEqual(result["bot"]["data_dir"], "data")
+
+    def test_automatic_primary_llm_uses_panel_endpoint_instead_of_hidden_candidate(self):
+        cfg = self._config()
+        result = apply_panel_overrides(cfg, {
+            "llm_endpoint_selector": "beta", "llm_endpoint_model": "beta-model",
+            "llm_provider": "", "llm_model": "", "llm_fallback_models": [],
+        })
+        self.assertEqual(result["bot"]["configs"]["Alpha"]["llm"]["models"],
+                         [{"name": "beta", "model": "beta-model"}])
+
+    def test_camel_case_json_cannot_override_panel_edits(self):
+        cfg = self._config()
+        alpha = cfg["bot"]["configs"]["Alpha"]
+        alpha["report"]["browserPath"] = "/hidden/browser"
+        alpha["report"]["maxWidthPx"] = 9999
+        alpha["settings"]["sendSummary"] = False
+        alpha["project"]["repo"]["defaultBranch"] = "hidden"
+        cfg["llm"]["providers"][0]["baseUrl"] = "https://hidden.example"
+        result = apply_panel_overrides(cfg, {
+            "report_browser_path": "", "report_max_width_px": 1200,
+            "settings_send_summary_mode": "enabled", "repo_default_branch": "",
+            "llm_endpoint_base_url": "https://visible.example",
+        })
+        actual = result["bot"]["configs"]["Alpha"]
+        report = ReportConfig.model_validate(actual["report"])
+        self.assertEqual(report.browser_path, "")
+        self.assertEqual(report.max_width_px, 1200)
+        self.assertTrue(AnalysisSettings.model_validate(actual["settings"]).send_summary)
+        self.assertEqual(ProjectConfig.model_validate(actual["project"]).repo.default_branch, "")
+        self.assertNotIn("baseUrl", result["llm"]["providers"][0])
+        self.assertEqual(result["llm"]["providers"][0]["base_url"], "https://visible.example")
+
+    def test_global_llm_parameters_do_not_require_selecting_an_endpoint(self):
+        cfg = self._config()
+        cfg["llm"]["providers"] = []
+        result = apply_panel_overrides(cfg, {"llm_defaults_max_tokens": 4096})
+        self.assertEqual(result["llm"]["defaults"]["max_tokens"], 4096)
+        self.assertEqual(result["llm"]["providers"], [])
+
+    def test_clearing_panel_notification_only_disables_selected_profile(self):
+        cfg = self._config()
+        cfg["bot"]["configs"]["Alpha"]["notify_group"] = "10003"
+        cfg["bot"]["configs"]["Beta"]["notify_group"] = "10004"
+
+        for value in ("", "  "):
+            with self.subTest(value=value):
+                result = apply_panel_overrides(
+                    cfg, {"default_config": "Alpha", "notify_group": value}
+                )
+                self.assertEqual(result["bot"]["configs"]["Alpha"]["notify_group"], "")
+                self.assertEqual(result["bot"]["configs"]["Beta"]["notify_group"], "10004")
+                self.assertEqual(cfg["bot"]["configs"]["Alpha"]["notify_group"], "10003")
+
+    def test_absent_panel_notification_preserves_json_destination(self):
+        cfg = self._config()
+        cfg["bot"]["configs"]["Alpha"]["notify_group"] = "10003"
+        result = apply_panel_overrides(cfg, {"default_config": "Alpha"})
+        self.assertEqual(result, cfg)
+
+    def test_editor_new_profiles_do_not_configure_message_destinations(self):
+        profile = _config_defaults()
+        self.assertEqual(profile["listen_groups"], [])
+        self.assertEqual(profile["notify_group"], "")
 
     def test_profile_panel_defaults_match_builtin_models(self):
         defaults = {
@@ -347,7 +478,7 @@ class PanelOverrideTests(unittest.TestCase):
         }
         expected = {
             "file_list_delay_seconds", "duplicate_window_seconds",
-            "send_progress_message", "send_summary", "reply_chunk_chars",
+            "send_progress_message", "send_summary", "merge_messages", "reply_chunk_chars",
             "max_report_images", "max_report_files",
             "max_file_attachment_mb", "inline_attachments",
             "followup_max_turns", "followup_max_sessions",
@@ -383,6 +514,7 @@ class PanelOverrideTests(unittest.TestCase):
             "settings_file_list_delay_seconds": "1.5",
             "settings_duplicate_window_seconds": 60,
             "settings_send_progress_message_mode": "disabled",
+            "settings_merge_messages_mode": "disabled",
             "settings_system_prompt": "你是日志分析助手",
             "settings_context_compact_ratio": "0.75",
         }
@@ -391,6 +523,7 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(settings["file_list_delay_seconds"], 1.5)
         self.assertEqual(settings["duplicate_window_seconds"], 60)
         self.assertIs(settings["send_progress_message"], False)
+        self.assertIs(settings["merge_messages"], False)
         self.assertEqual(settings["system_prompt"], "你是日志分析助手")
         self.assertEqual(settings["context_compact_ratio"], 0.75)
 
@@ -617,3 +750,41 @@ class EffectiveConfigLoadTests(unittest.TestCase):
         self.assertTrue(config_path.is_file())
         self.assertIn("bot", effective)
         self.assertEqual(data_dir, (self.plugin_data / "data").resolve())
+        profile = effective["bot"]["configs"]["默认"]
+        self.assertEqual(profile["listen_groups"], [])
+        self.assertEqual(profile["notify_group"], "")
+
+    def test_first_run_panel_listeners_do_not_inherit_example_notification_group(self):
+        panel = dict(PANEL_DEFAULTS)
+        panel["listen_groups"] = ["10001", "10002"]
+
+        effective, config_path, _ = load_effective_config(
+            panel, plugin_data_dir=self.plugin_data
+        )
+
+        profile = effective["bot"]["configs"]["默认"]
+        self.assertEqual(profile["listen_groups"], panel["listen_groups"])
+        self.assertEqual(profile["notify_group"], "")
+        saved = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["bot"]["configs"]["默认"]["listen_groups"], [])
+        self.assertEqual(saved["bot"]["configs"]["默认"]["notify_group"], "")
+
+    def test_blank_panel_notification_disables_legacy_json_destination(self):
+        cfg = default_config()
+        cfg["bot"]["configs"]["默认"]["notify_group"] = "123456789"
+        original = json.dumps(cfg, ensure_ascii=False)
+        self.config_path.write_text(original, encoding="utf-8")
+
+        effective, _, _ = load_effective_config(
+            {
+                "config_file": str(self.config_path),
+                "listen_groups": ["10001"],
+                "notify_group": "",
+            },
+            plugin_data_dir=self.plugin_data,
+        )
+
+        self.assertEqual(
+            effective["bot"]["configs"]["默认"]["notify_group"], ""
+        )
+        self.assertEqual(self.config_path.read_text(encoding="utf-8"), original)

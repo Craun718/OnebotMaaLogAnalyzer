@@ -6,11 +6,17 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, get_args
 from urllib.parse import urlsplit
+
+from pydantic import BaseModel
 
 from .core.llm_pool import detect_legacy_llm, validate_llm_config
 from .core.log_context import ConfigNameFormatter
+from .core.models import (
+    AnalysisSettings, CommandConfig, ConfigLLM, LLMGlobalConfig,
+    ProjectConfig, ReportConfig, VisionConfig,
+)
 
 logger = logging.getLogger("Maa")
 
@@ -169,6 +175,7 @@ PANEL_PROFILE_MODE_OVERRIDES: dict[str, tuple[str, ...]] = {
     ),
     "settings_send_progress_message_mode": ("settings", "send_progress_message"),
     "settings_send_summary_mode": ("settings", "send_summary"),
+    "settings_merge_messages_mode": ("settings", "merge_messages"),
     "settings_inline_attachments_mode": ("settings", "inline_attachments"),
     "settings_context_compact_enabled_mode": ("settings", "context_compact_enabled"),
     "settings_circuit_breaker_enabled_mode": ("settings", "circuit_breaker_enabled"),
@@ -241,7 +248,7 @@ PANEL_NONNEGATIVE_INT_FIELDS |= (
 PANEL_DEFAULTS: dict[str, Any] = {
     "enabled_mode": 'enabled',
     "config_file": "",
-    "data_dir": "",
+    "data_dir": "data",
     "default_config": "",
     "listen_groups": [],
     "notify_group": "",
@@ -262,7 +269,7 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "llm_endpoint_selector": "",
     "llm_endpoint_name": "",
     "llm_endpoint_kind": 'openai',
-    "llm_endpoint_base_url": "",
+    "llm_endpoint_base_url": "https://api.openai.com/v1",
     "llm_endpoint_api_key": "",
     "llm_endpoint_max_concurrency": 2,
     "llm_endpoint_timeout_seconds": 180,
@@ -380,6 +387,7 @@ PANEL_DEFAULTS: dict[str, Any] = {
     "settings_duplicate_window_seconds": 120,
     "settings_send_progress_message_mode": 'enabled',
     "settings_send_summary_mode": 'enabled',
+    "settings_merge_messages_mode": 'enabled',
     "settings_inline_attachments_mode": 'enabled',
     "settings_context_compact_enabled_mode": 'enabled',
     "settings_circuit_breaker_enabled_mode": 'enabled',
@@ -455,8 +463,8 @@ def default_config() -> dict:
             "data_dir": "data",
             "configs": {
                 "默认": {
-                    "listen_groups": ["123456789"],
-                    "notify_group": "123456789",
+                    "listen_groups": [],
+                    "notify_group": "",
                     "project": {
                         "name": "MaaXXX",
                         "archive_match_mode": "auto",
@@ -692,22 +700,36 @@ def _panel_value(panel: Mapping[str, Any], key: str) -> Any:
     return panel.get(key, PANEL_DEFAULTS[key])
 
 
+PANEL_AUTO_SELECT_FIELDS = {
+    "config_file", "default_config", "llm_endpoint_selector",
+    "llm_endpoint_name", "llm_endpoint_model",
+}
+
+
+def _is_blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def normalize_panel_values(panel: Mapping[str, Any]) -> dict:
+    """Reset legacy/blank fixed defaults without retaining hidden JSON values."""
+    result = copy.deepcopy(dict(panel))
+    for key, value in result.items():
+        if key not in PANEL_DEFAULTS or key in PANEL_AUTO_SELECT_FIELDS:
+            continue
+        default = PANEL_DEFAULTS[key]
+        blank = _is_blank(value)
+        legacy = (
+            key in PANEL_TRISTATE_MODE_FIELDS
+            and str(value).strip() == "inherit"
+        ) or (key in PANEL_NONNEGATIVE_INT_FIELDS and str(value).strip() == "-1")
+        if blank or legacy:
+            result[key] = copy.deepcopy(default)
+    return result
+
+
 def _is_inherit_value(key: str, value: Any) -> bool:
-    """Return whether a panel value means "keep the advanced JSON value"."""
-    if key in PANEL_NONNEGATIVE_INT_FIELDS:
-        if value is None or value == "":
-            return True
-        try:
-            return int(value) == -1
-        except (TypeError, ValueError):
-            return False
-    if key in PANEL_TRISTATE_MODE_FIELDS:
-        return str(value or "inherit").strip().lower() == "inherit"
-    if isinstance(value, str):
-        return not value.strip()
-    if isinstance(value, (list, tuple, set, dict)):
-        return not value
-    return value is None
+    """Only selectors may use blank values to select an existing object."""
+    return key in PANEL_AUTO_SELECT_FIELDS and not str(value or "").strip()
 
 
 def _changed(panel: Mapping[str, Any], key: str) -> bool:
@@ -823,7 +845,11 @@ def _apply_profile_field_mappings(
             _set_path(profile, path, _float(panel, key))
     for key, path in PANEL_PROFILE_INT_OVERRIDES.items():
         if _changed(panel, key):
-            _set_path(profile, path, _nonnegative_int(panel, key))
+            _set_path(profile, path, (
+                None if key == "llm_profile_max_tokens"
+                and _panel_value(panel, key) == -1
+                else _nonnegative_int(panel, key)
+            ))
     for key, path in PANEL_PROFILE_LIST_OVERRIDES.items():
         if _changed(panel, key):
             value = [
@@ -848,15 +874,9 @@ def _apply_profile_field_mappings(
         _set_path(profile, path, value)
 
 
-def _apply_llm_panel_overrides(result: dict, panel: Mapping[str, Any]) -> None:
-    """Apply flat dashboard fields to global LLM endpoint/model declarations."""
-    if not any(
-        _changed(panel, key)
-        for key in PANEL_LLM_ENDPOINT_FIELDS | PANEL_LLM_MODEL_FIELDS | PANEL_LLM_GLOBAL_FIELDS
-    ):
-        return
-
-    llm_cfg = _ensure_dict(result, "llm")
+def _apply_llm_endpoint_overrides(
+    llm_cfg: dict, result: dict, panel: Mapping[str, Any]
+) -> None:
     providers = llm_cfg.get("providers")
     if not isinstance(providers, list):
         providers = []
@@ -989,6 +1009,19 @@ def _apply_llm_panel_overrides(result: dict, panel: Mapping[str, Any]) -> None:
             if _changed(panel, key):
                 model[setting] = _nonnegative_int(panel, key)
 
+
+def _apply_llm_panel_overrides(result: dict, panel: Mapping[str, Any]) -> None:
+    """Apply flat dashboard fields to global LLM endpoint/model declarations."""
+    if not any(
+        _changed(panel, key)
+        for key in PANEL_LLM_ENDPOINT_FIELDS | PANEL_LLM_MODEL_FIELDS | PANEL_LLM_GLOBAL_FIELDS
+    ):
+        return
+
+    llm_cfg = _ensure_dict(result, "llm")
+    if any(_changed(panel, key) for key in PANEL_LLM_ENDPOINT_FIELDS | PANEL_LLM_MODEL_FIELDS):
+        _apply_llm_endpoint_overrides(llm_cfg, result, panel)
+
     if any(_changed(panel, key) for key in PANEL_LLM_GLOBAL_FIELDS):
         defaults = _ensure_dict(llm_cfg, "defaults")
         circuit = _ensure_dict(llm_cfg, "circuit_breaker")
@@ -1044,6 +1077,51 @@ def _ensure_dict(parent: dict, key: str) -> dict:
     return value
 
 
+def _panel_primary_candidate(cfg: dict, panel: Mapping[str, Any]) -> tuple[str, str]:
+    """Resolve the panel's explicit automatic endpoint/model selection."""
+    providers = (cfg.get("llm") or {}).get("providers") or []
+    name = str(
+        panel.get("llm_provider") or panel.get("llm_endpoint_name")
+        or panel.get("llm_endpoint_selector") or ""
+    ).strip()
+    provider = next(
+        (item for item in providers if isinstance(item, dict)
+         and (not name or item.get("name") == name)), {}
+    )
+    models = provider.get("models") or []
+    first_model = next((item for item in models if isinstance(item, dict)), {})
+    selected_model = str(panel.get("llm_endpoint_model") or "").strip()
+    model = (
+        selected_model if any(
+            item.get("model") == selected_model
+            for item in models if isinstance(item, dict)
+        ) else first_model.get("model", "")
+    )
+    return str(provider.get("name") or name), str(model)
+
+
+def _normalize_model_aliases(data: dict, model: type[BaseModel]) -> None:
+    """Keep camelCase JSON from taking precedence over new snake_case edits."""
+    for name, field in model.model_fields.items():
+        if field.alias and field.alias != name and field.alias in data:
+            data[name] = data.pop(field.alias)
+        value = data.get(name)
+        annotation = field.annotation
+        candidates = (annotation, *get_args(annotation))
+        child = next(
+            (item for item in candidates
+             if isinstance(item, type) and issubclass(item, BaseModel)), None
+        )
+        if child is None:
+            continue
+        if isinstance(value, dict):
+            _normalize_model_aliases(value, child)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    _normalize_model_aliases(item, child)
+
+
 def apply_panel_overrides(
     cfg: Mapping[str, Any],
     panel: Mapping[str, Any] | None,
@@ -1051,12 +1129,13 @@ def apply_panel_overrides(
     """
     Apply changed dashboard values to one profile without replacing advanced JSON.
 
-    Empty strings and empty lists are inheritance markers. This is necessary
-    because AstrBot materializes every schema default before a plugin sees it.
+    Supplied fields are authoritative, including empty strings/lists. Missing
+    fields leave advanced JSON untouched; blank selectors select the first item.
     """
     result = copy.deepcopy(dict(cfg))
     if not panel:
         return result
+    panel = normalize_panel_values(panel)
     enabled_mode = _enabled_mode(panel)
     if not _has_panel_changes(panel):
         return result
@@ -1074,6 +1153,8 @@ def apply_panel_overrides(
         log_cfg = _ensure_dict(result, "log")
         log_cfg["log_dir"] = str(_panel_value(panel, "log_dir")).strip()
 
+    if isinstance(result.get("llm"), dict):
+        _normalize_model_aliases(result["llm"], LLMGlobalConfig)
     _apply_llm_panel_overrides(result, panel)
 
     if _has_profile_changes(panel):
@@ -1083,6 +1164,13 @@ def apply_panel_overrides(
         if not isinstance(profile, dict):
             profile = {}
             configs[target] = profile
+        for section, model in (
+            ("project", ProjectConfig), ("settings", AnalysisSettings),
+            ("commands", CommandConfig), ("llm", ConfigLLM),
+            ("vision", VisionConfig), ("report", ReportConfig),
+        ):
+            if isinstance(profile.get(section), dict):
+                _normalize_model_aliases(profile[section], model)
 
         if _changed(panel, "listen_groups"):
             profile["listen_groups"] = [
@@ -1182,12 +1270,12 @@ def apply_panel_overrides(
                     models[0] = first
                 if _changed(panel, "llm_provider"):
                     first["name"] = str(
-                        _panel_value(panel, "llm_provider")
-                    ).strip()
+                        _panel_value(panel, "llm_provider") or ""
+                    ).strip() or _panel_primary_candidate(result, panel)[0]
                 if _changed(panel, "llm_model"):
                     first["model"] = str(
-                        _panel_value(panel, "llm_model")
-                    ).strip()
+                        _panel_value(panel, "llm_model") or ""
+                    ).strip() or _panel_primary_candidate(result, panel)[1]
             if _changed(panel, "llm_fallback_models"):
                 fallbacks = _parse_llm_fallback_models(
                     _panel_value(panel, "llm_fallback_models")
