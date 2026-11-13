@@ -258,3 +258,33 @@ def format_tokens(value: Optional[int]) -> str:
     if number >= 1000:
         return f"{number / 1000:.1f}k"
     return str(number)
+
+
+def format_cache_hit_rate(usage: dict[str, Any]) -> str:
+    """统一缓存命中率文案；无缓存读写记录时不把缺失数据当作零命中。"""
+    read = int(usage.get("cache_read_tokens") or 0)
+    write = int(usage.get("cache_write_tokens") or 0)
+    if not (read or write):
+        return "暂无缓存数据"
+    billed = (
+        int(usage.get("uncached_prompt_tokens") or 0) + read + write
+        if "uncached_prompt_tokens" in usage
+        else int(usage.get("prompt_tokens") or 0)
+    )
+    rate = max(0.0, min(1.0, read / billed)) if billed > 0 else 0.0
+    return f"{rate * 100:.1f}%"
+
+
+def format_usage(usage: dict[str, Any], *, exact: bool = False) -> str:
+    """输入、输出、合计与缓存命中率共用的展示格式。"""
+    def number(value: Any) -> str:
+        return f"{int(value or 0):,}" if exact else format_tokens(value)
+
+    prompt = int(usage.get("prompt_tokens") or 0)
+    completion = int(usage.get("completion_tokens") or 0)
+    total = int(usage.get("total_tokens") or (prompt + completion))
+    return (
+        f"输入 {number(prompt)} · 输出 {number(completion)}"
+        f" · 合计 {number(total)} tokens"
+        f" · 缓存命中率：{format_cache_hit_rate(usage)}"
+    )

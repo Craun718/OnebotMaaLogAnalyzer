@@ -238,7 +238,8 @@
 }
 
 .footer-usage-right {
-  float: right;
+  display: block;
+  clear: both;
   font-size: 11px;
   color: #8a94a0;
 }

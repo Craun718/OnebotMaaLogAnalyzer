@@ -36,7 +36,7 @@ class AIUsageCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("最近 1 个会话", recent.text)
         self.assertIn("全部历史 2 个会话 · 共 2 次调用", result.text)
         self.assertIn("输入 1.0k · 输出 100 · 合计 1.1k tokens", result.text)
-        self.assertIn("缓存命中 80%", result.text)
+        self.assertIn("缓存命中率：80.0%", result.text)
         self.assertIn("累计用时 3.0s", result.text)
         self.assertNotIn("全部成功", result.text)
 
@@ -54,7 +54,7 @@ class AIUsageCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("全部历史 2 个会话 · 共 4 次调用", result.text)
         self.assertIn("失败 1 次", result.text)
         self.assertIn("合计 60 tokens", result.text)
-        self.assertNotIn("缓存命中", result.text)
+        self.assertIn("缓存命中率：暂无缓存数据", result.text)
 
     async def test_empty_history_and_invalid_argument(self):
         result = await self.handler._cmd_ai(None, ["all"])
@@ -83,7 +83,7 @@ class AIUsageCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("未知群（记录无群号） · 1 个会话 · 1 次调用", result.text)
         group_one = result.text.split("群 111", 1)[1].split("群 222", 1)[0]
         self.assertIn("合计 200 tokens", group_one)
-        self.assertIn("缓存命中 40%", group_one)
+        self.assertIn("缓存命中率：40.0%", group_one)
         self.assertLess(result.text.index("群 111"), result.text.index("群 222"))
 
     async def test_pool_records_group_for_concurrent_calls_followups_and_failures(self):
@@ -101,9 +101,14 @@ class AIUsageCommandTests(unittest.IsolatedAsyncioTestCase):
             with session_context(sid, "config", "logs.zip", group):
                 await pool.chat(config, [], phase=phase, use_breaker=False)
 
-        with patch.object(pool.clients["main"], "chat_messages", side_effect=reply):
+        with self.assertLogs("Maa.LLMPool", level="INFO") as logs, \
+             patch.object(pool.clients["main"], "chat_messages", side_effect=reply):
             await asyncio.gather(call("111", "a", "analysis"), call("222", "b", "analysis"))
             await call("111", "a", "followup")
+        self.assertTrue(any(
+            "输入 10 · 输出 0 · 合计 10 tokens · 缓存命中率：暂无缓存数据" in line
+            for line in logs.output
+        ))
         with patch.object(pool.clients["main"], "chat_messages", new_callable=AsyncMock,
                           side_effect=LLMError("failed", kind="auth")):
             await call("222", "b", "followup")
@@ -121,3 +126,23 @@ class AIUsageCommandTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(args=args):
                 result = await self.handler._cmd_ai(None, args)
                 self.assertIn(f"最近 {expected} 个会话", result.text)
+
+    async def test_recent_shows_weighted_overall_usage_and_session_usage(self):
+        self.store.record(UsageRecord(
+            session_id="a", prompt_tokens=900, completion_tokens=20,
+            uncached_prompt_tokens=100, cache_read_tokens=800,
+        ))
+        self.store.record(UsageRecord(
+            session_id="b", prompt_tokens=100, completion_tokens=30,
+            uncached_prompt_tokens=100,
+        ))
+        result = await self.handler._cmd_ai(None, [])
+        self.assertIn(
+            "输入 1.0k · 输出 50 · 合计 1.1k tokens · 缓存命中率：80.0%", result.text,
+        )
+        self.assertIn(
+            "输入 900 · 输出 20 · 合计 920 tokens · 缓存命中率：88.9%", result.text,
+        )
+        self.assertIn(
+            "输入 100 · 输出 30 · 合计 130 tokens · 缓存命中率：暂无缓存数据", result.text,
+        )

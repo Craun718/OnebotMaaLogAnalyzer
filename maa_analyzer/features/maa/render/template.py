@@ -49,6 +49,7 @@ _DEFAULTS: dict[str, str] = {
     "title": "", "project": "", "file": "", "generated_at": "",
     "tokens_input": "0", "tokens_output": "0", "tokens_total": "0",
     "usage_calls": "0", "provider": "-", "model": "-", "usage": "",
+    "usage_style": "", "cache_hit_rate": "暂无缓存数据", "usage_summary": "",
 }
 
 # 未识别占位符原样保留，便于逐步调试。

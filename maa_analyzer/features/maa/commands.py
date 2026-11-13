@@ -392,8 +392,7 @@ class CommandHandler:
 
     async def _cmd_ai(self, cfg: ConfigState, args: list[str]) -> CommandResult:
         """`/maa ai [n|all]`：查看最近会话用量或全部历史汇总。"""
-        from ...core.ai_usage import UsageStore, format_tokens
-        from ...core.llm import cache_hit_rate
+        from ...core.ai_usage import SessionUsage, UsageStore, format_tokens, format_usage
 
         all_history = bool(args and args[0].lower() == "all")
         try:
@@ -405,6 +404,15 @@ class CommandHandler:
         sessions = store.sessions(limit)
         if not sessions:
             return CommandResult(text="还没有模型调用记录。")
+
+        def usage_line(items: list[SessionUsage]) -> str:
+            summary = {
+                key: sum(getattr(item, key) for item in items)
+                for key in ("prompt_tokens", "completion_tokens", "uncached_prompt_tokens",
+                            "cache_read_tokens", "cache_write_tokens")
+            }
+            summary["total_tokens"] = sum(item.total() for item in items)
+            return format_usage(summary)
 
         total_tokens = sum(item.total() for item in sessions)
         total_calls = sum(item.calls for item in sessions)
@@ -419,22 +427,15 @@ class CommandHandler:
             uncached = sum(item.uncached_prompt_tokens for item in sessions)
             cache_read = sum(item.cache_read_tokens for item in sessions)
             cache_write = sum(item.cache_write_tokens for item in sessions)
-            lines = [
-                header,
-                f"输入 {format_tokens(sum(item.prompt_tokens for item in sessions))}"
-                f" · 输出 {format_tokens(sum(item.completion_tokens for item in sessions))}"
-                f" · 合计 {format_tokens(total_tokens)} tokens",
-            ]
+            lines = [header, usage_line(sessions)]
             if cache_read or cache_write:
-                rate = cache_hit_rate(uncached, cache_read, cache_write)
                 lines.append(
-                    f"缓存命中 {rate * 100:.0f}%"
-                    f" · 读取 {format_tokens(cache_read)}"
+                    f"缓存读取 {format_tokens(cache_read)}"
                     f" · 未命中 {format_tokens(uncached)}"
                     f" · 写入 {format_tokens(cache_write)} tokens"
                 )
             lines.append(f"累计用时 {sum(item.elapsed_ms for item in sessions) / 1000:.1f}s")
-            groups = {}
+            groups: dict[str, list[SessionUsage]] = {}
             for item in sessions:
                 groups.setdefault(item.group_id, []).append(item)
             lines.extend(["", "按群统计："])
@@ -448,22 +449,10 @@ class CommandHandler:
                     f" · {sum(item.calls for item in items)} 次调用"
                     f" · 失败 {sum(item.failed for item in items)} 次"
                 )
-                lines.append(
-                    f"  输入 {format_tokens(sum(item.prompt_tokens for item in items))}"
-                    f" · 输出 {format_tokens(sum(item.completion_tokens for item in items))}"
-                    f" · 合计 {format_tokens(sum(item.total() for item in items))} tokens"
-                )
-                group_read = sum(item.cache_read_tokens for item in items)
-                group_write = sum(item.cache_write_tokens for item in items)
-                if group_read or group_write:
-                    rate = cache_hit_rate(
-                        sum(item.uncached_prompt_tokens for item in items),
-                        group_read, group_write,
-                    )
-                    lines.append(f"  缓存命中 {rate * 100:.0f}%")
+                lines.append(f"  {usage_line(items)}")
                 lines.append(f"  累计用时 {sum(item.elapsed_ms for item in items) / 1000:.1f}s")
             return CommandResult(text="\n".join(lines))
-        lines = [header, ""]
+        lines = [header, usage_line(sessions), ""]
         for item in sessions:
             stamp = time.strftime("%m-%d %H:%M", time.localtime(item.updated_at))
             title = f"{stamp} · {item.config or '-'}"
@@ -472,17 +461,8 @@ class CommandHandler:
             lines.append(title)
             status = f"失败 {item.failed} 次" if item.failed else "全部成功"
             lines.append(f"  {item.phase_split()} · {status}")
-            cache_note = (
-                f" · 缓存命中 {item.cache_hit_rate() * 100:.0f}%"
-                if item.cache_read_tokens or item.cache_write_tokens
-                else ""
-            )
             lines.append(
-                f"  输入 {format_tokens(item.prompt_tokens)}"
-                f" · 输出 {format_tokens(item.completion_tokens)}"
-                f" · 合计 {format_tokens(item.total())} tokens"
-                f"{cache_note}"
-                f" · 用时 {item.elapsed_ms / 1000:.1f}s"
+                f"  {usage_line([item])} · 用时 {item.elapsed_ms / 1000:.1f}s"
             )
             lines.append(f"  {item.pair_label()}")
             lines.append("")

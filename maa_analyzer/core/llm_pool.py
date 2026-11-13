@@ -21,7 +21,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Iterator, Optional
 
-from ..core.ai_usage import SessionUsage, UsageRecord, UsageStore
+from ..core.ai_usage import SessionUsage, UsageRecord, UsageStore, format_usage
 from ..core.llm import (
     ChatMessage,
     ContextOverflowError,
@@ -29,7 +29,6 @@ from ..core.llm import (
     LLMError,
     RequestParams,
     backoff_seconds,
-    cache_hit_rate,
     create_llm_client,
     normalize_usage,
     provider_kind,
@@ -576,15 +575,9 @@ class LLMPool:
                     if use_breaker:
                         self._report_success(candidate.provider.name)
                     usage = normalize_usage(reply.usage)
-                    if usage["prompt_tokens"] > 0:
-                        rate = cache_hit_rate(
-                            usage["uncached_prompt_tokens"],
-                            usage["cache_read_tokens"],
-                            usage["cache_write_tokens"],
-                        )
+                    if usage["prompt_tokens"] > 0 or usage["completion_tokens"] > 0:
                         logger.info(
-                            f"[LLM] {candidate.label()} 输入 {usage['prompt_tokens']} tokens"
-                            f" · 缓存命中 {rate * 100:.0f}%"
+                            f"[LLM] {candidate.label()} {format_usage(usage, exact=True)}"
                             f"（读取 {usage['cache_read_tokens']}"
                             f" / 未命中 {usage['uncached_prompt_tokens']}）"
                         )
