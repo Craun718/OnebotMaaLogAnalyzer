@@ -108,8 +108,8 @@ def _config_defaults() -> dict:
     project = _dump(ProjectConfig())
     project["name"] = "MaaXXX"
     return {
-        "listen_groups": ["123456789"],
-        "notify_group": "123456789",
+        "listen_groups": [],
+        "notify_group": "",
         "project": project,
         "llm": {"models": [{"name": "default", "model": "gpt-4o-mini"}]},
         "vision": _dump(VisionConfig()),

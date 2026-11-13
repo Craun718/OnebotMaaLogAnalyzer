@@ -89,17 +89,17 @@ class Main(Star):
         config: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(context, config)
-        # AstrBot keeps previously saved values when the schema defaults change.
-        # Replace old sentinel values in that same object so the panel updates too.
+        # Update AstrBot's saved object so the WebUI shows normalized defaults.
         if config is not None and _KERNEL_IMPORT_ERROR is None:
             changed = False
             for key, default in config_module.PANEL_DEFAULTS.items():
-                value = config.get(key)
-                legacy = (key in config_module.PANEL_TRISTATE_MODE_FIELDS and value == "inherit") or (
-                    key in config_module.PANEL_NONNEGATIVE_INT_FIELDS and value == -1
-                )
-                if key not in config or (legacy and default not in ("inherit", -1)):
+                if key not in config:
                     config[key] = copy.deepcopy(default)
+                    changed = True
+            normalized = config_module.normalize_panel_values(config)
+            for key, value in normalized.items():
+                if config.get(key) != value:
+                    config[key] = value
                     changed = True
             save = getattr(config, "save_config", None)
             if changed and callable(save):

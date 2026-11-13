@@ -26,61 +26,43 @@
 - **AstrBot AIOCQHTTP**：忽略 `onebot` 段，由 AstrBot 接收事件和调用协议 API；`bot`、`llm`、
   `log` 及配置档案语义保持不变。
 
-AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON。新建面板配置时，有固定程序默认值的字段直接显示这些默认值，面板值会覆盖所选档案或端点的对应配置。下表说明手动使用旧继承标记时的行为：
+AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON。新建面板配置时，有固定程序默认值的字段直接显示这些默认值，面板值会覆盖所选档案或端点的对应配置。下表说明各字段的生效范围和空值行为：
 
-| 面板字段 | 临时覆盖的 JSON 位置 | 留空时 |
+| 面板字段 | 生效范围 | 空值或自动选择的含义 |
 | --- | --- | --- |
-| `enabled_mode` | 所选档案的 `settings.enabled` | `inherit` 保持原值 |
-| `config_file` | 配置文件路径本身 | 插件数据目录下的 `config.json` |
-| `data_dir` | `bot.data_dir` | 保持 JSON 值 |
-| `default_config` | 选择要修改的档案，不写入 JSON | 第一个档案 |
-| `listen_groups` | 所选档案的 `listen_groups` | 保持原值 |
-| `notify_group` | 所选档案的 `notify_group` | 保持原值 |
-| `command_prefix` | 所选档案的 `commands.prefix` | 保持原值 |
-| `owners` / `admins` | 所选档案的 `commands.owners` / `admins` | 保持原值 |
-| `report_mode` / `report_template` | 所选档案的 `report.render` / `template` | 保持原值 |
-| `report_max_*` / `report_device_scale_factor` / `report_font_family` / `report_browser_path` | 报告尺寸、页数、渲染倍率、字体与浏览器 | 继承标记保持原值 |
-| `report_reuse_browser_mode` / `report_render_timeout_ms` / `report_*_mode` | 报告浏览器复用、超时、嵌入附件、Markdown、文本回退与追问渲染 | `inherit` 标记保持原值 |
-| `project_name` | 所选档案的 `project.name` | 保持原值 |
-| `archive_match_mode` | 所选档案的 `project.archive_match_mode` | 保持原值 |
-| `file_prefix` | 所选档案的 `project.file_prefix` | 保持原值 |
-| `require_log_layout_mode` | 所选档案的 `project.require_log_layout` | `inherit` 保持原值 |
-| `ui_mxu_mode` / `ui_mfaa_mode` / `ui_maafwapp_mode` / `ui_auto_mode` | 所选档案的 `project.ui.<名称>.enabled` | `inherit` 保持原值 |
-| `repo_mode` / `repo_search_mode` / `repo_path` / `repo_url` | 所选档案的仓库开关、检索模式与来源 | `inherit` / 留空保持原值 |
-| `repo_mirrors` / `repo_branch` / `repo_default_branch` | 仓库镜像、克隆分支与还原分支 | 留空 / 空列表保持原值 |
-| `repo_preload_*` / `repo_update_on_analyze_mode` / `repo_allow_ai_update_mode` | 仓库预下载、重试、分析前更新与 AI 更新权限 | `inherit` / `-1` 保持原值 |
-| `repo_auto_checkout_version_mode` / `repo_allow_ai_switch_tag_mode` / `repo_max_tag_switch_rounds` | 日志版本切 tag、AI 切 tag 与轮数限制 | `inherit` / `-1` 保持原值 |
-| `repo_restore_latest_after_analyze_mode` / `repo_refuse_dirty_worktree_mode` | 分析后还原与脏工作区保护 | `inherit` 保持原值 |
-| `repo_max_tool_*` / `repo_agent_deadline_seconds` | agent 模式轮次、调用数、结果、上下文与超时限制 | `-1` 保持原值 |
-| `repo_extensions` / `repo_max_file_kb` / `repo_max_scan_files` / `repo_max_files` | 仓库扫描扩展名、大小、文件数与注入文件数 | 空列表 / `-1` 保持原值 |
-| `repo_max_identifiers` / `repo_context_lines` / `repo_max_block_lines` / `repo_max_chars` | inject 模式标识符、上下文、JSON 块与字符限制 | `-1` 保持原值 |
-| `llm_provider` / `llm_model` / `llm_fallback_models` | 所选档案首选候选与备用候选链；备用项格式为 `端点名:模型名` | 保持原值 |
-| `llm_profile_temperature` / `llm_profile_max_tokens` / `llm_profile_top_p` | 所选档案的模型调用参数 | 继承标记保持原值 |
-| `llm_endpoint_selector` / `llm_endpoint_name` / `llm_endpoint_kind` / `llm_endpoint_base_url` / `llm_endpoint_api_key` | 选择并编辑一个全局 LLM 端点 | 留空保持原值 |
-| `llm_endpoint_max_*` / `llm_endpoint_timeout_seconds` / `llm_endpoint_connect_timeout_seconds` / `llm_endpoint_max_retries` | 端点并发、超时与重试 | `-1` 保持原值 |
-| `llm_endpoint_model` / `llm_model_*` | 选择并编辑该端点的一个模型能力、输出、上下文与采样参数 | 继承标记保持原值 |
-| `llm_defaults_*` / `llm_circuit_*` | 全局模型兜底参数与端点熔断参数 | 继承标记保持原值 |
-| `vision_mode` / `vision_max_images` / `vision_max_image_kb` | 所选档案的看图开关与数量、大小上限 | `inherit` 标记保持原值 |
-| `vision_detail` / `vision_*_mode` | 看图细节、错误截图、项目模板图与模型索图 | `inherit` 标记保持原值 |
-| `send_images_mode` / `send_repo_images_mode` / `send_files_mode` | 所选档案的对应 `settings.send_*` | `inherit` 保持原值 |
-| `followup_mode` | 所选档案的 `settings.followup_enabled` | `inherit` 保持原值 |
-| `followup_window_minutes` | 所选档案的 `settings.followup_window_minutes` | `-1` 保持原值 |
-| `history_mode` | 所选档案的 `settings.history_enabled` | 默认 `enabled`；旧值 `inherit` 保持原值 |
-| `history_period_hours` | 所选档案的 `settings.history_period_hours` | 默认 `24`；旧值 `-1` 保持原值 |
-| `history_keep_periods` | 所选档案的 `settings.history_keep_periods` | `-1` 保持原值 |
-| `settings_*` | 分析触发、去重、反馈、附图、附件、追问、历史、并发、超时、上下文压缩与缓存等高级设置 | 继承标记保持原值 |
-| `settings_max_zip_*` / `settings_max_log_*` / `settings_*_lines` | 压缩包、日志文件、摘要与证据提取上限 | `-1` 保持原值 |
-| `settings_system_prompt` | 自定义系统提示词 | 留空保持原值 |
-| `commands_mode` / `commands_*_level` | 所选档案的 `commands.enabled` 与权限等级 | `-1` / `inherit` 保持原值 |
-| `commands_reply_chunk_chars` / `commands_max_list_items` | 指令回复分段与任务列表条数 | `-1` 保持原值 |
-| `log_to_file_mode` | `log.log_to_file` | `inherit` 保持原值 |
-| `log_dir` | `log.log_dir` | 保持原值 |
-| `log_level` | `log.log_level` | 保持原值 |
+| `config_file` | 配置文件路径 | 使用插件数据目录下的 `config.json` |
+| `data_dir` | 运行数据目录 | 恢复面板默认 `data`，相对插件数据目录解析 |
+| `default_config` | 选择面板编辑的档案 | 选择第一个档案 |
+| `listen_groups` / `notify_group` | 所选档案的监听群、额外通知群 | 空列表停止监听；空通知群关闭额外转发 |
+| `owners` / `admins` | 所选档案的指令权限名单 | 空列表清空对应名单 |
+| `command_prefix` / `commands_*` | 指令前缀、开关、权限、回复上限 | 固定默认值以面板为准，清空固定值恢复默认 |
+| `project_name` / `file_prefix` | 项目显示名、日志包文件名前缀 | 清空配置；空项目名允许从日志识别，prefix 模式需填写前缀 |
+| `archive_match_mode` / `require_log_layout_mode` / `ui_*_mode` | 日志包识别、布局校验、各 UI 开关 | 使用面板固定默认值 |
+| `report_*` | 报告模式、模板、尺寸、浏览器与渲染选项 | 固定值恢复面板默认；空字体和浏览器路径使用程序自动选择 |
+| `repo_mode` / `repo_search_mode` / `repo_*` | 所选档案的仓库设置 | 可选文本留空清空；镜像、扩展名空列表清空；固定值恢复面板默认 |
+| `llm_provider` / `llm_model` | 所选档案的首选模型引用 | 自动选择面板选中的端点、该端点选中的模型或第一个模型 |
+| `llm_fallback_models` | 备用候选链，格式 `端点名:模型名` | 空列表清空备用候选 |
+| `llm_profile_temperature` / `llm_profile_top_p` | 所选档案的采样参数 | 清除档案参数，使用模型或全局参数 |
+| `llm_profile_max_tokens` | 所选档案的输出 token 上限 | `-1` 清除档案参数，使用模型或全局参数 |
+| `llm_endpoint_selector` / `llm_endpoint_model` | 选择要编辑的全局端点、该端点的模型 | 选择第一个端点、该端点的第一个模型 |
+| `llm_endpoint_name` | 修改所选端点名称并更新引用 | 保留所选端点名称 |
+| `llm_endpoint_base_url` / `llm_endpoint_api_key` | 所选端点的地址与密钥 | 地址恢复面板默认；空密钥清除该端点密钥 |
+| `llm_endpoint_kind` / `llm_endpoint_max_*` / `llm_endpoint_*timeout_seconds` | 所选端点协议、并发、重试与超时 | 使用面板固定默认值 |
+| `llm_model_*` | 所选模型能力、输出、上下文与采样参数 | 空采样参数使用全局值；其他字段使用面板固定默认值，token 为 `0` 时使用全局值 |
+| `llm_defaults_*` / `llm_circuit_*` | 全局 LLM 参数、熔断设置 | 使用面板固定默认值 |
+| `vision_*` / `send_*_mode` / `followup_*` / `history_*` / `settings_*` | 所选档案的分析、看图、发送、追问、历史等设置 | 使用面板值；空系统提示词恢复程序默认提示词 |
+| `log_to_file_mode` / `log_dir` / `log_level` | 插件日志 | 使用面板固定默认值 |
 
-没有固定值的字段（如端点、密钥和可选的模型级采样参数）仍可留空。插件启动时会将已保存面板中的旧 `inherit` 和 `-1` 标记替换为对应的固定程序默认值，并保存面板配置；已填写的具体值保留。没有固定值的字段和空字符串、空列表仍可沿用高级配置。面板覆盖不会回写 `config.json`，
-未选中的配置档案、未被 `llm_endpoint_selector` / `llm_endpoint_model`
-选中的端点与模型、Provider/Model 数组顺序和自定义高级字段保持原值。`llm_provider`
-与 `llm_model` 负责首选候选；`llm_endpoint_*` 与 `llm_model_*` 只编辑选中的一个端点和模型。
+**面板中提供的字段以面板为准，空字符串和空列表不再静默继承 JSON 中的同级旧值。**
+插件启动时会把清空的固定默认字段，以及旧的 `inherit` / `-1` 标记，恢复成对应的面板默认值并保存，
+使 WebUI 展示与实际采用的值一致。可选的 LLM 采样参数留空、档案 token 上限为 `-1` 时，
+清除同级参数并使用模型或全局参数；这些下层参数也可在 WebUI 编辑。
+选择器的自动选择规则见上表。对于直接调用配置加载 API 的调用方，未提供的字段保留 JSON 值。
+
+面板覆盖不会回写 `config.json`。未选中的配置档案、未选中的端点和模型、未映射到面板的高级字段保持原值。
+JSON 中的端点和模型声明仍用于选择器定位；所选档案的备用候选以面板列表为准。
+如果此前通过面板留空继承 JSON 中的监听群、权限名单、密钥、仓库或其他值，升级后需在 WebUI 填写实际需要的值。
+`/maa set`、`/maa project set` 等独立的运行时覆盖层仍按各自的配置优先级生效。
 
 复用裸模式配置时，建议在 AstrBot 面板中同时填写绝对 `config_file` 与绝对 `data_dir`。
 若只写相对 `bot.data_dir`，插件会按自己的数据目录解析，不一定等于裸进程的启动目录。
@@ -88,7 +70,7 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
 
 ## 完整示例：默认 config.json
 
-首次运行生成的完整内容（`api_key`、`access_token` 默认为空，需要自己填）：
+首次运行生成的完整内容（`api_key`、`access_token` 默认为空，需要自己填）。监听群默认为空，需填写实际群号才会接收日志；通知群默认为空，分析结果只发回原群：
 
 ```json
 {
@@ -105,8 +87,8 @@ AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编
     "data_dir": "data",
     "configs": {
       "默认": {
-        "listen_groups": ["123456789"],
-        "notify_group": "123456789",
+        "listen_groups": [],
+        "notify_group": "",
         "project": {
           "name": "MaaXXX",
           "archive_match_mode": "auto",
