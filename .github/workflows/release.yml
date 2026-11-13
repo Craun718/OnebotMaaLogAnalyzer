@@ -21,7 +21,10 @@ jobs:
         id: meta
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          VERSION="${VERSION:-$GITHUB_REF_NAME}"
+          # Tag names may contain slashes, but archive names must be filenames.
+          VERSION="${VERSION//\//-}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           # 预发布判定
           if [[ "$VERSION" =~ alpha|beta|rc|dev|preview ]]; then
@@ -36,7 +39,6 @@ jobs:
           config: .github/cliff.toml
           args: >-
             -vv --latest --strip header
-            ${{ steps.meta.outputs.prerelease == 'false' && '--tag-pattern "^v[0-9]+\\.[0-9]+\\.[0-9]+$"' || '' }}
         env:
           OUTPUT: CHANGES.md
           GITHUB_REPO: ${{ github.repository }}
@@ -63,169 +65,18 @@ jobs:
           cat /tmp/release_body.md
 
       - name: Create release archives
-        run: |
-          set -euo pipefail
-
-          VERSION="${{ steps.meta.outputs.version }}"
-          FULL=dist/OnebotMaaLogAnalyzer
-          LIGHT=dist/OnebotMaaLogAnalyzer-light
-          ASTRBOT_STAGE=dist/astrbot
-          ASTRBOT="$ASTRBOT_STAGE/OnebotMaaLogAnalyzer"
-
-          # ── 普通包：含 tools/（模板编辑器、config.json 编辑器） ──
-          # 注意：debug/ 为开发调试工具，.github/ 为 CI 配置，均不打包
-          rm -rf "$FULL"
-          mkdir -p "$FULL"
-          for f in main.py requirements.txt README.md LICENSE; do
-            cp "$f" "$FULL/"
-          done
-          for d in docs maa_analyzer templates; do
-            cp -r "$d" "$FULL/"
-          done
-          if [ ! -d tools ]; then
-            echo "::error::缺少 tools/ 目录：普通包必须包含工具，精简包才不含它"
-            exit 1
-          fi
-          cp -r tools "$FULL/"
-
-          # ── 清理不应进入发布包的产物 ──
-          find "$FULL" -type d -name __pycache__ -prune -exec rm -rf {} +
-          find "$FULL" -type f \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyd' \) -delete
-          find "$FULL" -type d -name tests -prune -exec rm -rf {} +
-          find "$FULL" -type f -name 'test_*.py' -delete
-          find "$FULL" -type f -name '*.log' -delete
-
-          check_forbidden() {
-            local PKG="$1" LABEL="$2"
-
-            local FORBIDDEN
-            FORBIDDEN=$(find "$PKG" \
-              \( -type d \( -name 'debug' -o -name 'tests' -o -name '__pycache__' \
-                -o -name '.github' -o -name 'astrbot_plugin' \) \
-              -o -type f \( -name 'config.json' -o -name 'config.local.json' \
-                -o -name '.gitignore' -o -name '.env' -o -name '*.pyc' \
-                -o -name '*.pyo' -o -name '*.pyd' -o -name '*.log' \
-                -o -name 'test_*.py' \) \) -print)
-            if [ -n "$FORBIDDEN" ]; then
-              echo "::error::$LABEL 中出现禁止的文件："
-              echo "$FORBIDDEN"
-              exit 1
-            fi
-
-            for legacy in bot core features; do
-              if [ -e "$PKG/$legacy" ]; then
-                echo "::error::$LABEL 中出现旧顶层目录：$legacy"
-                exit 1
-              fi
-            done
-          }
-
-          check_bare() {
-            local PKG="$1" LABEL="$2"
-            check_forbidden "$PKG" "$LABEL"
-
-            local required
-            for required in main.py requirements.txt README.md LICENSE \
-                            maa_analyzer/__init__.py maa_analyzer/runtime.py \
-                            maa_analyzer/platform.py \
-                            maa_analyzer/core/__init__.py \
-                            maa_analyzer/features/__init__.py \
-                            maa_analyzer/features/maa/__init__.py \
-                            maa_analyzer/platforms/onebot/__init__.py \
-                            maa_analyzer/platforms/astrbot/__init__.py \
-                            maa_analyzer/astrbot/plugin_runtime.py \
-                            templates/default/page.html; do
-              if [ ! -e "$PKG/$required" ]; then
-                echo "::error::$LABEL 缺少必需文件：$required"
-                exit 1
-              fi
-            done
-          }
-
-          # ── 普通包校验：tools/ 必须在，且两个编辑器都能跑 ──
-          check_bare "$FULL" "普通包"
-          for required in tools/templates/editor.py tools/config/editor.py; do
-            if [ ! -f "$FULL/$required" ]; then
-              echo "::error::普通包缺少工具：$required"
-              exit 1
-            fi
-          done
-
-          # ── 精简包：普通包去掉 tools/，模板只留 default ──
-          rm -rf "$LIGHT"
-          cp -r "$FULL" "$LIGHT"
-          rm -rf "$LIGHT/tools"
-          find "$LIGHT/templates" -mindepth 1 -maxdepth 1 ! -name 'default' -exec rm -rf {} +
-
-          # ── 精简包校验：tools/ 必须不存在，templates/ 只剩 default ──
-          check_bare "$LIGHT" "精简包"
-          if [ -e "$LIGHT/tools" ]; then
-            echo "::error::精简包中不应出现 tools/"
-            exit 1
-          fi
-          EXTRA_TEMPLATES=$(find "$LIGHT/templates" -mindepth 1 -maxdepth 1 ! -name 'default' -print)
-          if [ -n "$EXTRA_TEMPLATES" ]; then
-            echo "::error::精简包的 templates/ 只允许保留 default："
-            echo "$EXTRA_TEMPLATES"
-            exit 1
-          fi
-
-          # ── AstrBot 插件包：插件壳 + 同一套共享内核与模板 ──
-          rm -rf "$ASTRBOT_STAGE"
-          mkdir -p "$ASTRBOT"
-          cp -r astrbot_plugin/. "$ASTRBOT/"
-          cp -r maa_analyzer templates "$ASTRBOT/"
-
-          find "$ASTRBOT" -type d -name __pycache__ -prune -exec rm -rf {} +
-          find "$ASTRBOT" -type f \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyd' \) -delete
-          find "$ASTRBOT" -type d -name tests -prune -exec rm -rf {} +
-          find "$ASTRBOT" -type f -name 'test_*.py' -delete
-          find "$ASTRBOT" -type f -name '*.log' -delete
-
-          check_forbidden "$ASTRBOT" "AstrBot 插件包"
-          for required in main.py README.md metadata.yaml _conf_schema.json requirements.txt \
-                          maa_analyzer/__init__.py maa_analyzer/runtime.py \
-                          maa_analyzer/core/__init__.py \
-                          maa_analyzer/features/maa/__init__.py \
-                          maa_analyzer/platforms/astrbot/adapter.py \
-                          maa_analyzer/astrbot/plugin_runtime.py \
-                          templates/default/page.html; do
-            if [ ! -e "$ASTRBOT/$required" ]; then
-              echo "::error::AstrBot 插件包缺少必需文件：$required"
-              exit 1
-            fi
-          done
-
-          echo "普通包内容："
-          find "$FULL" -type f | sort
-          echo "精简包内容："
-          find "$LIGHT" -type f | sort
-          echo "AstrBot 插件包内容："
-          find "$ASTRBOT" -type f | sort
-
-          (
-            cd dist
-            zip -rq "../OnebotMaaLogAnalyzer-${VERSION}.zip" OnebotMaaLogAnalyzer
-            zip -rq "../OnebotMaaLogAnalyzer-${VERSION}-light.zip" OnebotMaaLogAnalyzer-light
-          )
-          (
-            cd "$ASTRBOT_STAGE"
-            zip -rq "../../OnebotMaaLogAnalyzer-${VERSION}-astrbot.zip" OnebotMaaLogAnalyzer
-          )
-
-          echo "打包完成："
-          du -h \
-            "OnebotMaaLogAnalyzer-${VERSION}.zip" \
-            "OnebotMaaLogAnalyzer-${VERSION}-light.zip" \
-            "OnebotMaaLogAnalyzer-${VERSION}-astrbot.zip"
+        run: python .github/scripts/package.py "$VERSION"
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: V${{ steps.meta.outputs.version }}
+          name: ${{ github.ref_name }}
           body_path: /tmp/release_body.md
           files: |
             OnebotMaaLogAnalyzer-${{ steps.meta.outputs.version }}.zip
             OnebotMaaLogAnalyzer-${{ steps.meta.outputs.version }}-light.zip
             OnebotMaaLogAnalyzer-${{ steps.meta.outputs.version }}-astrbot.zip
           prerelease: ${{ steps.meta.outputs.prerelease }}
+          fail_on_unmatched_files: true

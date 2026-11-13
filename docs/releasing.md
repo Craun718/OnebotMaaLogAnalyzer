@@ -1,11 +1,14 @@
 # 发布
 
-推送 `v*` 标签即触发 GitHub Actions 自动发布：
+推送 `v*` 标签即触发 GitHub Actions 自动发布，例如：
 
 ```bash
 git tag v0.3.1
 git push origin v0.3.1
 ```
+
+压缩包版本名会去掉开头的 `v`，并将标签中的 `/` 替换为 `-`。
+Release 名称保留原始标签名。
 
 工作流会：
 
@@ -15,6 +18,16 @@ git push origin v0.3.1
 3. 在压缩前执行白名单、必需文件和禁止文件校验，任一失败即中止发布。
 4. 创建 GitHub Release；版本号含 `alpha` / `beta` / `rc` / `dev` / `preview`
    时自动标记为预发布。
+
+## 持续集成
+
+每次 push 和 Pull Request 都会运行类型检查，并使用与正式发布相同的脚本构建上述三个包。
+ZIP 可从对应 GitHub Actions 运行的 `packages-<提交 SHA>` artifact 下载；CI 不会创建 Release。
+
+类型检查使用 mypy，将当前结果与 PR 目标提交比较；push 默认分支时与推送前的提交比较，
+其他分支 push 时与默认分支比较；新增类型问题会使
+检查失败，行号变化不会影响比较。本地可安装 `mypy==2.4.1`，并将 `MYPY_BASELINE_DIR`
+设置为比较用的代码目录后运行 `python .github/scripts/check_types.py`。
 
 ## 三种发布包
 
