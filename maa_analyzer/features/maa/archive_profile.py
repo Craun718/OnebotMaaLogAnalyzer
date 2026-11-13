@@ -121,7 +121,7 @@ class ArchiveProfile:
         return str(self.resource_version or "").strip()
 
     def version_summary(self) -> str:
-        """一行式版本摘要，用于报告头。"""
+        """逐行列出的版本摘要，用于文本和图片报告头。"""
         parts = [self.ui_name]
         if self.ui_version:
             parts.append(f"软件版本：{self.ui_version}")
@@ -135,7 +135,7 @@ class ArchiveProfile:
             parts.append(f"设备：{self.device}")
         if self.os_version:
             parts.append(f"系统：{self.os_version}")
-        return " · ".join(parts)
+        return "\n".join(parts)
 
     def prompt_lines(self) -> list[str]:
         """提示词中的运行环境段落。"""

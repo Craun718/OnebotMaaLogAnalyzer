@@ -98,7 +98,10 @@ python main.py               # 首次运行生成 config.json
        正在下载并分析，请稍等。
 [Bot]  摘要完成，提取到 5 个日志文件、2 张错误截图，正在调用 AI。
 [Bot]  MaaXXX 日志分析结果
-       运行环境：MFAAvalonia · 软件版本：v2.16.2 · 资源版本：v1.4.7 · MaaFramework：v5.13.0
+       运行环境：MFAAvalonia
+       软件版本：v2.16.2
+       资源版本：v1.4.7
+       MaaFramework：v5.13.0
        文件：log_20260907_033044.zip
        大小：3.44 MB
        日志文件：5 个
