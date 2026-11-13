@@ -170,13 +170,13 @@ def validate_llm_config(llm_cfg: dict, configs_cfg: dict) -> list[str]:
                     f"配置「{config_name}」llm.models[{index}] 缺少 name 或 model"
                 )
                 continue
-            provider = providers.get(name)
-            if provider is None:
+            referenced_provider = providers.get(name)
+            if referenced_provider is None:
                 errors.append(
                     f"配置「{config_name}」引用了不存在的端点：{name}"
                 )
                 continue
-            if provider.find_model(model) is None:
+            if referenced_provider.find_model(model) is None:
                 errors.append(
                     f"配置「{config_name}」引用了端点 {name} 上不存在的模型：{model}"
                 )

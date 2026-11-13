@@ -16,7 +16,7 @@ import asyncio
 import hmac
 import json
 import logging
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional, Protocol
 from urllib.parse import parse_qs, urlsplit
 
 import websockets
@@ -26,6 +26,12 @@ logger = logging.getLogger("Maa.WS")
 EventHandler = Callable[[dict], Awaitable[bool | None]]
 APIHandler = Callable[[dict], Awaitable[Optional[dict]]]
 APIResponseHandler = Callable[[dict], None]
+
+
+class _WebSocketConnection(Protocol):
+    async def send(self, message: str) -> None: ...
+
+    async def close(self) -> None: ...
 
 
 class OneBotWS:
@@ -38,7 +44,7 @@ class OneBotWS:
         self._api_handler: Optional[APIHandler] = None
         self._api_response_handler: Optional[APIResponseHandler] = None
         self._running = False
-        self._ws: Optional[object] = None
+        self._ws: Optional[_WebSocketConnection] = None
         self._server = None
         self._connection_count = 0
         # 事件分发任务：停止时统一取消，避免热重载后旧任务继续使用已关闭的连接

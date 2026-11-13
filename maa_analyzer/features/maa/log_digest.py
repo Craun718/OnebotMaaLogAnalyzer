@@ -320,7 +320,9 @@ def read_zip_member(zip_path: str, member_name: str,
 
 def _is_safe_member(name: str) -> bool:
     normalized = normalize_tool_path(name)
-    return bool(normalized) and not is_sensitive_path(name) and not is_sensitive_path(normalized)
+    if not normalized:
+        return False
+    return not is_sensitive_path(name) and not is_sensitive_path(normalized)
 
 
 def _select_log_infos(
@@ -429,6 +431,7 @@ def _select_log_infos(
         add_info(info)
 
     # 3. 运行记录 / Agent / 自定义截图日志（按 UI 调整优先级）
+    role_plan: tuple[tuple[str, int], ...]
     if ui == UI_MXU:
         role_plan = (("dated", 1), ("agent", 1), ("custom", 1), ("run", 1))
     else:

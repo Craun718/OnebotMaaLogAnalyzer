@@ -821,7 +821,7 @@ class AstrBotPlatformAdapter:
         return _response_mapping(result)
 
     async def get_group_member_info(
-        self, group_id: int, user_id: int
+        self, group_id: int | str, user_id: int | str
     ) -> dict[str, Any]:
         result = await self._call_action(
             "get_group_member_info",

@@ -75,9 +75,6 @@ class KeyedLocks:
     def keys(self) -> list[str]:
         return list(self._locks)
 
-    def keys(self) -> list[str]:
-        return list(self._locks)
-
 
 class KeyedThreadLocks:
     """按 key 分发 threading.Lock：给在线程池里跑的阻塞代码排队。"""

@@ -56,7 +56,8 @@ class MessageHandler:
 
         group_str = str(group_id)
         user_id = str(event.get("user_id", ""))
-        sender = event.get("sender") if isinstance(event.get("sender"), dict) else {}
+        raw_sender = event.get("sender")
+        sender = raw_sender if isinstance(raw_sender, dict) else {}
         role = str(sender.get("role") or "").lower()
         is_admin = role in ("admin", "owner")
 

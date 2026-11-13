@@ -116,9 +116,6 @@ class LogWatcher:
         part = parse_archive_part(file_name)
         if part is not None:
             self._recent[(group, f"part:{part.base.lower()}")] = now
-        part_key = self._part_key(group_id, file_name, settings)
-        if part_key is not None:
-            self._recent[(part_key[0], part_key[1], 0)] = now
 
     # ════════════════════════════════════════════════════════════
     # 事件入口
@@ -130,7 +127,8 @@ class LogWatcher:
         if group_id is None:
             return False
 
-        file_info = event.get("file") if isinstance(event.get("file"), dict) else event
+        raw_file_info = event.get("file")
+        file_info = raw_file_info if isinstance(raw_file_info, dict) else event
         file_name = self._pick_str(
             file_info, "name", "file_name", "filename", "file"
         )

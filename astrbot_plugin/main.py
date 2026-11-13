@@ -20,6 +20,8 @@ PLUGIN_NAME = "OnebotMaaLogAnalyzer"
 class _AstrBotLogHandler(logging.Handler):
     """Forward shared kernel logs to AstrBot's logger."""
 
+    _maa_astrbot_bridge = True
+
     def emit(self, record: logging.LogRecord) -> None:
         try:
             level = ("error" if record.levelno >= logging.ERROR else
@@ -113,7 +115,6 @@ class Main(Star):
         """Start the shared analyzer once for this plugin instance."""
         if self._log_handler is None:
             self._log_handler = _AstrBotLogHandler()
-            self._log_handler._maa_astrbot_bridge = True
             logging.getLogger("Maa").addHandler(self._log_handler)
         if self.plugin_runtime is not None:
             await self._start_runtime()
@@ -137,12 +138,15 @@ class Main(Star):
         await self._start_runtime()
 
     async def _start_runtime(self) -> None:
+        runtime = self.plugin_runtime
+        if runtime is None:
+            raise RuntimeError("插件运行时尚未创建")
         try:
-            await self.plugin_runtime.initialize()
+            await runtime.initialize()
         except (ValueError, OSError) as exc:
             logger.error("插件配置无效，分析功能未启动；请在插件面板修正配置并重新加载：%s", exc)
             return
-        _ACTIVE_RUNTIMES.add(self.plugin_runtime)
+        _ACTIVE_RUNTIMES.add(runtime)
 
     async def terminate(self) -> None:
         """Stop background work and release plugin-owned resources."""

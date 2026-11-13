@@ -272,7 +272,7 @@ class HistoryStore:
         """把 records.json 的写盘下沉到线程。"""
         await run_blocking(self.save, config_name)
 
-    async def add_async(self, **kwargs) -> HistoryRecord:
+    async def add_async(self, **kwargs) -> Optional[HistoryRecord]:
         """归档记录（复制 zip + 写盘）在线程里执行。"""
         return await run_blocking(self.add, **kwargs)
 

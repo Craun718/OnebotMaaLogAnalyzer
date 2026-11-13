@@ -11,7 +11,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from maa_analyzer.config import (
     ONEBOT_MODES,
@@ -28,6 +28,9 @@ from maa_analyzer.platforms.onebot.api import OneBotAPI
 from maa_analyzer.platforms.onebot.client import OneBotWS
 from maa_analyzer.platforms.onebot.handler import EventHandler
 from maa_analyzer.runtime import MaaWorkflowRuntime
+
+if TYPE_CHECKING:
+    from debug import DebugManager
 
 logger = logging.getLogger("Maa")
 
@@ -81,7 +84,7 @@ class BotRuntime:
         self.ws: Optional[OneBotWS] = None
         self.runtime: Optional[MaaWorkflowRuntime] = None
         self.handler: Optional[EventHandler] = None
-        self.debug_manager = None
+        self.debug_manager: Optional[DebugManager] = None
         self.mode = ""
         self._tasks: list[asyncio.Task] = []
 
@@ -329,6 +332,7 @@ async def main() -> None:
             await runtime.stop()
             raise SystemExit(1)
         try:
+            assert runtime.debug_manager is not None
             await run_cli(runtime.debug_manager)
         except KeyboardInterrupt:
             logger.info("收到中断信号")

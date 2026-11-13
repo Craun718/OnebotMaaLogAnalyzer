@@ -852,12 +852,12 @@ def _apply_profile_field_mappings(
             ))
     for key, path in PANEL_PROFILE_LIST_OVERRIDES.items():
         if _changed(panel, key):
-            value = [
+            list_value = [
                 str(item).strip()
                 for item in (_panel_value(panel, key) or [])
                 if str(item).strip()
             ]
-            _set_path(profile, path, value)
+            _set_path(profile, path, list_value)
     for key, path in PANEL_PROFILE_MODE_OVERRIDES.items():
         if _changed(panel, key):
             mode = _mode_value(panel, key)
@@ -1432,7 +1432,7 @@ def setup_logging(
         console.setLevel(level)
         console.setFormatter(ConfigNameFormatter(LOG_FORMAT, LOG_DATE_FORMAT))
         if isolated:
-            console._maa_plugin_handler = True
+            setattr(console, "_maa_plugin_handler", True)
         target.addHandler(console)
 
     if log_to_file:
@@ -1446,7 +1446,7 @@ def setup_logging(
                 ConfigNameFormatter(LOG_FORMAT, LOG_DATE_FORMAT)
             )
             if isolated:
-                file_handler._maa_plugin_handler = True
+                setattr(file_handler, "_maa_plugin_handler", True)
             target.addHandler(file_handler)
             logger.info(
                 "日志输出到文件: %s (level=%s)",
