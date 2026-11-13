@@ -321,6 +321,40 @@ class PluginRuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PluginEventDispatchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dispatch_preserves_account_for_mapping_and_service(self):
+        adapter = AstrBotPlatformAdapter()
+        bot = SimpleNamespace(
+            call_action=AsyncMock(return_value={"role": "member"}),
+            send_group_msg=AsyncMock(return_value={"message_id": 42}),
+        )
+        event = _event({"type": "text", "data": {"text": "/maa help"}})
+        event.bot = bot
+        raw = event.message_obj.raw_message
+        raw["self_id"] = 111
+        raw["sender"].pop("role")
+
+        async def handle(mapped):
+            # Simulate an unrelated event rebinding the global fallback client.
+            adapter.bind_bot(SimpleNamespace())
+            return await adapter.send_text(int(mapped.group_id), "report")
+
+        plugin = AstrBotPluginRuntime({}, plugin_data_dir=".", template_root="templates")
+        plugin.adapter = adapter
+        plugin.runtime = SimpleNamespace(
+            running=True,
+            service=SimpleNamespace(handle_platform_event=handle),
+        )
+        self.assertTrue(await plugin.handle_event(event))
+        bot.call_action.assert_awaited_once_with(
+            "get_group_member_info", group_id=10001, user_id=20002,
+            no_cache=False, self_id=111,
+        )
+        bot.send_group_msg.assert_awaited_once_with(
+            group_id=10001, self_id=111,
+            message=[{"type": "text", "data": {"text": "report"}}],
+        )
+        self.assertIsNone(adapter._event_route.get())
+
     async def test_event_is_bound_and_dispatched_once(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
