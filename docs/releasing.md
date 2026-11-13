@@ -1,11 +1,14 @@
 # 发布
 
-推送 `v*` 标签即触发 GitHub Actions 自动发布：
+推送标签即触发 GitHub Actions 自动发布，例如：
 
 ```bash
 git tag v0.3.1
 git push origin v0.3.1
 ```
+
+标签可以不带 `v` 前缀；压缩包版本名会去掉开头的 `v`，并将标签中的 `/` 替换为 `-`。
+Release 名称保留原始标签名。
 
 工作流会：
 
