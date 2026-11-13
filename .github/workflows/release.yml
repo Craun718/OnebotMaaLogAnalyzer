@@ -65,7 +65,7 @@ jobs:
           cat /tmp/release_body.md
 
       - name: Create release archives
-        run: bash .github/scripts/package.sh "$VERSION"
+        run: python .github/scripts/package.py "$VERSION"
         env:
           VERSION: ${{ steps.meta.outputs.version }}
 
