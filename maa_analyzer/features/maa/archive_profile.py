@@ -9,6 +9,7 @@
     `debug/maafw.log`、`logs/log-YYYYMMDD.log`、`debug/on_error/`
   - MaaFwApp（Android）：`maafw_logs_<时间戳>.zip`
     `log/maafw.log`、`log/app.log`、`device_info.txt`、`pi/debug/maafw.log`
+  - MWU：`mwu-logs.zip`，`mwu.log` + `debug/maafw.log` + `updater.log`
 
 本模块只做只读识别：读取少量元数据文件，不修改压缩包。
 """
@@ -24,6 +25,7 @@ from ...core.archive_names import (
     UI_MAAFWAPP,
     UI_MFAA,
     UI_MTA,
+    UI_MWU,
     UI_MXU,
     UI_UNKNOWN,
     ArchivePart,
@@ -45,6 +47,7 @@ __all__ = [
     "UI_MAAFWAPP",
     "UI_MFAA",
     "UI_MTA",
+    "UI_MWU",
     "UI_MXU",
     "UI_UNKNOWN",
     "detect_archive_profile",
@@ -60,6 +63,7 @@ UI_DISPLAY_NAMES = {
     UI_MFAA: "MFAAvalonia",
     UI_MAAFWAPP: "MaaFwApp",
     UI_MTA: "MaaTauriAndroid",
+    UI_MWU: "MWU",
     UI_UNKNOWN: "未知 UI",
 }
 
@@ -116,7 +120,7 @@ class ArchiveProfile:
 
     @property
     def ui_key(self) -> str:
-        """project.ui 的键名（mxu / mfaa / maafwapp / mta / auto）。"""
+        """project.ui 的键名（mxu / mfaa / maafwapp / mta / mwu / auto）。"""
         return ui_key_from_type(self.ui_type)
 
     @property
@@ -245,6 +249,8 @@ def _detect_ui_from_layout(lower_names: list[str]) -> str:
     }
     if any(name in mta_markers for name in lower_names):
         return UI_MTA
+    if "mwu.log" in name_set:
+        return UI_MWU
     if "device_info.txt" in name_set or "log/app.log" in name_set:
         return UI_MAAFWAPP
     if any(name.startswith("config/mxu-") for name in lower_names):

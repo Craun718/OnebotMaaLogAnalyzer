@@ -70,6 +70,7 @@
 | MFAAvalonia | `log_20261019_110324.zip`、`log_20261019_141709-part01.zip` | `debug/maafw.log`、`logs/log-*.log`、`debug/on_error/` |
 | MaaFwApp | `maafw_logs_20261022_195657.zip` | `log/maafw.log`、`log/app.log`、`device_info.txt`、`pi/debug/maafw.log`、`log/run/*.jsonl` |
 | MaaTauriAndroid | `maa_tauri_android-logs-1760000000000-<uuid>.zip` | `logs/maa/maafw.log`、`logs/maa_tauri_android-filtered.log`、`logs/app/mta.log`、`device-info.txt`、`snapshots/*.json` |
+| MWU | `mwu-logs.zip` | `mwu.log`、`debug/maafw.log`、`debug/on_error/`、`updater.log` |
 
 Bot 会从文件名、`maafw.log` 头部、MFAA 的 `logs/log-*.log`、MaaFwApp 的 `device_info.txt`
 自动解析 **UI 类型、软件版本、资源版本、MaaFramework 版本、设备与系统**，写入摘要和报告头。
@@ -78,6 +79,7 @@ Bot 会从文件名、`maafw.log` 头部、MFAA 的 `logs/log-*.log`、MaaFwApp 
 - MFAAvalonia 从 `程序版本`、`资源版本`、`MaaFramework 版本` 解析
 - MaaFwApp 从 `device_info.txt` 的 `Version` / `MaaFwApp` / `Framework` 解析
 - MaaTauriAndroid 从 `device-info.txt` 与 `snapshots/project.json` 解析
+- MWU 通过 `mwu.log` 布局识别，框架版本来自 `debug/maafw.log`
 - MFAA 的 `资源版本` 也会用于自动对齐项目仓库 tag
 
 ### 内容特征识别

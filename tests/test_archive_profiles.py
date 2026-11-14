@@ -3,14 +3,18 @@ from __future__ import annotations
 
 import io
 import json
+import tempfile
 import unittest
 import zipfile
+from pathlib import Path
 
 from maa_analyzer.core.archive_names import detect_ui_from_file_name, ui_key_from_file_name
 from maa_analyzer.features.maa.archive_profile import (
     UI_MTA,
+    UI_MWU,
     detect_archive_profile,
 )
+from maa_analyzer.features.maa.log_digest import build_log_digest
 
 
 class MaaTauriAndroidArchiveTests(unittest.TestCase):
@@ -58,6 +62,37 @@ class MaaTauriAndroidArchiveTests(unittest.TestCase):
     def test_config_key(self):
         self.assertEqual(detect_ui_from_file_name(self.NAME), UI_MTA)
         self.assertEqual(ui_key_from_file_name(self.NAME), "mta")
+
+
+class MWUArchiveTests(unittest.TestCase):
+    NAME = "mwu-logs.zip"
+
+    def test_file_name_layout_and_log_selection_are_recognized(self):
+        self.assertEqual(detect_ui_from_file_name(self.NAME), UI_MWU)
+        self.assertEqual(ui_key_from_file_name(self.NAME), "mwu")
+
+        with tempfile.TemporaryDirectory() as directory:
+            zip_path = Path(directory) / self.NAME
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("mwu.log", "2026-11-14 10:00:00 登录成功\n")
+                archive.writestr("debug/maafw.log", "[Logger] Version v5.3.1\n")
+                archive.writestr("updater.log", "更新完成。\n")
+
+            with zipfile.ZipFile(zip_path) as archive:
+                profile = detect_archive_profile(
+                    "", archive=archive, infos=archive.infolist()
+                )
+            self.assertEqual(profile.ui_type, UI_MWU)
+            self.assertTrue(profile.layout_detected)
+            self.assertEqual(profile.framework_version, "v5.3.1")
+
+            digest = build_log_digest(str(zip_path), original_file_name=self.NAME)
+        self.assertEqual(digest.profile.ui_key, "mwu")
+        self.assertTrue(digest.is_log_archive)
+        self.assertEqual(
+            [Path(name).as_posix() for name in digest.log_files],
+            ["debug/maafw.log", "mwu.log", "updater.log"],
+        )
 
 
 if __name__ == "__main__":
