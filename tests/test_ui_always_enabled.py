@@ -11,11 +11,12 @@ class KnownUIAlwaysEnabledTests(unittest.TestCase):
             "maafwapp": {"enabled": False},
             "mta": {"enabled": False},
             "mwu": {"enabled": False},
+            "mfw": {"enabled": False},
             "auto": {"enabled": False},
         }})
         for key in (
             "mxu", "mxuapp", "mfaa", "mfaa-avalonia", "maafwapp", "maafw",
-            "mta", "maatauriandroid", "mwu",
+            "mta", "maatauriandroid", "mwu", "mfw", "mfw-pyqt6",
         ):
             with self.subTest(key=key):
                 self.assertTrue(project.ui_enabled(key))

@@ -345,6 +345,10 @@ _UI_KEY_ALIASES = {
     "mta": "mta",
     "maatauriandroid": "mta",
     "mwu": "mwu",
+    "mfw": "mfw",
+    "mfwpyqt6": "mfw",
+    "mfwchainflowassistant": "mfw",
+    "mfwcfa": "mfw",
     "auto": "auto",
     "default": "auto",
     "unknown": "auto",
@@ -401,7 +405,7 @@ class ProjectConfig(BaseModel):
     def ui_enabled(self, ui_key: str) -> bool:
         """该 UI 是否允许分析；未配置时回退 `auto`，再回退 True。"""
         key = normalize_ui_key(ui_key)
-        if key in {"mxu", "mfaa", "maafwapp", "mta", "mwu"}:
+        if key in {"mxu", "mfaa", "maafwapp", "mta", "mwu", "mfw"}:
             return True
         item = self.ui.get(key)
         if item is not None:

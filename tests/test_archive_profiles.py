@@ -10,8 +10,10 @@ from pathlib import Path
 
 from maa_analyzer.core.archive_names import detect_ui_from_file_name, ui_key_from_file_name
 from maa_analyzer.features.maa.archive_profile import (
+    UI_MFAA,
     UI_MTA,
     UI_MWU,
+    UI_MFW,
     detect_archive_profile,
 )
 from maa_analyzer.features.maa.log_digest import build_log_digest
@@ -79,9 +81,7 @@ class MWUArchiveTests(unittest.TestCase):
                 archive.writestr("updater.log", "更新完成。\n")
 
             with zipfile.ZipFile(zip_path) as archive:
-                profile = detect_archive_profile(
-                    "", archive=archive, infos=archive.infolist()
-                )
+                profile = detect_archive_profile("", archive=archive, infos=archive.infolist())
             self.assertEqual(profile.ui_type, UI_MWU)
             self.assertTrue(profile.layout_detected)
             self.assertEqual(profile.framework_version, "v5.3.1")
@@ -93,6 +93,63 @@ class MWUArchiveTests(unittest.TestCase):
             [Path(name).as_posix() for name in digest.log_files],
             ["debug/maafw.log", "mwu.log", "updater.log"],
         )
+
+
+class MFWArchiveTests(unittest.TestCase):
+    NAME = "Demo-1.2.3-20261114_101010.zip"
+
+    def test_file_name_layout_and_log_selection_are_recognized(self):
+        self.assertEqual(detect_ui_from_file_name(self.NAME), UI_MFW)
+        self.assertEqual(ui_key_from_file_name(self.NAME), "mfw")
+
+        with tempfile.TemporaryDirectory() as directory:
+            zip_path = Path(directory) / self.NAME
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr(
+                    "debug/gui.log",
+                    "\n".join([
+                        "[2026-11-14][INFO][main.py][L193][main] | MFW 版本:0.3.4",
+                        "[2026-11-14][INFO][core.py][L237][core] | 资源版本: 9.9.9-beta",
+                        "[2026-11-14][INFO][main.py][L194][main] | "
+                        "当前工作目录: /tmp/MFW-Demo",
+                    ]) + "\n",
+                )
+                archive.writestr("debug/maafw.log", "[Logger] Version v5.3.1\n")
+                archive.writestr("debug/crash.log", "traceback omitted\n")
+
+            with zipfile.ZipFile(zip_path) as archive:
+                profile = detect_archive_profile(
+                    "",
+                    file_name=self.NAME,
+                    archive=archive,
+                    infos=archive.infolist(),
+                )
+            self.assertEqual(profile.ui_type, UI_MFW)
+            self.assertTrue(profile.layout_detected)
+            self.assertEqual(profile.ui_version, "0.3.4")
+            self.assertEqual(profile.framework_version, "v5.3.1")
+            self.assertEqual(profile.project_name, "Demo")
+            self.assertEqual(profile.resource_version, "9.9.9-beta")
+            self.assertEqual(profile.metadata.get("working"), "/tmp/MFW-Demo")
+
+            digest = build_log_digest(str(zip_path), original_file_name=self.NAME)
+        self.assertEqual(digest.profile.ui_key, "mfw")
+        self.assertTrue(digest.is_log_archive)
+        self.assertEqual(
+            [Path(name).as_posix() for name in digest.log_files],
+            ["debug/maafw.log", "debug/gui.log", "debug/crash.log"],
+        )
+
+    def test_mfaa_layout_is_not_reclassified_as_mfw(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("debug/maafw.log", "[Logger] Version v5.3.1\n")
+            archive.writestr("logs/log-20261114.log", "程序版本:v2.16.2\n")
+
+        with zipfile.ZipFile(buffer) as archive:
+            profile = detect_archive_profile("", archive=archive, infos=archive.infolist())
+        self.assertEqual(profile.ui_type, UI_MFAA)
+        self.assertTrue(profile.layout_detected)
 
 
 if __name__ == "__main__":
