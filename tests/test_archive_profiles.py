@@ -1,0 +1,64 @@
+"""已知 MaaFramework UI 日志包的布局识别测试。"""
+from __future__ import annotations
+
+import io
+import json
+import unittest
+import zipfile
+
+from maa_analyzer.core.archive_names import detect_ui_from_file_name, ui_key_from_file_name
+from maa_analyzer.features.maa.archive_profile import (
+    UI_MTA,
+    detect_archive_profile,
+)
+
+
+class MaaTauriAndroidArchiveTests(unittest.TestCase):
+    NAME = "maa_tauri_android-logs-1760000000000-8b0c2f3a-2b6e-4a90-9f0a-f30dc7a5b6d9.zip"
+
+    def _archive(self, root: str) -> bytes:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("logs/maa_tauri_android-filtered.log", "no fatal\n")
+            archive.writestr(
+                "device-info.txt",
+                "\n".join([
+                    "Startup time : 2026-11-14 10:00:00",
+                    "MaaTauriAndroid : 0.2.2",
+                    "Framework : v5.3.1",
+                    "Device : Pixel 8",
+                    "Android : 14 (API 34)",
+                    "ABI : arm64-v8a",
+                ]) + "\n",
+            )
+            archive.writestr(
+                "snapshots/project.json",
+                json.dumps({
+                    "name": "Demo Resource",
+                    "label": "Demo",
+                    "version": "v1.2.3",
+                    "interfaceVersion": 2,
+                }),
+            )
+            archive.writestr("logs/maa/maafw.log", "[Logger] Version v5.3.1\n")
+        return buffer.getvalue()
+
+    def test_file_name_and_layout_are_recognized(self):
+        self.assertEqual(detect_ui_from_file_name(self.NAME), UI_MTA)
+        archive = self._archive("")
+        with zipfile.ZipFile(io.BytesIO(archive)) as z:
+            profile = detect_archive_profile("", archive=z, infos=z.infolist())
+        self.assertEqual(profile.ui_type, UI_MTA)
+        self.assertTrue(profile.layout_detected)
+        self.assertEqual(profile.ui_version, "0.2.2")
+        self.assertEqual(profile.framework_version, "v5.3.1")
+        self.assertEqual(profile.resource_version, "v1.2.3")
+        self.assertEqual(profile.project_name, "Demo Resource")
+
+    def test_config_key(self):
+        self.assertEqual(detect_ui_from_file_name(self.NAME), UI_MTA)
+        self.assertEqual(ui_key_from_file_name(self.NAME), "mta")
+
+
+if __name__ == "__main__":
+    unittest.main()

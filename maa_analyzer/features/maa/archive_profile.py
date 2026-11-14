@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 import zipfile
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from pathlib import PurePosixPath
 from ...core.archive_names import (
     UI_MAAFWAPP,
     UI_MFAA,
+    UI_MTA,
     UI_MXU,
     UI_UNKNOWN,
     ArchivePart,
@@ -42,6 +44,7 @@ __all__ = [
     "UI_DISPLAY_NAMES",
     "UI_MAAFWAPP",
     "UI_MFAA",
+    "UI_MTA",
     "UI_MXU",
     "UI_UNKNOWN",
     "detect_archive_profile",
@@ -56,6 +59,7 @@ UI_DISPLAY_NAMES = {
     UI_MXU: "MXU",
     UI_MFAA: "MFAAvalonia",
     UI_MAAFWAPP: "MaaFwApp",
+    UI_MTA: "MaaTauriAndroid",
     UI_UNKNOWN: "未知 UI",
 }
 
@@ -112,7 +116,7 @@ class ArchiveProfile:
 
     @property
     def ui_key(self) -> str:
-        """project.ui 的键名（mxu / mfaa / maafwapp / auto）。"""
+        """project.ui 的键名（mxu / mfaa / maafwapp / mta / auto）。"""
         return ui_key_from_type(self.ui_type)
 
     @property
@@ -212,7 +216,10 @@ def _detect_profile(
     profile.ui_type = layout_ui or file_ui or UI_UNKNOWN
     _apply_file_name(profile, name)
 
-    if profile.ui_type == UI_MAAFWAPP:
+    if profile.ui_type == UI_MTA:
+        _parse_mta_device_info(profile, archive, members, lower_names)
+        _parse_mta_project_snapshot(profile, archive, members, lower_names)
+    elif profile.ui_type == UI_MAAFWAPP:
         _parse_device_info(profile, archive, members, lower_names)
         _parse_maafwapp_app_log(profile, archive, members, lower_names)
     elif profile.ui_type == UI_MFAA:
@@ -227,6 +234,17 @@ def _detect_profile(
 
 def _detect_ui_from_layout(lower_names: list[str]) -> str:
     name_set = set(lower_names)
+    # MaaTauriAndroid 的导出有多个专属标记；`device-info.txt` 不能单独用它
+    # 判定，否则会与 MaaFwApp 同名文件混淆。
+    mta_markers = {
+        "logs/maa_tauri_android-filtered.log",
+        "logs/app/mta.log",
+        "logs/runs/index.json",
+        "snapshots/settings.json",
+        "snapshots/project.json",
+    }
+    if any(name in mta_markers for name in lower_names):
+        return UI_MTA
     if "device_info.txt" in name_set or "log/app.log" in name_set:
         return UI_MAAFWAPP
     if any(name.startswith("config/mxu-") for name in lower_names):
@@ -264,6 +282,50 @@ def _apply_file_name(profile: ArchiveProfile, name: str) -> None:
 # ════════════════════════════════════════════════════════════════
 # 各 UI 的元数据解析
 # ════════════════════════════════════════════════════════════════
+
+
+def _parse_mta_device_info(
+    profile: ArchiveProfile,
+    archive: zipfile.ZipFile,
+    members: list[zipfile.ZipInfo],
+    lower_names: list[str],
+) -> None:
+    info = _find_info(members, lower_names, "device-info.txt")
+    values = _parse_key_values(_read_text(archive, info, limit=64 * 1024))
+    if not values:
+        return
+
+    _set_if_empty(profile, "ui_version", _clean_version(values.get("maatauriandroid", "")))
+    _set_if_empty(profile, "framework_version", _clean_version(values.get("framework", "")))
+    _set_if_empty(profile, "device", values.get("device", ""))
+    _set_if_empty(profile, "os_version", _android_os(values.get("android", "")))
+
+    for key in ("abi",):
+        if values.get(key):
+            profile.metadata.setdefault(key, values[key])
+
+
+def _parse_mta_project_snapshot(
+    profile: ArchiveProfile,
+    archive: zipfile.ZipFile,
+    members: list[zipfile.ZipInfo],
+    lower_names: list[str],
+) -> None:
+    info = _find_info(members, lower_names, "snapshots/project.json")
+    text = _read_text(archive, info, limit=256 * 1024)
+    if not text:
+        return
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+
+    name = str(data.get("name", "") or data.get("label", "") or "").strip()
+    version = str(data.get("version", "") or "").strip()
+    _set_if_empty(profile, "project_name", name)
+    _set_if_empty(profile, "resource_version", _clean_version(version))
 
 
 def _find_info(
@@ -446,7 +508,10 @@ def _parse_maafw_header(
     lower_names: list[str],
 ) -> None:
     # 按优先级选择框架日志：当前 UI 的主日志优先
-    preferred = ["log/maafw.log", "debug/maafw.log", "maafw.log", "pi/debug/maafw.log"]
+    preferred = [
+        "log/maafw.log", "debug/maafw.log", "maafw.log",
+        "logs/maa/maafw.log", "pi/debug/maafw.log",
+    ]
     candidates = [
         info for info, name in zip(members, lower_names)
         if PurePosixPath(name).name == "maafw.log"

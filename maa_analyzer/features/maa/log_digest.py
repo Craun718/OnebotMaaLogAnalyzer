@@ -12,6 +12,7 @@ from typing import Any
 from .archive_profile import (
     UI_MAAFWAPP,
     UI_MFAA,
+    UI_MTA,
     UI_MXU,
     UI_UNKNOWN,
     ArchiveProfile,
@@ -339,6 +340,8 @@ def _select_log_infos(
       - MFAAvalonia：debug/maafw.log / logs/log-*.log
       - MaaFwApp：log/maafw.log / log/app.log / pi/debug/maafw.log /
         pi/debug/custom/*.log / log/run/*.jsonl / logcat
+      - MaaTauriAndroid：logs/maa/maafw.log / logs/maa_tauri_android-filtered.log /
+        logs/app/mta.log / logs/runs/*.jsonl / logs/logcat-full.txt
     """
     ui = profile.ui_type if profile is not None else UI_UNKNOWN
     notes = notes if notes is not None else []
@@ -373,6 +376,14 @@ def _select_log_infos(
             role = "app"
         elif ui == UI_MFAA and lower.startswith("logs/") and base.endswith(".log"):
             role = "app"
+        elif ui == UI_MTA and lower in {
+            "logs/maa_tauri_android-filtered.log", "logs/app/mta.log",
+        }:
+            role = "app"
+        elif ui == UI_MTA and lower.startswith("logs/runs/") and base.endswith(".jsonl"):
+            role = "run"
+        elif ui == UI_MTA and lower in {"logs/logcat-full.txt", "logs/properties.txt"}:
+            role = "debug"
         elif ui == UI_MAAFWAPP and lower == "log/app.log":
             role = "app"
         elif ui == UI_MAAFWAPP and lower.startswith("log/run/") and base.endswith(".jsonl"):

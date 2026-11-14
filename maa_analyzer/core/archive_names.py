@@ -12,6 +12,7 @@ from dataclasses import dataclass
 UI_MXU = "MXU"
 UI_MFAA = "MFAA"
 UI_MAAFWAPP = "MaaFwApp"
+UI_MTA = "MaaTauriAndroid"
 UI_UNKNOWN = "Unknown"
 
 # UI 类型 → project.ui 的键名
@@ -19,6 +20,7 @@ _UI_KEYS = {
     UI_MXU: "mxu",
     UI_MFAA: "mfaa",
     UI_MAAFWAPP: "maafwapp",
+    UI_MTA: "mta",
 }
 
 # 时间戳兼容 20260814-135755 与 2026-08-14-13-57-55 两种写法
@@ -57,6 +59,13 @@ _MAAFWAPP_FILE = re.compile(
     r"(?:[-_]part\d+)?\.zip$",
     re.IGNORECASE,
 )
+# MaaTauriAndroid: maa_tauri_android-logs-1760000000000-00000000-...-0000.zip
+_MTA_FILE = re.compile(
+    r"^maa_tauri_android-logs?-\d{10,16}"
+    r"-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    r"(?:[-_]part\d+)?\.zip$",
+    re.IGNORECASE,
+)
 # 分卷: <base>-part01.zip
 _PART_FILE = re.compile(r"^(?P<base>.+?)[-_]part(?P<part>\d{1,3})\.zip$", re.IGNORECASE)
 
@@ -85,6 +94,8 @@ def detect_ui_from_file_name(file_name: str) -> str:
     name = normalize_archive_name(file_name)
     if not name.lower().endswith(".zip"):
         return ""
+    if _MTA_FILE.match(name):
+        return UI_MTA
     if _MAAFWAPP_FILE.match(name):
         return UI_MAAFWAPP
     if _MFAA_FILE.match(name):
@@ -125,7 +136,7 @@ def looks_like_log_archive_name(file_name: str) -> bool:
 
 
 def ui_key_from_file_name(file_name: str) -> str:
-    """按文件名推断 UI 配置键（mxu / mfaa / maafwapp）；无法判断返回空串。"""
+    """按文件名推断 UI 配置键（mxu / mfaa / maafwapp / mta）；无法判断返回空串。"""
     return _UI_KEYS.get(detect_ui_from_file_name(file_name), "")
 
 

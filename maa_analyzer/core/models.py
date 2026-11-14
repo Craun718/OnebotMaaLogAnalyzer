@@ -342,6 +342,8 @@ _UI_KEY_ALIASES = {
     "mfaaavalonia": "mfaa",
     "maafwapp": "maafwapp",
     "maafw": "maafwapp",
+    "mta": "mta",
+    "maatauriandroid": "mta",
     "auto": "auto",
     "default": "auto",
     "unknown": "auto",
@@ -398,7 +400,7 @@ class ProjectConfig(BaseModel):
     def ui_enabled(self, ui_key: str) -> bool:
         """该 UI 是否允许分析；未配置时回退 `auto`，再回退 True。"""
         key = normalize_ui_key(ui_key)
-        if key in {"mxu", "mfaa", "maafwapp"}:
+        if key in {"mxu", "mfaa", "maafwapp", "mta"}:
             return True
         item = self.ui.get(key)
         if item is not None:
