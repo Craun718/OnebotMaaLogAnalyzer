@@ -12,9 +12,19 @@ import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import get_origin
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from maa_analyzer.config import PANEL_DEFAULTS, setup_logging, teardown_logging
+from pydantic import BaseModel, ValidationError
+
+from maa_analyzer.config import (
+    PANEL_DEFAULTS,
+    PANEL_SCHEMA_GROUPS,
+    PanelConfig,
+    flatten_panel_config,
+    setup_logging,
+    teardown_logging,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -128,7 +138,10 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
         kwargs = factory.call_args.kwargs
         self.assertEqual(kwargs["plugin_data_dir"], self.data_root / "OnebotMaaLogAnalyzer")
         self.assertEqual(kwargs["template_root"], ROOT / "templates")
-        self.assertEqual(factory.call_args.args[0], config)
+        runtime_config = factory.call_args.args[0]
+        self.assertEqual(runtime_config["listen_groups"], ["123"])
+        self.assertEqual(set(runtime_config), set(PANEL_DEFAULTS))
+        self.assertEqual(config["basic"]["listen_groups"], ["123"])
         fake_runtime.initialize.assert_awaited()
         self.assertEqual(fake_runtime.initialize.await_count, 2)
 
@@ -139,11 +152,40 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
         config = SavedConfig(history_mode="inherit", history_period_hours=-1,
                              repo_mode="disabled", llm_model="custom-model")
         plugin = self.shell.Main(object(), config)
-        self.assertEqual(config["history_mode"], "enabled")
-        self.assertEqual(config["history_period_hours"], 24)
+        self.assertEqual(config["history"]["history_mode"], "enabled")
+        self.assertEqual(config["history"]["history_period_hours"], 24)
         self.assertEqual(config["repo_mode"], "disabled")
-        self.assertEqual(config["llm_model"], "custom-model")
-        self.assertEqual(plugin.config, config)
+        self.assertEqual(config["llm"]["llm_model"], "custom-model")
+        self.assertNotIn("history_mode", config)
+        self.assertNotIn("llm_model", config)
+        self.assertEqual(plugin.config["history_mode"], "enabled")
+        self.assertEqual(plugin.config["history_period_hours"], 24)
+        self.assertEqual(plugin.config["llm_model"], "custom-model")
+        self.assertNotEqual(plugin.config, config)
+        config.save_config.assert_called_once_with()
+
+    async def test_nested_panel_config_is_normalized_without_losing_unknown_fields(self):
+        class SavedConfig(dict):
+            save_config = MagicMock()
+
+        config = SavedConfig({
+            "basic": {
+                "listen_groups": ["123"],
+                "notify_group": "456",
+                "advanced_note": "keep",
+            },
+            "vision": {"vision_mode": "disabled"},
+            "llm": {"llm_model": "custom-model"},
+        })
+        plugin = self.shell.Main(object(), config)
+
+        self.assertEqual(plugin.config["listen_groups"], ["123"])
+        self.assertEqual(plugin.config["notify_group"], "456")
+        self.assertEqual(plugin.config["vision_mode"], "disabled")
+        self.assertEqual(plugin.config["llm_model"], "custom-model")
+        self.assertEqual(config["basic"]["advanced_note"], "keep")
+        self.assertEqual(config["basic"]["listen_groups"], ["123"])
+        self.assertIn("report", config)
         config.save_config.assert_called_once_with()
 
     async def test_blank_fixed_values_are_saved_back_to_webui(self):
@@ -156,11 +198,12 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
                       report_device_scale_factor="", listen_groups=[],
                       llm_endpoint_api_key="", llm_profile_temperature="")
         plugin = self.shell.Main(object(), config)
+        saved = flatten_panel_config(config.saved)
         for key in ("data_dir", "log_dir", "report_mode", "report_device_scale_factor"):
-            self.assertEqual(config[key], PANEL_DEFAULTS[key], key)
-            self.assertEqual(config.saved[key], plugin.config[key], key)
-        self.assertEqual(config.saved["listen_groups"], [])
-        self.assertEqual(config.saved["llm_endpoint_api_key"], "")
+            self.assertEqual(saved[key], PANEL_DEFAULTS[key], key)
+            self.assertEqual(saved[key], plugin.config[key], key)
+        self.assertEqual(saved["listen_groups"], [])
+        self.assertEqual(saved["llm_endpoint_api_key"], "")
         self.assertEqual(config.saved["llm_profile_temperature"], "")
 
     async def test_packaged_kernel_uses_plugin_namespace_and_reloads(self):
@@ -310,6 +353,30 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AstrBotPackageMetadataTests(unittest.TestCase):
+    def test_panel_sections_are_typed_pydantic_models(self):
+        self.assertEqual(
+            tuple(PanelConfig.model_fields),
+            tuple(PANEL_SCHEMA_GROUPS),
+        )
+        for group, spec in PANEL_SCHEMA_GROUPS.items():
+            self.assertTrue(issubclass(spec.section_model, BaseModel), group)
+            self.assertEqual(
+                spec.fields,
+                tuple(spec.section_model.model_fields),
+                group,
+            )
+            self.assertEqual(
+                spec.section_model.model_config["extra"],
+                "forbid",
+                group,
+            )
+
+        commands_model = PANEL_SCHEMA_GROUPS["commands"].section_model
+        with self.assertRaises(ValidationError):
+            commands_model(commands_read_level="not-an-int")
+        with self.assertRaises(ValidationError):
+            commands_model(not_a_panel_field=True)
+
     def test_metadata_schema_and_requirements_are_plugin_ready(self):
         metadata = (ROOT / "astrbot_plugin" / "metadata.yaml").read_text(
             encoding="utf-8"
@@ -328,15 +395,34 @@ class AstrBotPackageMetadataTests(unittest.TestCase):
         self.assertIn("name: OnebotMaaLogAnalyzer", metadata)
         self.assertIn("support_platforms:\n  - aiocqhttp", metadata)
         self.assertIn('astrbot_version: ">=4.29.0,<5"', metadata)
-        self.assertEqual(set(schema), set(PANEL_DEFAULTS))
+        self.assertEqual(list(schema), list(PANEL_SCHEMA_GROUPS))
+        leaves = {}
+        for group, spec in PANEL_SCHEMA_GROUPS.items():
+            section = schema[group]
+            self.assertEqual(section["type"], "object", group)
+            self.assertEqual(section["description"], spec.title, group)
+            self.assertEqual(list(section["items"]), list(spec.fields), group)
+            for key in spec.fields:
+                self.assertNotIn(key, leaves, key)
+                leaves[key] = section["items"][key]
+        self.assertEqual(set(leaves), set(PANEL_DEFAULTS))
         for key, default in PANEL_DEFAULTS.items():
             self.assertEqual(
-                schema[key]["default"],
+                leaves[key]["default"],
                 default,
                 f"schema default mismatch: {key}",
             )
-            self.assertNotIn("inherit", schema[key].get("options", []), key)
-        self.assertEqual(schema["listen_groups"]["type"], "list")
+            self.assertNotIn("inherit", leaves[key].get("options", []), key)
+        for spec in PANEL_SCHEMA_GROUPS.values():
+            for field_name, field in spec.section_model.model_fields.items():
+                schema_type = leaves[field_name]["type"]
+                if schema_type == "list":
+                    self.assertIs(get_origin(field.annotation), list, field_name)
+                elif schema_type == "int":
+                    self.assertIs(field.annotation, int, field_name)
+                elif schema_type == "string":
+                    self.assertIs(field.annotation, str, field_name)
+        self.assertEqual(leaves["listen_groups"]["type"], "list")
         self.assertIn("aiohttp", requirements)
 
 

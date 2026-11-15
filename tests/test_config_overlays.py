@@ -8,15 +8,16 @@ import unittest
 from pathlib import Path
 
 from maa_analyzer.config import (
+    AnalysisSettingsPatch,
     PANEL_DEFAULTS,
-    PANEL_PROFILE_FLOAT_OVERRIDES,
-    PANEL_PROFILE_INT_OVERRIDES,
-    PANEL_PROFILE_MODE_OVERRIDES,
-    PANEL_PROFILE_STRING_OVERRIDES,
+    PANEL_PROFILE_FIELDS,
+    ProfilePatch,
     apply_panel_overrides,
     default_config,
+    flatten_panel_config,
     load_effective_config,
     normalize_panel_values,
+    synchronize_panel_config,
 )
 from maa_analyzer.core.models import AnalysisSettings, CommandConfig, ConfigLLM, ModelSupports, ProjectConfig, ReportConfig, VisionConfig
 from maa_analyzer.core.llm_pool import LLMPool
@@ -175,29 +176,26 @@ class PanelOverrideTests(unittest.TestCase):
         self.assertEqual(profile["notify_group"], "")
 
     def test_profile_panel_defaults_match_builtin_models(self):
-        defaults = {
-            "settings": AnalysisSettings().model_dump(),
-            "commands": CommandConfig().model_dump(),
-            "project": ProjectConfig().model_dump(),
-            "report": ReportConfig().model_dump(),
-            "vision": VisionConfig().model_dump(),
-        }
-        for mapping in (PANEL_PROFILE_INT_OVERRIDES, PANEL_PROFILE_FLOAT_OVERRIDES,
-                        PANEL_PROFILE_MODE_OVERRIDES, PANEL_PROFILE_STRING_OVERRIDES):
-            for key, path in mapping.items():
-                value = defaults
-                for component in path:
-                    if not isinstance(value, dict) or component not in value:
-                        break
-                    value = value[component]
-                else:
-                    if value is None:
-                        continue
-                    if isinstance(value, bool):
-                        value = "enabled" if value else "disabled"
-                    elif key in PANEL_PROFILE_FLOAT_OVERRIDES:
-                        value = str(value)
-                    self.assertEqual(PANEL_DEFAULTS[key], value, key)
+        self.assertLessEqual(PANEL_PROFILE_FIELDS, set(PANEL_DEFAULTS))
+
+        patch = ProfilePatch.from_panel({
+            "settings_file_list_delay_seconds": "1.5",
+            "vision_attach_error_screenshots_mode": "disabled",
+            "repo_extensions": [" .json ", ".yaml", ""],
+            "ui_auto_mode": "enabled",
+        })
+
+        self.assertEqual(
+            patch.sparse_profile(),
+            {
+                "settings": {"file_list_delay_seconds": 1.5},
+                "project": {
+                    "repo": {"extensions": [".json", ".yaml"]},
+                    "ui": {"auto": {"enabled": True}},
+                },
+                "vision": {"attach_error_screenshots": False},
+            },
+        )
 
     def _config(self) -> dict:
         cfg = default_config()
@@ -464,18 +462,6 @@ class PanelOverrideTests(unittest.TestCase):
                     apply_panel_overrides(self._config(), panel)
 
     def test_all_remaining_analysis_settings_have_panel_fields(self):
-        mapping_groups = (
-            PANEL_PROFILE_STRING_OVERRIDES,
-            PANEL_PROFILE_FLOAT_OVERRIDES,
-            PANEL_PROFILE_INT_OVERRIDES,
-            PANEL_PROFILE_MODE_OVERRIDES,
-        )
-        mapped_settings = {
-            path[-1]
-            for mappings in mapping_groups
-            for path in mappings.values()
-            if path[0] == "settings"
-        }
         expected = {
             "file_list_delay_seconds", "duplicate_window_seconds",
             "send_progress_message", "send_summary", "forward_analysis_results", "reply_chunk_chars",
@@ -502,6 +488,7 @@ class PanelOverrideTests(unittest.TestCase):
             "max_recognition_evidence_lines",
             "max_recognition_evidence_chars", "log_head_lines",
         }
+        mapped_settings = set(AnalysisSettingsPatch.model_fields)
         self.assertLessEqual(expected, mapped_settings)
         for field in expected:
             direct = "settings_" + field
@@ -678,6 +665,56 @@ class PanelOverrideTests(unittest.TestCase):
                 self._config(),
                 {"default_config": "Missing"},
             )
+
+
+class PanelConfigSerializationTests(unittest.TestCase):
+    def test_legacy_flat_values_override_nested_values_during_upgrade(self):
+        flat = flatten_panel_config({
+            "basic": {"listen_groups": ["nested"], "notify_group": "nested"},
+            "llm_model": "legacy-model",
+            "listen_groups": ["legacy"],
+        })
+
+        self.assertEqual(flat["listen_groups"], ["legacy"])
+        self.assertEqual(flat["notify_group"], "nested")
+        self.assertEqual(flat["llm_model"], "legacy-model")
+
+    def test_synchronize_migrates_flat_defaults_and_normalizes_legacy_markers(self):
+        config = {
+            "basic": {"advanced_note": "keep"},
+            "repo_path": "/repos/maa",
+            "listen_groups": [],
+            "llm_fallback_models": [],
+            "history_mode": "inherit",
+            "history_period_hours": -1,
+            "llm_profile_max_tokens": -1,
+        }
+
+        runtime, changed = synchronize_panel_config(config)
+
+        self.assertTrue(changed)
+        self.assertEqual(runtime["listen_groups"], [])
+        self.assertEqual(runtime["llm_fallback_models"], [])
+        self.assertEqual(runtime["repo_path"], "/repos/maa")
+        self.assertEqual(runtime["history_mode"], "enabled")
+        self.assertEqual(runtime["history_period_hours"], 24)
+        self.assertEqual(runtime["llm_profile_max_tokens"], -1)
+        self.assertEqual(set(runtime), set(PANEL_DEFAULTS))
+        self.assertEqual(config["basic"]["advanced_note"], "keep")
+        self.assertEqual(config["basic"]["listen_groups"], [])
+        self.assertEqual(config["repo"]["repo_path"], "/repos/maa")
+        for key in (
+            "repo_path",
+            "listen_groups",
+            "llm_fallback_models",
+            "history_mode",
+            "history_period_hours",
+            "llm_profile_max_tokens",
+        ):
+            self.assertNotIn(key, config)
+
+        _, changed_again = synchronize_panel_config(config)
+        self.assertFalse(changed_again)
 
 
 class EffectiveConfigLoadTests(unittest.TestCase):

@@ -61,7 +61,13 @@ OnebotMaaLogAnalyzer/
 ├── maa_analyzer/                   # 两个入口共享的唯一内核命名空间
 │   ├── platform.py                 # PlatformPort、事件 DTO、发送者与文件元数据
 │   ├── runtime.py                  # 共享运行时生命周期
-│   ├── config.py                   # 配置加载、校验、面板覆盖、日志
+│   ├── config/                     # 配置加载、校验、面板适配、日志
+│   │   ├── panel_schema.py         # Pydantic 面板分组与扁平化
+│   │   ├── panel_fields.py         # 面板字段到 config.json 的映射
+│   │   ├── panel.py                # 面板覆盖应用
+│   │   ├── defaults.py             # 首次运行默认配置
+│   │   ├── loader.py               # 加载、校验与生效配置
+│   │   └── logging_setup.py        # 两种入口共用的日志初始化
 │   ├── astrbot/
 │   │   └── plugin_runtime.py       # 与 AstrBot 框架解耦的插件生命周期桥
 │   ├── platforms/

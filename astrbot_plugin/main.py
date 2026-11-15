@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import importlib
-import copy
 import sys
 import weakref
 from pathlib import Path
@@ -91,22 +90,18 @@ class Main(Star):
         config: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(context, config)
-        # Update AstrBot's saved object so the WebUI shows normalized defaults.
+        # Migrate legacy flat fields into grouped objects and keep the shared
+        # runtime on its established flat key model.
         if config is not None and _KERNEL_IMPORT_ERROR is None:
-            changed = False
-            for key, default in config_module.PANEL_DEFAULTS.items():
-                if key not in config:
-                    config[key] = copy.deepcopy(default)
-                    changed = True
-            normalized = config_module.normalize_panel_values(config)
-            for key, value in normalized.items():
-                if config.get(key) != value:
-                    config[key] = value
-                    changed = True
+            runtime_config, changed = config_module.synchronize_panel_config(config)
             save = getattr(config, "save_config", None)
             if changed and callable(save):
                 save()
-        self.config = dict(config or {})
+            self.config = runtime_config
+        elif config is not None:
+            self.config = dict(config)
+        else:
+            self.config = {}
         self.plugin_data_dir: Path | None = None
         self.plugin_runtime: Any | None = None
         self._log_handler: logging.Handler | None = None
