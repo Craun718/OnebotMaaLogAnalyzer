@@ -36,6 +36,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 try:
+    from maa_analyzer.config.constants import CONFIG_VERSION
     from maa_analyzer.core.models import (
         AnalysisSettings,
         CircuitBreakerConfig,
@@ -121,6 +122,7 @@ def _config_defaults() -> dict:
 
 def default_document() -> dict:
     return {
+        "version": CONFIG_VERSION,
         "onebot": {
             "mode": "http_ws",
             "http_url": "http://127.0.0.1:3000",
@@ -189,6 +191,14 @@ def validate_document(cfg: Any) -> dict:
     warnings: list[str] = []
     if not isinstance(cfg, dict):
         return {"errors": ["配置必须是 JSON 对象"], "warnings": []}
+
+    version = cfg.get("version")
+    if isinstance(version, bool) or not isinstance(version, int):
+        errors.append("version 必须是整数")
+    elif version != CONFIG_VERSION:
+        errors.append(
+            f"version={version} 不受支持，当前编辑器只生成 version={CONFIG_VERSION}"
+        )
 
     # ── onebot ──
     onebot = cfg.get("onebot")
@@ -2387,6 +2397,7 @@ $('clearBtn').addEventListener('click', async () => {
   });
   if (!yes) { return; }
   CFG = normalizeCfg({
+    version: META.defaults.version,
     onebot: { mode: 'http_ws', http_url: '', ws_url: '', ws_reverse_port: 8080, access_token: '', api_timeout_seconds: 30 },
     bot: {
       data_dir: 'data',

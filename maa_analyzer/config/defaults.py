@@ -4,10 +4,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .constants import CONFIG_VERSION, CONFIG_VERSION_FIELD
+
 
 def default_config() -> dict:
     """Return a fresh copy of the first-run configuration."""
     return {
+        CONFIG_VERSION_FIELD: CONFIG_VERSION,
         "onebot": {
             "mode": "http_ws",
             "http_url": "http://127.0.0.1:3000",

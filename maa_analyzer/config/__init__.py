@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from .constants import (
     BOOTSTRAP_LOG_FORMAT,
+    CONFIG_VERSION,
+    CONFIG_VERSION_FIELD,
     LOG_DATE_FORMAT,
     LOG_FORMAT,
     ONEBOT_MODES,
@@ -16,6 +18,11 @@ from .loader import (
     validate_onebot_config,
 )
 from .logging_setup import logger, setup_logging, teardown_logging
+from .migration import (
+    ConfigVersionError,
+    load_and_migrate_config,
+    migrate_config,
+)
 from .panel import apply_panel_overrides
 from .panel_overrides import (
     AnalysisSettingsPatch,
@@ -70,6 +77,9 @@ __all__ = [
     "AnalysisSettingsPatch",
     "BOOTSTRAP_LOG_FORMAT",
     "BasicPanel",
+    "CONFIG_VERSION",
+    "CONFIG_VERSION_FIELD",
+    "ConfigVersionError",
     "CommandsPanel",
     "CommandConfigPatch",
     "ConfigLLMPatch",
@@ -114,7 +124,9 @@ __all__ = [
     "flatten_panel_config",
     "load_config_file",
     "load_effective_config",
+    "load_and_migrate_config",
     "logger",
+    "migrate_config",
     "normalize_panel_values",
     "resolve_data_dir",
     "setup_logging",

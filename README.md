@@ -45,6 +45,7 @@ python main.py               # 首次运行生成 config.json
 
 ```jsonc
 {
+  "version": 2,
   "bot": {
     "configs": {
       "默认": {
@@ -70,6 +71,9 @@ python main.py               # 首次运行生成 config.json
 
 每个配置还要在 `bot.configs.<名称>.llm.models[]` 里按优先级引用：
 `[{"name": "default", "model": "gpt-4o"}]`。
+
+`version` 是配置文件格式版本。缺少该字段的旧文件会在启动时按 v1 自动迁移并写回，
+迁移前的原文件保存为同目录下的 `config.json.v1.bak`；更高版本会拒绝启动。
 
 项目相关内容（项目名 / 各 UI 的日志包命名 / 代码仓库）统一写在 `project` 段：
 

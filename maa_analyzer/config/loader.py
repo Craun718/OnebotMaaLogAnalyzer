@@ -1,7 +1,6 @@
 """Configuration loading, validation, and effective runtime resolution."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -10,17 +9,14 @@ from ..core.llm_pool import detect_legacy_llm, validate_llm_config
 from .constants import ONEBOT_MODES
 from .defaults import write_default_config
 from .logging_setup import logger
+from .migration import load_and_migrate_config
 from .panel import apply_panel_overrides
 from .panel_schema import panel_changed, panel_value
 
 
 def load_config_file(path: str | Path) -> dict:
-    """Load a JSON object and reject malformed top-level values."""
-    target = Path(path)
-    data = json.loads(target.read_text(encoding="utf-8-sig"))
-    if not isinstance(data, dict):
-        raise ValueError("config.json 顶层必须是对象。")
-    return data
+    """Load a JSON object, migrating older formats when needed."""
+    return load_and_migrate_config(path)
 
 
 def validate_common_config(cfg: Mapping[str, Any]) -> list[str]:
