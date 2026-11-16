@@ -23,8 +23,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from maa_analyzer.config import (
+    AnalysisSettingsPatch,
     PANEL_DEFAULTS,
-    PANEL_PROFILE_INT_OVERRIDES,
     default_config,
     load_effective_config,
 )
@@ -202,7 +202,7 @@ class ObsoleteAnalysisConcurrencyTests(unittest.TestCase):
     def test_removed_from_panel_defaults_and_advanced_config(self):
         self.assertNotIn("settings_analysis_concurrency", PANEL_DEFAULTS)
         self.assertNotIn(
-            "settings_analysis_concurrency", PANEL_PROFILE_INT_OVERRIDES
+            "analysis_concurrency", AnalysisSettingsPatch.model_fields
         )
         for profile in default_config()["bot"]["configs"].values():
             self.assertNotIn("analysis_concurrency", profile["settings"])

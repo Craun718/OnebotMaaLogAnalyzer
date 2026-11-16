@@ -45,6 +45,7 @@ python main.py               # 首次运行生成 config.json
 
 ```jsonc
 {
+  "version": 2,
   "bot": {
     "configs": {
       "默认": {
@@ -70,6 +71,9 @@ python main.py               # 首次运行生成 config.json
 
 每个配置还要在 `bot.configs.<名称>.llm.models[]` 里按优先级引用：
 `[{"name": "default", "model": "gpt-4o"}]`。
+
+`version` 是配置文件格式版本。缺少该字段的旧文件会在启动时按 v1 自动迁移并写回，
+迁移前的原文件保存为同目录下的 `config.json.v1.bak`；更高版本会拒绝启动。
 
 项目相关内容（项目名 / 各 UI 的日志包命名 / 代码仓库）统一写在 `project` 段：
 
@@ -122,7 +126,7 @@ python main.py               # 首次运行生成 config.json
 3. 在 AstrBot 插件管理中重载或重启 AstrBot，并启用 OnebotMaaLogAnalyzer。
 4. 在插件面板填写监听群、项目识别、LLM 端点/模型与分析高级配置，或通过“配置文件位置”复用现有 `config.json`。
 
-插件默认把首次生成的 `config.json` 与运行数据放在 AstrBot 的 `data/plugin_data/OnebotMaaLogAnalyzer/`。复用裸模式数据时，建议在面板中把 `config_file` 填为原 `config.json` 的绝对路径，并把 `data_dir` 填为原数据目录的绝对路径；面板留空字段会继承 JSON 中的值。`onebot` 连接段在插件模式下不使用，消息和群文件操作由 AstrBot 的 AIOCQHTTP 适配器提供。
+插件默认把首次生成的 `config.json` 与运行数据放在 AstrBot 的 `data/plugin_data/OnebotMaaLogAnalyzer/`。AstrBot 面板按基础、指令、项目、LLM、看图、报告、反馈、追问、历史、分析、日志处理和仓库等用途分组，旧版顶层扁平配置会自动迁入分组。复用裸模式数据时，建议在面板中把 `config_file` 填为原 `config.json` 的绝对路径，并把 `data_dir` 填为原数据目录的绝对路径；面板已提供的字段以面板值为准。`onebot` 连接段在插件模式下不使用，消息和群文件操作由 AstrBot 的 AIOCQHTTP 适配器提供。
 
 > 当前首版仅支持 AIOCQHTTP，不覆盖 QQ 官方机器人或其他 AstrBot 平台适配器。仓库内单元测试覆盖适配器与生命周期，但尚未在真实 AstrBot 4.29.4 + NapCat / Lagrange 环境中完成联调。
 

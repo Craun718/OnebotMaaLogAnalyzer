@@ -2,14 +2,18 @@
 
 `config.json` 是两个入口共用的完整配置格式。裸模式默认读取工程根目录的 `config.json`；AstrBot 插件默认读取 `data/plugin_data/OnebotMaaLogAnalyzer/config.json`，也可在面板中指定现有文件。首次运行 `python main.py` 会自动生成一份可直接启动的默认配置；`python main.py --print-config-template` 可随时把当前版本的模板打印到标准输出。
 
-本页**按 `config.json` 的字段顺序**（`onebot` → `bot` → `llm` → `debug` → `log`）逐字段说明：每个字段都给出类型 / 默认值、作用，以及可直接粘贴的示例。
+本页**按 `config.json` 的字段顺序**（`version` → `onebot` → `bot` → `llm` → `debug` → `log`）逐字段说明：每个字段都给出类型 / 默认值、作用，以及可直接粘贴的示例。
 
 - 省略的字段一律按默认值生效；**无法识别的字段会被静默忽略**（拼错不报错，只是不生效），改完没效果时先对照本页拼写。
 - 字段名同时接受 `snake_case` 与 `camelCase`（如 `listen_groups` / `listenGroups`），本页统一用 `snake_case`。
 - 字段顺序与生成顺序一致，可对照[完整示例](#完整示例默认-configjson)。
+- `version` 是配置文件格式版本。缺少该字段时按 v1 尝试迁移到当前版本并自动写回，
+  原文件备份为 `config.json.v1.bak`；迁移只保留新版仍有对应语义的字段。
+  高于当前版本的配置会明确报错，不会用旧程序覆盖。
 
 | 段 | 作用 | 跳转 |
 | --- | --- | --- |
+| `version` | 配置文件格式版本，当前为 `2` | 本节 |
 | `onebot` | 连接 OneBot 协议端：模式、地址、令牌、超时 | [onebot](#onebotonebot-连接) |
 | `bot` | 数据目录与多群配置（项目 / 模型 / 看图 / 报告 / 设置 / 指令） | [bot](#bot数据目录与多群配置) |
 | `llm` | 全局端点、密钥、模型能力与兜底参数 | [LLM](#llm端点与候选模型) |
@@ -27,6 +31,8 @@
   `log` 及配置档案语义保持不变。
 
 AstrBot 面板映射常用字段和大多数高级字段；复杂结构仍需编辑 JSON。新建面板配置时，有固定程序默认值的字段直接显示这些默认值，面板值会覆盖所选档案或端点的对应配置。下表说明各字段的生效范围和空值行为：
+
+AstrBot WebUI 会把面板字段按基础与群组、指令权限、项目识别、LLM、图像理解、报告、消息反馈、追问、历史、分析、压缩包与日志处理、仓库、文件日志分为 13 个对象分组。分组仅存在于插件保存对象；共享运行时使用本文所示的扁平面板键，`config.json` 仍保持既有配置分区。旧版顶层平铺的面板字段会在插件启动时自动迁入对应分组并保存。
 
 | 面板字段 | 生效范围 | 空值或自动选择的含义 |
 | --- | --- | --- |
@@ -73,6 +79,7 @@ JSON 中的端点和模型声明仍用于选择器定位；所选档案的备用
 
 ```json
 {
+  "version": 2,
   "onebot": {
     "mode": "http_ws",
     "http_url": "http://127.0.0.1:3000",
@@ -886,7 +893,9 @@ max_tokens：         llm.defaults → providers[].models[] → bot.configs.<名
 
 - 端点名校验：`name` 不能为空、不能重复；`base_url` 必须非空；`kind` 必须在允许集合内；`models[]` 不能为空且模型名不可重复
 - 配置级校验：每个 `bot.configs.<名称>.llm.models[]` 必须非空，引用的 `name` / `model` 必须存在；错误会逐条打印并以非 0 退出
-- 旧版 `llm.base_url` / `api_key` / `model` 结构不再支持：启动会打印迁移提示；`python main.py --print-config-template` 可输出新模板
+- 缺少 `version` 或 `version: 1` 的旧配置会在启动时自动迁移；旧
+  `llm.base_url` / `api_key` / `model` / `fallback_models` 会转换为
+  `llm.providers[]` 和档案的 `llm.models[]`，原文件备份为 `config.json.v1.bak`
 - 启动与重载时会输出 `[LLM] 当前配置：端点 … · 模型 … · 密钥指纹 …`，指纹是密钥的 sha256 前 8 位，可用于确认进程实际加载的是哪把密钥
 
 ### 提示词缓存与自动压缩
