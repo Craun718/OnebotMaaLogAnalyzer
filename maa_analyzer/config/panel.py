@@ -47,34 +47,14 @@ def _apply_panel_endpoints(result: dict, endpoints: list) -> None:
                   if key in entry}
         values["llm_endpoint_selector"] = name
         endpoint = LLMEndpointPatch.from_panel(values)
-        _apply_endpoint_patch(llm_cfg, result, endpoint, None)
-
-
-def _apply_model_settings(result: dict, settings: list) -> None:
-    llm_cfg = _ensure_dict(result, "llm")
-    seen: set[tuple[str, str]] = set()
-    for entry in settings:
-        if not isinstance(entry, Mapping):
-            raise ValueError("llm_model_settings 每项必须是模型对象。")
-        name = str(entry.get("name") or "").strip()
-        model = str(entry.get("model") or "").strip()
+        model_patch = LLMModelPatch.from_panel(values)
         providers = llm_cfg.get("providers") or []
-        selected = next((p for p in providers if isinstance(p, dict)
+        existing = next((p for p in providers if isinstance(p, dict)
                          and (not name or p.get("name") == name)), None)
-        if selected is None:
-            raise ValueError(f"模型设置引用了不存在的端点：{name}")
-        actual_name = str(selected.get("name") or "")
-        actual_model = model or next((str(m.get("model") or "") for m in
-                                      selected.get("models", []) if isinstance(m, dict)), "")
-        key = (actual_name, actual_model)
-        if key in seen:
-            raise ValueError(f"模型设置重复：{actual_name}/{actual_model}")
-        seen.add(key)
-        values = {legacy: entry[field] for field, legacy in LEGACY_ENDPOINT_FIELDS.items()
-                  if field in ("model", "support_vision_mode", "support_json_mode_mode",
-                               "model_max_tokens", "model_max_context_tokens") and field in entry}
-        endpoint = LLMEndpointPatch.from_panel({"llm_endpoint_selector": actual_name})
-        _apply_endpoint_patch(llm_cfg, result, endpoint, LLMModelPatch.from_panel(values))
+        model: LLMModelPatch | None = model_patch
+        if not model_patch.selected_model and not (existing and existing.get("models")):
+            model = None
+        _apply_endpoint_patch(llm_cfg, result, endpoint, model)
 
 
 def _target_profile(cfg: dict, panel: Mapping[str, Any]) -> str:
@@ -414,11 +394,9 @@ def apply_panel_overrides(
         return result
     panel = normalize_panel_values(panel)
     endpoints = panel.get("llm_endpoints") or []
-    model_settings = panel.get("llm_model_settings") or []
     endpoints_configured = bool(endpoints or panel.get("_endpoints_configured"))
     endpoint_model = str(
-        (model_settings[0].get("model") if panel.get("_persist_model_settings_migration") and model_settings
-         else endpoints[0].get("model") if endpoints and isinstance(endpoints[0], Mapping)
+        (endpoints[0].get("model") if endpoints and isinstance(endpoints[0], Mapping)
          else "" if endpoints_configured else panel.get("llm_endpoint_model")) or ""
     ).strip()
     if not panel.get("llm_models") and endpoint_model:
@@ -453,8 +431,6 @@ def apply_panel_overrides(
     if endpoints:
         _apply_panel_endpoints(result, endpoints)
     _apply_global_llm_patch(result, patch)
-    if model_settings:
-        _apply_model_settings(result, model_settings)
 
     target = _target_profile(result, panel)
     profile_patch = patch.profile

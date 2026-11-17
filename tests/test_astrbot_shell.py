@@ -456,8 +456,7 @@ class AstrBotPackageMetadataTests(unittest.TestCase):
             self.assertEqual(section["description"], spec.title, group)
             self.assertEqual([k for k in section["items"]
                               if k not in legacy | {"llm_migration_pending", "llm_endpoints_migrated",
-                                                    "llm_endpoints_migration_pending",
-                                                    "llm_model_settings_migration_pending"}], list(spec.fields), group)
+                                                    "llm_endpoints_migration_pending"}], list(spec.fields), group)
             for key in spec.fields:
                 self.assertNotIn(key, leaves, key)
                 leaves[key] = section["items"][key]

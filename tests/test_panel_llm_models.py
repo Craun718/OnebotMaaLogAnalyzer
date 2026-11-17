@@ -20,13 +20,9 @@ class PanelLLMModelsTests(unittest.TestCase):
         panel = {
             "llm_endpoints": [
                 {"name": "primary", "kind": "openai", "base_url": "https://one.test/v1",
-                 "api_key": "key-one"},
+                 "api_key": "key-one", "model": "first", "support_vision_mode": "enabled"},
                 {"name": "backup", "kind": "anthropic", "base_url": "https://two.test",
-                 "api_key": "key-two"},
-            ],
-            "llm_model_settings": [
-                {"name": "primary", "model": "first", "support_vision_mode": "enabled"},
-                {"name": "backup", "model": "second", "support_json_mode_mode": "enabled"},
+                 "api_key": "key-two", "model": "second", "support_json_mode_mode": "enabled"},
             ],
             "llm_models": [{"name": "primary", "model": "first"},
                            {"name": "backup", "model": "second"}],
@@ -40,44 +36,6 @@ class PanelLLMModelsTests(unittest.TestCase):
         self.assertTrue(providers["backup"]["models"][0]["supports"]["json_mode"])
         self.assertEqual(cfg["bot"]["configs"]["默认"]["llm"]["models"], panel["llm_models"])
         self.assertIn("default", providers)
-
-    def test_two_models_on_one_endpoint_have_independent_settings(self):
-        panel = {"llm_model_settings": [
-            {"name": "default", "model": "visual", "support_vision_mode": "enabled",
-             "model_max_context_tokens": 128000},
-            {"name": "default", "model": "text", "support_vision_mode": "disabled",
-             "support_json_mode_mode": "enabled", "model_max_context_tokens": 32000},
-        ], "llm_models": [{"name": "default", "model": "visual"},
-                           {"name": "default", "model": "text"}]}
-        with tempfile.TemporaryDirectory() as tmp:
-            cfg, _, _ = load_effective_config(panel, plugin_data_dir=tmp)
-        models = {m["model"]: m for m in cfg["llm"]["providers"][0]["models"]}
-        self.assertTrue(models["visual"]["supports"]["vision"])
-        self.assertFalse(models["text"]["supports"]["vision"])
-        self.assertTrue(models["text"]["supports"]["json_mode"])
-        self.assertEqual(models["visual"]["max_context_tokens"], 128000)
-        self.assertEqual(models["text"]["max_context_tokens"], 32000)
-
-    def test_existing_endpoint_model_settings_migrate_and_persist(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "config.json"
-            path.write_text(json.dumps(default_config()), encoding="utf-8")
-            config = {"llm": {"llm_endpoints_migrated": True, "llm_endpoints": [
-                {"__template_key": "endpoint", "name": "default", "model": "new-model",
-                 "base_url": "https://example.test", "support_vision_mode": "enabled",
-                 "support_json_mode_mode": "disabled", "model_max_tokens": 1234,
-                 "model_max_context_tokens": 4567}],
-                "llm_models": [{"name": "default", "model": "new-model"}]}}
-            panel, _ = synchronize_panel_config(config)
-            self.assertNotIn("support_vision_mode", config["llm"]["llm_endpoints"][0])
-            self.assertTrue(config["llm"]["llm_model_settings_migration_pending"])
-            cfg, _, _ = load_effective_config(panel, plugin_data_dir=tmp)
-            model = next(m for m in cfg["llm"]["providers"][0]["models"] if m["model"] == "new-model")
-            self.assertTrue(model["supports"]["vision"])
-            self.assertEqual(model["max_tokens"], 1234)
-            saved = json.loads(path.read_text())
-            self.assertEqual(saved["llm"]["providers"][0]["models"], cfg["llm"]["providers"][0]["models"])
-            self.assertFalse(synchronize_panel_config(config)[1])
 
     def test_duplicate_panel_endpoint_names_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "端点名重复"):

@@ -142,19 +142,15 @@ class Main(Star):
         except (ValueError, OSError) as exc:
             logger.error("插件配置无效，分析功能未启动；请在插件面板修正配置并重新加载：%s", exc)
             return
-        if (self.config.get("_persist_llm_migration") or self.config.get("_persist_endpoint_migration")
-                or self.config.get("_persist_model_settings_migration")):
+        if self.config.get("_persist_llm_migration") or self.config.get("_persist_endpoint_migration"):
             section = self._panel_config.get("llm") if self._panel_config is not None else None
             if isinstance(section, dict):
                 old_flags = {key: section.get(key) for key in
-                             ("llm_migration_pending", "llm_endpoints_migration_pending",
-                              "llm_model_settings_migration_pending")}
+                             ("llm_migration_pending", "llm_endpoints_migration_pending")}
                 if self.config.get("_persist_llm_migration"):
                     section["llm_migration_pending"] = False
                 if self.config.get("_persist_endpoint_migration"):
                     section["llm_endpoints_migration_pending"] = False
-                if self.config.get("_persist_model_settings_migration"):
-                    section["llm_model_settings_migration_pending"] = False
                 save = getattr(self._panel_config, "save_config", None)
                 if callable(save):
                     try:
@@ -164,10 +160,8 @@ class Main(Star):
                         raise
             self.config.pop("_persist_llm_migration", None)
             self.config.pop("_persist_endpoint_migration", None)
-            self.config.pop("_persist_model_settings_migration", None)
             runtime.panel.pop("_persist_llm_migration", None)
             runtime.panel.pop("_persist_endpoint_migration", None)
-            runtime.panel.pop("_persist_model_settings_migration", None)
         _ACTIVE_RUNTIMES.add(runtime)
 
     async def terminate(self) -> None:
