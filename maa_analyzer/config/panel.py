@@ -334,6 +334,22 @@ def _apply_profile_llm_candidates(
             for candidate in llm_patch.models
         ]
         llm["models"] = models
+        providers = (result.get("llm") or {}).get("providers") or []
+        for candidate in models:
+            provider = next(
+                (item for item in providers if isinstance(item, dict)
+                 and item.get("name") == candidate["name"]),
+                None,
+            )
+            if provider is None:
+                continue  # Common config validation reports the missing endpoint.
+            declared = provider.setdefault("models", [])
+            if isinstance(declared, list) and not any(
+                isinstance(item, dict) and item.get("model") == candidate["model"]
+                for item in declared
+            ):
+                # Conservative capabilities; advanced settings can opt in.
+                declared.append({"model": candidate["model"]})
 
 
 def apply_panel_overrides(
@@ -351,6 +367,15 @@ def apply_panel_overrides(
     if not panel:
         return result
     panel = normalize_panel_values(panel)
+    endpoint_model = str(panel.get("llm_endpoint_model") or "").strip()
+    if not panel.get("llm_models") and endpoint_model:
+        panel["llm_models"] = [{
+            "name": str(
+                panel.get("llm_endpoint_name")
+                or panel.get("llm_endpoint_selector") or ""
+            ).strip(),
+            "model": endpoint_model,
+        }]
     if not _has_panel_changes(panel):
         return result
 

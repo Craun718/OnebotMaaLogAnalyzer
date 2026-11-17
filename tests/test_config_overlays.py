@@ -65,7 +65,7 @@ class PanelOverrideTests(unittest.TestCase):
             "repo_mirrors": [], "repo_branch": "", "repo_default_branch": "",
             "repo_extensions": [], "report_font_family": "",
             "report_browser_path": "", "settings_system_prompt": "",
-            "llm_fallback_models": [],
+            "llm_models": [{"name": "default", "model": "gpt-4o-mini"}],
         }
 
         result = apply_panel_overrides(cfg, panel)
@@ -243,8 +243,8 @@ class PanelOverrideTests(unittest.TestCase):
             "ui_mfaa_mode": "enabled",
             "ui_maafwapp_mode": "disabled",
             "ui_auto_mode": "enabled",
-            "llm_provider": "default",
-            "llm_model": "gpt-4o-mini",
+            "llm_models": [{"name": "default", "model": "gpt-4o-mini"},
+                           {"name": "backup", "model": "backup-model"}],
             "vision_mode": "disabled",
             "send_images_mode": "disabled",
             "send_repo_images_mode": "enabled",
@@ -367,7 +367,8 @@ class PanelOverrideTests(unittest.TestCase):
             self._config(),
             {
                 "default_config": "Beta",
-                "llm_fallback_models": ["backup:backup-model"],
+                "llm_models": [{"name": "beta", "model": "beta-model"},
+                               {"name": "backup", "model": "backup-model"}],
                 "llm_profile_temperature": "0.3",
                 "llm_profile_max_tokens": 4096,
                 "llm_profile_top_p": "0.9",
@@ -455,7 +456,7 @@ class PanelOverrideTests(unittest.TestCase):
         for panel, message in (
             ({"llm_endpoint_selector": "missing"}, "端点不存在"),
             ({"llm_endpoint_kind": "grpc"}, "llm_endpoint_kind"),
-            ({"llm_fallback_models": ["bad"]}, "llm_fallback_models"),
+            ({"llm_models": [{"model": ""}]}, "llm_models"),
         ):
             with self.subTest(panel=panel):
                 with self.assertRaisesRegex(ValueError, message):
@@ -677,7 +678,7 @@ class PanelConfigSerializationTests(unittest.TestCase):
 
         self.assertEqual(flat["listen_groups"], ["legacy"])
         self.assertEqual(flat["notify_group"], "nested")
-        self.assertEqual(flat["llm_model"], "legacy-model")
+        self.assertNotIn("llm_model", flat)
 
     def test_synchronize_migrates_flat_defaults_and_normalizes_legacy_markers(self):
         config = {
@@ -694,7 +695,7 @@ class PanelConfigSerializationTests(unittest.TestCase):
 
         self.assertTrue(changed)
         self.assertEqual(runtime["listen_groups"], [])
-        self.assertEqual(runtime["llm_fallback_models"], [])
+        self.assertEqual(runtime["llm_models"], [])
         self.assertEqual(runtime["repo_path"], "/repos/maa")
         self.assertEqual(runtime["history_mode"], "enabled")
         self.assertEqual(runtime["history_period_hours"], 24)
@@ -706,7 +707,6 @@ class PanelConfigSerializationTests(unittest.TestCase):
         for key in (
             "repo_path",
             "listen_groups",
-            "llm_fallback_models",
             "history_mode",
             "history_period_hours",
             "llm_profile_max_tokens",

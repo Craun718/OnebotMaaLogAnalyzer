@@ -370,6 +370,11 @@ PANEL_AUTO_SELECT_FIELDS = {
 
 _PANEL_MISSING = object()
 
+# Kept in the AstrBot schema until old installations have been migrated.
+LEGACY_LLM_DEFAULTS: dict[str, Any] = {
+    "llm_provider": "", "llm_model": "", "llm_fallback_models": [],
+}
+
 
 def _mapping_value(value: Mapping[str, Any], key: str) -> Any:
     """Find a key inside one nested AstrBot object section."""
@@ -444,11 +449,51 @@ def normalize_panel_values(panel: Mapping[str, Any]) -> dict:
 def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """Move legacy flat panel values into groups and return runtime values."""
     flat = normalize_panel_values(flatten_panel_config(config))
+    section = config.get("llm")
+    section = section if isinstance(section, Mapping) else {}
+    legacy = {}
+    for key, default in LEGACY_LLM_DEFAULTS.items():
+        # AstrBot inserts empty root defaults on upgrades from grouped config.
+        root = config.get(key, default)
+        legacy[key] = root if root != default else section.get(key, default)
+    migrated_llm = not flat.get("llm_models") and any(legacy.values())
+    if migrated_llm:
+        primary = str(
+            legacy["llm_model"] or flat.get("llm_endpoint_model") or ""
+        ).strip()
+        candidates = [{
+            "__template_key": "model",
+            "name": str(legacy["llm_provider"] or "").strip(),
+            "model": primary,
+        }]
+        for item in legacy["llm_fallback_models"]:
+            name, sep, model = str(item).partition(":")
+            if not sep or not name.strip() or not model.strip():
+                raise ValueError(
+                    f"旧配置 llm_fallback_models 格式无效：{item!r}；"
+                    "需要端点名:模型名。"
+                )
+            candidates.append({
+                "__template_key": "model", "name": name.strip(),
+                "model": model.strip(),
+            })
+        flat["llm_models"] = candidates
     for key, default in PANEL_DEFAULTS.items():
         flat.setdefault(key, copy.deepcopy(default))
     flat = normalize_panel_values(flat)
 
     changed = False
+    if migrated_llm or section.get("llm_migration_pending") is True:
+        flat["_persist_llm_migration"] = True
+    # Reset only after producing the new array; do not resurrect old values
+    # when the user later edits or clears the array.
+    for key, default in LEGACY_LLM_DEFAULTS.items():
+        if key in config and config[key] != default:
+            config[key] = copy.deepcopy(default)
+            changed = True
+        if isinstance(section, dict) and key in section and section[key] != default:
+            section[key] = copy.deepcopy(default)
+            changed = True
     for key in PANEL_SCHEMA_GROUP_FIELDS:
         if key in config:
             del config[key]
@@ -465,6 +510,9 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
         else:
             section = {}
             config[group] = section
+            changed = True
+        if group == "llm" and migrated_llm and section.get("llm_migration_pending") is not True:
+            section["llm_migration_pending"] = True
             changed = True
         for key in spec.fields:
             value = copy.deepcopy(flat[key])

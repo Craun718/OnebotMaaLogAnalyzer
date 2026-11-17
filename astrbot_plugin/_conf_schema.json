@@ -149,12 +149,19 @@
       }
     }
   },
+  "llm_provider": {"description": "旧配置迁移", "type": "string", "default": "", "invisible": true},
+  "llm_model": {"description": "旧配置迁移", "type": "string", "default": "", "invisible": true},
+  "llm_fallback_models": {"description": "旧配置迁移", "type": "list", "default": [], "items": {"type": "string"}, "invisible": true},
   "llm": {
     "description": "LLM 端点、模型与熔断",
     "type": "object",
     "items": {
+      "llm_migration_pending": {"description": "旧配置迁移状态", "type": "bool", "default": false, "invisible": true},
+      "llm_provider": {"description": "旧配置迁移", "type": "string", "default": "", "invisible": true},
+      "llm_model": {"description": "旧配置迁移", "type": "string", "default": "", "invisible": true},
+      "llm_fallback_models": {"description": "旧配置迁移", "type": "list", "default": [], "items": {"type": "string"}, "invisible": true},
       "llm_models": {
-        "description": "候选模型，按数组顺序回退；留空保留 JSON 中的候选或自动选择",
+        "description": "候选模型，按数组顺序回退；留空时使用所选端点模型，未选择则保留 JSON 候选",
         "type": "template_list",
         "default": [],
         "templates": {
