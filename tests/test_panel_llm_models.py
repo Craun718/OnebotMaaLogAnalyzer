@@ -16,6 +16,40 @@ class PanelLLMModelsTests(unittest.TestCase):
     def _default_config(self):
         return default_config()
 
+    def test_candidates_configure_each_model_on_same_endpoint(self):
+        panel = {"llm_models": [
+            {"name": "default", "model": "visual", "support_vision_mode": "enabled",
+             "model_max_context_tokens": 128000},
+            {"name": "default", "model": "text", "support_vision_mode": "disabled",
+             "support_json_mode_mode": "enabled", "model_max_context_tokens": 32000},
+        ]}
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg, _, _ = load_effective_config(panel, plugin_data_dir=tmp)
+        models = {m["model"]: m for m in cfg["llm"]["providers"][0]["models"]}
+        self.assertTrue(models["visual"]["supports"]["vision"])
+        self.assertFalse(models["text"]["supports"]["vision"])
+        self.assertTrue(models["text"]["supports"]["json_mode"])
+        self.assertEqual(models["visual"]["max_context_tokens"], 128000)
+        self.assertEqual(models["text"]["max_context_tokens"], 32000)
+        self.assertEqual([m["model"] for m in cfg["bot"]["configs"]["默认"]["llm"]["models"]],
+                         ["visual", "text"])
+
+    def test_endpoint_model_properties_move_to_matching_candidate(self):
+        config = {"llm": {"llm_endpoints_migrated": True, "llm_endpoints": [
+            {"name": "default", "model": "visual", "support_vision_mode": "enabled",
+             "model_max_tokens": 4000}], "llm_models": [
+            {"name": "default", "model": "visual"}, {"name": "default", "model": "text"}]}}
+        panel, changed = synchronize_panel_config(config)
+        self.assertTrue(changed)
+        self.assertEqual(config["llm"]["llm_models"][0]["support_vision_mode"], "enabled")
+        self.assertEqual(config["llm"]["llm_models"][0]["model_max_tokens"], 4000)
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg, _, _ = load_effective_config(panel, plugin_data_dir=tmp)
+        model = next(m for m in cfg["llm"]["providers"][0]["models"] if m["model"] == "visual")
+        self.assertTrue(model["supports"]["vision"])
+        self.assertEqual(model["max_tokens"], 4000)
+        self.assertFalse(synchronize_panel_config(config)[1])
+
     def test_multiple_panel_endpoints_and_ordered_candidates_load(self):
         panel = {
             "llm_endpoints": [

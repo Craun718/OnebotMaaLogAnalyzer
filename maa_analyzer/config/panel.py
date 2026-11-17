@@ -57,6 +57,24 @@ def _apply_panel_endpoints(result: dict, endpoints: list) -> None:
         _apply_endpoint_patch(llm_cfg, result, endpoint, model)
 
 
+def _apply_candidate_model_settings(result: dict, panel: Mapping[str, Any]) -> None:
+    providers = (result.get("llm") or {}).get("providers") or []
+    fields = ("support_vision_mode", "support_json_mode_mode",
+              "model_max_tokens", "model_max_context_tokens")
+    for candidate in panel.get("llm_models") or []:
+        if not isinstance(candidate, Mapping) or not any(k in candidate for k in fields):
+            continue
+        name = str(candidate.get("name") or "").strip()
+        provider = next((p for p in providers if isinstance(p, dict)
+                         and (not name or p.get("name") == name)), None)
+        if provider is None:
+            continue  # Shared validation reports the missing endpoint.
+        values = {LEGACY_ENDPOINT_FIELDS[k]: candidate[k] for k in fields if k in candidate}
+        values["llm_endpoint_model"] = candidate.get("model", "")
+        endpoint = LLMEndpointPatch.from_panel({"llm_endpoint_selector": provider.get("name")})
+        _apply_endpoint_patch(result["llm"], result, endpoint, LLMModelPatch.from_panel(values))
+
+
 def _target_profile(cfg: dict, panel: Mapping[str, Any]) -> str:
     bot_cfg = cfg.setdefault("bot", {})
     configs = bot_cfg.setdefault("configs", {})
@@ -431,6 +449,7 @@ def apply_panel_overrides(
     if endpoints:
         _apply_panel_endpoints(result, endpoints)
     _apply_global_llm_patch(result, patch)
+    _apply_candidate_model_settings(result, panel)
 
     target = _target_profile(result, panel)
     profile_patch = patch.profile

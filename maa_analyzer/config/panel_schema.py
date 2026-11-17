@@ -72,7 +72,7 @@ class LLMPanel(PanelSection):
     panel_title: ClassVar[str] = "LLM 端点、模型与熔断"
 
     llm_endpoints: list[dict[str, Any]] = Field(default_factory=list)
-    llm_models: list[dict[str, str]] = Field(default_factory=list)
+    llm_models: list[dict[str, Any]] = Field(default_factory=list)
     llm_profile_max_tokens: int = -1
     llm_endpoint_selector: str = ""
     llm_endpoint_name: str = ""
@@ -504,12 +504,32 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
                 "model": model.strip(),
             })
         flat["llm_models"] = candidates
+    migrated_model_values = False
+    model_fields = ("support_vision_mode", "support_json_mode_mode",
+                    "model_max_tokens", "model_max_context_tokens")
+    for endpoint in flat.get("llm_endpoints") or []:
+        if not isinstance(endpoint, dict):
+            continue
+        name = str(endpoint.get("name") or "").strip()
+        model = str(endpoint.get("model") or "").strip()
+        if not model:
+            continue  # Legacy automatic selection depends on config.json.
+        candidate = next((item for item in flat.get("llm_models") or []
+                          if isinstance(item, dict)
+                          and str(item.get("name") or "").strip() == name
+                          and str(item.get("model") or "").strip() == model), None)
+        if candidate is None:
+            continue
+        for key in model_fields:
+            if key in endpoint:
+                candidate.setdefault(key, endpoint.pop(key))
+                migrated_model_values = True
     for key, default in PANEL_DEFAULTS.items():
         flat.setdefault(key, copy.deepcopy(default))
     flat = normalize_panel_values(flat)
 
     changed = False
-    if migrated_llm or section.get("llm_migration_pending") is True:
+    if migrated_llm or migrated_model_values or section.get("llm_migration_pending") is True:
         flat["_persist_llm_migration"] = True
     if migrate_endpoint or section.get("llm_endpoints_migration_pending") is True:
         flat["_persist_endpoint_migration"] = True
@@ -541,7 +561,7 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             section = {}
             config[group] = section
             changed = True
-        if group == "llm" and migrated_llm and section.get("llm_migration_pending") is not True:
+        if group == "llm" and (migrated_llm or migrated_model_values) and section.get("llm_migration_pending") is not True:
             section["llm_migration_pending"] = True
             changed = True
         if group == "llm":
