@@ -92,6 +92,10 @@ OnebotMaaLogAnalyzer/
 与裸模式相同的 `maa_analyzer/` 和报告模板；配置、数据目录及安装步骤见
 [AstrBot 部署](astrbot.md)。
 
+构建时，`package.py` 会把插件包内 `metadata.yaml` 的 `version` 重写为压缩包实际版本
+（Release 标签去掉开头的 `v`，CI 构建则使用 `ci-<提交 SHA>`），确保 AstrBot 面板显示的
+插件版本与下载的 ZIP / Release 版本一致。
+
 ## 白名单与禁止项
 
 三个包在压缩前分别检查必需文件。裸模式包必须包含启动器、共享内核和

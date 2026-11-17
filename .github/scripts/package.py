@@ -2,6 +2,7 @@
 """Build the OneBot and AstrBot distribution archives."""
 
 import argparse
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -19,6 +20,22 @@ BARE_REQUIRED = (
     "maa_analyzer/platforms/astrbot/__init__.py", "maa_analyzer/astrbot/plugin_runtime.py",
     "templates/default/page.html",
 )
+
+
+def set_metadata_version(metadata: Path, version: str) -> None:
+    """Write the release version into a copied AstrBot metadata file."""
+    if "\r" in version or "\n" in version:
+        raise ValueError("版本号不能包含换行符")
+    parsed = metadata.read_text(encoding="utf-8")
+    quoted = "'" + version.replace("'", "''") + "'"
+    updated, count = re.subn(
+        r"(?m)^version:[^\r\n]*$", lambda _match: f"version: {quoted}", parsed, count=1
+    )
+    if count != 1:
+        raise ValueError(f"{metadata} 缺少唯一的 version 字段")
+    metadata.write_text(updated, encoding="utf-8")
+
+
 ASTRBOT_REQUIRED = (
     "main.py", "README.md", "metadata.yaml", "_conf_schema.json", "requirements.txt",
     "maa_analyzer/__init__.py", "maa_analyzer/runtime.py", "maa_analyzer/core/__init__.py",
@@ -95,6 +112,7 @@ def main() -> None:
         raise ValueError("精简包不应包含 tools/ 或额外的模板")
 
     shutil.copytree(ROOT / "astrbot_plugin", astrbot)
+    set_metadata_version(astrbot / "metadata.yaml", version)
     for name in ("maa_analyzer", "templates"):
         shutil.copytree(ROOT / name, astrbot / name)
     clean(astrbot)
