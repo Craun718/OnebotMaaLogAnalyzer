@@ -90,6 +90,7 @@ class Main(Star):
         config: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(context, config)
+        self._panel_config = config
         # Migrate legacy flat fields into grouped objects and keep the shared
         # runtime on its established flat key model.
         if config is not None and _KERNEL_IMPORT_ERROR is None:
@@ -141,6 +142,26 @@ class Main(Star):
         except (ValueError, OSError) as exc:
             logger.error("插件配置无效，分析功能未启动；请在插件面板修正配置并重新加载：%s", exc)
             return
+        if self.config.get("_persist_llm_migration") or self.config.get("_persist_endpoint_migration"):
+            section = self._panel_config.get("llm") if self._panel_config is not None else None
+            if isinstance(section, dict):
+                old_flags = {key: section.get(key) for key in
+                             ("llm_migration_pending", "llm_endpoints_migration_pending")}
+                if self.config.get("_persist_llm_migration"):
+                    section["llm_migration_pending"] = False
+                if self.config.get("_persist_endpoint_migration"):
+                    section["llm_endpoints_migration_pending"] = False
+                save = getattr(self._panel_config, "save_config", None)
+                if callable(save):
+                    try:
+                        save()
+                    except Exception:
+                        section.update(old_flags)
+                        raise
+            self.config.pop("_persist_llm_migration", None)
+            self.config.pop("_persist_endpoint_migration", None)
+            runtime.panel.pop("_persist_llm_migration", None)
+            runtime.panel.pop("_persist_endpoint_migration", None)
         _ACTIVE_RUNTIMES.add(runtime)
 
     async def terminate(self) -> None:

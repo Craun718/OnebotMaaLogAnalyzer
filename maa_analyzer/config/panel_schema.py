@@ -71,9 +71,8 @@ class LLMPanel(PanelSection):
 
     panel_title: ClassVar[str] = "LLM 端点、模型与熔断"
 
-    llm_provider: str = ""
-    llm_model: str = ""
-    llm_fallback_models: list[str] = Field(default_factory=list)
+    llm_endpoints: list[dict[str, Any]] = Field(default_factory=list)
+    llm_models: list[dict[str, Any]] = Field(default_factory=list)
     llm_profile_max_tokens: int = -1
     llm_endpoint_selector: str = ""
     llm_endpoint_name: str = ""
@@ -367,9 +366,29 @@ PANEL_AUTO_SELECT_FIELDS = {
     "llm_endpoint_selector",
     "llm_endpoint_name",
     "llm_endpoint_model",
+    "llm_endpoints",
+    "llm_models",
 }
 
 _PANEL_MISSING = object()
+
+# Kept in the AstrBot schema until old installations have been migrated.
+LEGACY_LLM_DEFAULTS: dict[str, Any] = {
+    "llm_provider": "", "llm_model": "", "llm_fallback_models": [],
+}
+
+LEGACY_ENDPOINT_FIELDS = {
+    "name": "llm_endpoint_name", "kind": "llm_endpoint_kind",
+    "base_url": "llm_endpoint_base_url", "api_key": "llm_endpoint_api_key",
+    "max_concurrency": "llm_endpoint_max_concurrency",
+    "timeout_seconds": "llm_endpoint_timeout_seconds",
+    "connect_timeout_seconds": "llm_endpoint_connect_timeout_seconds",
+    "max_retries": "llm_endpoint_max_retries", "model": "llm_endpoint_model",
+    "support_vision_mode": "llm_model_support_vision_mode",
+    "support_json_mode_mode": "llm_model_support_json_mode_mode",
+    "model_max_tokens": "llm_model_max_tokens",
+    "model_max_context_tokens": "llm_model_max_context_tokens",
+}
 
 
 def _mapping_value(value: Mapping[str, Any], key: str) -> Any:
@@ -411,8 +430,13 @@ def panel_value(panel: Mapping[str, Any], key: str) -> Any:
 
 def panel_changed(panel: Mapping[str, Any], key: str) -> bool:
     """Return whether a panel field carries an explicit, non-placeholder value."""
-    return key in panel and not (
-        key in PANEL_AUTO_SELECT_FIELDS and not str(panel_value(panel, key) or "").strip()
+    if key not in panel:
+        return False
+    value = panel_value(panel, key)
+    if key in PANEL_AUTO_SELECT_FIELDS and isinstance(value, (list, dict)):
+        return bool(value)
+    return not (
+        key in PANEL_AUTO_SELECT_FIELDS and not str(value or "").strip()
     )
 
 
@@ -440,11 +464,86 @@ def normalize_panel_values(panel: Mapping[str, Any]) -> dict:
 def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """Move legacy flat panel values into groups and return runtime values."""
     flat = normalize_panel_values(flatten_panel_config(config))
+    section = config.get("llm")
+    section = section if isinstance(section, Mapping) else {}
+    migrate_endpoint = (
+        section.get("llm_endpoints_migrated") is not True
+        and not flat.get("llm_endpoints")
+        and any(key in section or key in config for key in LEGACY_ENDPOINT_FIELDS.values())
+    )
+    if migrate_endpoint:
+        endpoint = {name: copy.deepcopy(flat.get(key, PANEL_DEFAULTS[key]))
+                    for name, key in LEGACY_ENDPOINT_FIELDS.items()}
+        endpoint["name"] = endpoint["name"] or flat.get("llm_endpoint_selector") or ""
+        endpoint["__template_key"] = "endpoint"
+        flat["llm_endpoints"] = [endpoint]
+    legacy = {}
+    for key, default in LEGACY_LLM_DEFAULTS.items():
+        # AstrBot inserts empty root defaults on upgrades from grouped config.
+        root = config.get(key, default)
+        legacy[key] = root if root != default else section.get(key, default)
+    migrated_llm = not flat.get("llm_models") and any(legacy.values())
+    if migrated_llm:
+        primary = str(
+            legacy["llm_model"] or flat.get("llm_endpoint_model") or ""
+        ).strip()
+        candidates = [{
+            "__template_key": "model",
+            "name": str(legacy["llm_provider"] or "").strip(),
+            "model": primary,
+        }]
+        for item in legacy["llm_fallback_models"]:
+            name, sep, model = str(item).partition(":")
+            if not sep or not name.strip() or not model.strip():
+                raise ValueError(
+                    f"旧配置 llm_fallback_models 格式无效：{item!r}；"
+                    "需要端点名:模型名。"
+                )
+            candidates.append({
+                "__template_key": "model", "name": name.strip(),
+                "model": model.strip(),
+            })
+        flat["llm_models"] = candidates
+    migrated_model_values = False
+    model_fields = ("support_vision_mode", "support_json_mode_mode",
+                    "model_max_tokens", "model_max_context_tokens")
+    for endpoint in flat.get("llm_endpoints") or []:
+        if not isinstance(endpoint, dict):
+            continue
+        name = str(endpoint.get("name") or "").strip()
+        model = str(endpoint.get("model") or "").strip()
+        if not model:
+            continue  # Legacy automatic selection depends on config.json.
+        candidate = next((item for item in flat.get("llm_models") or []
+                          if isinstance(item, dict)
+                          and str(item.get("name") or "").strip() == name
+                          and str(item.get("model") or "").strip() == model), None)
+        if candidate is None:
+            continue
+        for key in model_fields:
+            if key in endpoint:
+                candidate.setdefault(key, endpoint.pop(key))
+                migrated_model_values = True
     for key, default in PANEL_DEFAULTS.items():
         flat.setdefault(key, copy.deepcopy(default))
     flat = normalize_panel_values(flat)
 
     changed = False
+    if migrated_llm or migrated_model_values or section.get("llm_migration_pending") is True:
+        flat["_persist_llm_migration"] = True
+    if migrate_endpoint or section.get("llm_endpoints_migration_pending") is True:
+        flat["_persist_endpoint_migration"] = True
+    if migrate_endpoint or section.get("llm_endpoints_migrated") is True or flat.get("llm_endpoints"):
+        flat["_endpoints_configured"] = True
+    # Reset only after producing the new array; do not resurrect old values
+    # when the user later edits or clears the array.
+    for key, default in LEGACY_LLM_DEFAULTS.items():
+        if key in config and config[key] != default:
+            config[key] = copy.deepcopy(default)
+            changed = True
+        if isinstance(section, dict) and key in section and section[key] != default:
+            section[key] = copy.deepcopy(default)
+            changed = True
     for key in PANEL_SCHEMA_GROUP_FIELDS:
         if key in config:
             del config[key]
@@ -462,6 +561,16 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             section = {}
             config[group] = section
             changed = True
+        if group == "llm" and (migrated_llm or migrated_model_values) and section.get("llm_migration_pending") is not True:
+            section["llm_migration_pending"] = True
+            changed = True
+        if group == "llm":
+            if section.get("llm_endpoints_migrated") is not True:
+                section["llm_endpoints_migrated"] = True
+                changed = True
+            if migrate_endpoint and section.get("llm_endpoints_migration_pending") is not True:
+                section["llm_endpoints_migration_pending"] = True
+                changed = True
         for key in spec.fields:
             value = copy.deepcopy(flat[key])
             if section.get(key) != value:

@@ -150,19 +150,66 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
             save_config = MagicMock()
 
         config = SavedConfig(history_mode="inherit", history_period_hours=-1,
-                             repo_mode="disabled", llm_model="custom-model")
+                             repo_mode="disabled",
+                             llm_models=[{"name": "default", "model": "custom-model"}])
         plugin = self.shell.Main(object(), config)
         self.assertEqual(config["history"]["history_mode"], "enabled")
         self.assertEqual(config["history"]["history_period_hours"], 24)
         self.assertEqual(config["repo_mode"], "disabled")
-        self.assertEqual(config["llm"]["llm_model"], "custom-model")
+        self.assertEqual(config["llm"]["llm_models"],
+                         [{"name": "default", "model": "custom-model"}])
         self.assertNotIn("history_mode", config)
-        self.assertNotIn("llm_model", config)
         self.assertEqual(plugin.config["history_mode"], "enabled")
         self.assertEqual(plugin.config["history_period_hours"], 24)
-        self.assertEqual(plugin.config["llm_model"], "custom-model")
+        self.assertEqual(plugin.config["llm_models"],
+                         [{"name": "default", "model": "custom-model"}])
         self.assertNotEqual(plugin.config, config)
         config.save_config.assert_called_once_with()
+
+    async def test_old_llm_panel_is_rewritten_and_survives_reload(self):
+        path = self.data_root / "plugin_config.json"
+
+        class SavedConfig(dict):
+            def save_config(self):
+                path.write_text(json.dumps(self, ensure_ascii=False), encoding="utf-8")
+
+        old = {"llm": {"llm_provider": "default", "llm_model": "first",
+                       "llm_fallback_models": ["default:second"]}}
+        path.write_text(json.dumps(old), encoding="utf-8")
+        self.shell.Main(object(), SavedConfig(json.loads(path.read_text())))
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual([item["model"] for item in saved["llm"]["llm_models"]],
+                         ["first", "second"])
+        self.assertEqual(saved["llm"]["llm_model"], "")
+        plugin = self.shell.Main(object(), SavedConfig(saved))
+        self.assertEqual([item["model"] for item in plugin.config["llm_models"]],
+                         ["first", "second"])
+
+    async def test_successful_runtime_finishes_pending_migration(self):
+        class SavedConfig(dict):
+            save_config = MagicMock()
+
+        class MigratingRuntime:
+            def __init__(self, panel, *, plugin_data_dir, template_root):
+                self.panel = dict(panel)
+                self.plugin_data_dir = plugin_data_dir
+
+            async def initialize(self):
+                from maa_analyzer.config import load_effective_config
+                load_effective_config(self.panel, plugin_data_dir=self.plugin_data_dir)
+
+        config = SavedConfig({"llm": {"llm_model": "custom-model"}})
+        with patch.object(self.shell, "AstrBotPluginRuntime", MigratingRuntime):
+            plugin = self.shell.Main(object(), config)
+            self.assertTrue(config["llm"]["llm_migration_pending"])
+            await plugin.initialize()
+        path = self.data_root / "OnebotMaaLogAnalyzer" / "config.json"
+        written = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(written["bot"]["configs"]["默认"]["llm"]["models"][0]["model"],
+                         "custom-model")
+        self.assertFalse(config["llm"]["llm_migration_pending"])
+        self.assertNotIn("_persist_llm_migration", plugin.config)
+        self.assertEqual(config.save_config.call_count, 2)
 
     async def test_nested_panel_config_is_normalized_without_losing_unknown_fields(self):
         class SavedConfig(dict):
@@ -175,14 +222,15 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
                 "advanced_note": "keep",
             },
             "vision": {"vision_mode": "disabled"},
-            "llm": {"llm_model": "custom-model"},
+            "llm": {"llm_models": [{"name": "default", "model": "custom-model"}]},
         })
         plugin = self.shell.Main(object(), config)
 
         self.assertEqual(plugin.config["listen_groups"], ["123"])
         self.assertEqual(plugin.config["notify_group"], "456")
         self.assertEqual(plugin.config["vision_mode"], "disabled")
-        self.assertEqual(plugin.config["llm_model"], "custom-model")
+        self.assertEqual(plugin.config["llm_models"],
+                         [{"name": "default", "model": "custom-model"}])
         self.assertEqual(config["basic"]["advanced_note"], "keep")
         self.assertEqual(config["basic"]["listen_groups"], ["123"])
         self.assertIn("report", config)
@@ -395,13 +443,20 @@ class AstrBotPackageMetadataTests(unittest.TestCase):
         self.assertIn("name: OnebotMaaLogAnalyzer", metadata)
         self.assertIn("support_platforms:\n  - aiocqhttp", metadata)
         self.assertIn('astrbot_version: ">=4.29.0,<5"', metadata)
-        self.assertEqual(list(schema), list(PANEL_SCHEMA_GROUPS))
+        legacy = {"llm_provider", "llm_model", "llm_fallback_models"}
+        self.assertEqual([k for k in schema if k not in legacy], list(PANEL_SCHEMA_GROUPS))
+        for key in legacy:
+            self.assertTrue(schema[key]["invisible"])
+            self.assertTrue(schema["llm"]["items"][key]["invisible"])
+        self.assertTrue(schema["llm"]["items"]["llm_migration_pending"]["invisible"])
         leaves = {}
         for group, spec in PANEL_SCHEMA_GROUPS.items():
             section = schema[group]
             self.assertEqual(section["type"], "object", group)
             self.assertEqual(section["description"], spec.title, group)
-            self.assertEqual(list(section["items"]), list(spec.fields), group)
+            self.assertEqual([k for k in section["items"]
+                              if k not in legacy | {"llm_migration_pending", "llm_endpoints_migrated",
+                                                    "llm_endpoints_migration_pending"}], list(spec.fields), group)
             for key in spec.fields:
                 self.assertNotIn(key, leaves, key)
                 leaves[key] = section["items"][key]

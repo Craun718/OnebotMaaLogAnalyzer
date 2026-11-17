@@ -24,11 +24,55 @@ from .panel_overrides import (
     validate_panel_patch,
 )
 from .panel_schema import (
+    LEGACY_ENDPOINT_FIELDS,
     PANEL_DEFAULTS,
     normalize_panel_values,
     panel_changed,
     panel_value,
 )
+
+
+def _apply_panel_endpoints(result: dict, endpoints: list) -> None:
+    """Apply each panel endpoint by name without dropping advanced endpoints."""
+    llm_cfg = _ensure_dict(result, "llm")
+    seen: set[str] = set()
+    for entry in endpoints:
+        if not isinstance(entry, Mapping):
+            raise ValueError("llm_endpoints 每项必须是端点对象。")
+        name = str(entry.get("name") or "").strip()
+        if name in seen:
+            raise ValueError(f"llm_endpoints 端点名重复：{name or '默认端点'}")
+        seen.add(name)
+        values = {legacy: entry[key] for key, legacy in LEGACY_ENDPOINT_FIELDS.items()
+                  if key in entry}
+        values["llm_endpoint_selector"] = name
+        endpoint = LLMEndpointPatch.from_panel(values)
+        model_patch = LLMModelPatch.from_panel(values)
+        providers = llm_cfg.get("providers") or []
+        existing = next((p for p in providers if isinstance(p, dict)
+                         and (not name or p.get("name") == name)), None)
+        model: LLMModelPatch | None = model_patch
+        if not model_patch.selected_model and not (existing and existing.get("models")):
+            model = None
+        _apply_endpoint_patch(llm_cfg, result, endpoint, model)
+
+
+def _apply_candidate_model_settings(result: dict, panel: Mapping[str, Any]) -> None:
+    providers = (result.get("llm") or {}).get("providers") or []
+    fields = ("support_vision_mode", "support_json_mode_mode",
+              "model_max_tokens", "model_max_context_tokens")
+    for candidate in panel.get("llm_models") or []:
+        if not isinstance(candidate, Mapping) or not any(k in candidate for k in fields):
+            continue
+        name = str(candidate.get("name") or "").strip()
+        provider = next((p for p in providers if isinstance(p, dict)
+                         and (not name or p.get("name") == name)), None)
+        if provider is None:
+            continue  # Shared validation reports the missing endpoint.
+        values = {LEGACY_ENDPOINT_FIELDS[k]: candidate[k] for k in fields if k in candidate}
+        values["llm_endpoint_model"] = candidate.get("model", "")
+        endpoint = LLMEndpointPatch.from_panel({"llm_endpoint_selector": provider.get("name")})
+        _apply_endpoint_patch(result["llm"], result, endpoint, LLMModelPatch.from_panel(values))
 
 
 def _target_profile(cfg: dict, panel: Mapping[str, Any]) -> str:
@@ -119,15 +163,7 @@ def _profile_llm_changed(llm_patch: Any) -> bool:
     if llm_patch is None:
         return False
     fields = llm_patch.model_fields_set
-    return bool(
-        fields
-        & {
-            "provider",
-            "model",
-            "max_tokens",
-            "fallback_models",
-        }
-    )
+    return bool(fields & {"models", "max_tokens"})
 
 
 def _profile_changed(profile: ProfilePatch) -> bool:
@@ -145,18 +181,12 @@ def _profile_changed(profile: ProfilePatch) -> bool:
     return _profile_llm_changed(profile.llm)
 
 
-def _panel_primary_candidate(
-    cfg: dict,
-    patch: PanelPatch,
-) -> tuple[str, str]:
-    """Resolve the panel's explicit automatic endpoint/model selection."""
+def _panel_default_provider_name(cfg: dict, patch: PanelPatch) -> str:
+    """Resolve the default endpoint used by model refs without a provider."""
     providers = (cfg.get("llm") or {}).get("providers") or []
-    profile_llm = patch.profile.llm if patch.profile else None
     endpoint = patch.llm.endpoint if patch.llm else None
-    model_patch = patch.llm.model if patch.llm else None
     name = str(
-        (profile_llm.provider if profile_llm else "")
-        or (endpoint.name if endpoint else "")
+        (endpoint.name if endpoint else "")
         or (endpoint.selector if endpoint else "")
         or ""
     ).strip()
@@ -169,19 +199,7 @@ def _panel_primary_candidate(
         ),
         {},
     )
-    models = provider.get("models") or []
-    selected_model = model_patch.selected_model if model_patch else ""
-    model = selected_model or str(
-        next(
-            (
-                item.get("model", "")
-                for item in models
-                if isinstance(item, dict)
-            ),
-            "",
-        )
-    )
-    return str(provider.get("name") or name), model
+    return str(provider.get("name") or name)
 
 
 def _apply_endpoint_patch(
@@ -266,7 +284,7 @@ def _apply_endpoint_patch(
     if not isinstance(models, list):
         models = []
         provider["models"] = models
-    selected_name = model_patch.selected_model
+    selected_name = model_patch.selected_model if model_patch else ""
     model = next(
         (
             item
@@ -289,6 +307,8 @@ def _apply_endpoint_patch(
         model = {"model": selected_name}
         models.append(model)
 
+    if model_patch is None:
+        return
     supports = model.get("supports")
     if not isinstance(supports, dict):
         supports = {}
@@ -345,31 +365,35 @@ def _apply_profile_llm_candidates(
     models = llm.get("models")
     if not isinstance(models, list):
         models = []
-    selection_fields = llm_patch.model_fields_set & {"provider", "model"}
-    if selection_fields:
-        if not models:
-            models.append({})
-        first = models[0]
-        if not isinstance(first, dict):
-            first = {}
-            models[0] = first
-        primary_name, primary_model = _panel_primary_candidate(result, patch)
-        if "provider" in selection_fields:
-            first["name"] = primary_name
-        if "model" in selection_fields:
-            first["model"] = primary_model
-    if "fallback_models" in llm_patch.model_fields_set:
-        first = (
-            models[0]
-            if models and isinstance(models[0], dict)
-            else None
-        )
-        fallbacks = [
-            candidate.model_dump()
-            for candidate in (llm_patch.fallback_models or [])
+    if (
+        "models" in llm_patch.model_fields_set
+        and llm_patch.models
+    ):
+        default_provider = _panel_default_provider_name(result, patch)
+        models = [
+            {
+                "name": candidate.name or default_provider,
+                "model": candidate.model,
+            }
+            for candidate in llm_patch.models
         ]
-        models = ([first] if first is not None else []) + fallbacks
-    llm["models"] = models
+        llm["models"] = models
+        providers = (result.get("llm") or {}).get("providers") or []
+        for candidate in models:
+            provider = next(
+                (item for item in providers if isinstance(item, dict)
+                 and item.get("name") == candidate["name"]),
+                None,
+            )
+            if provider is None:
+                continue  # Common config validation reports the missing endpoint.
+            declared = provider.setdefault("models", [])
+            if isinstance(declared, list) and not any(
+                isinstance(item, dict) and item.get("model") == candidate["model"]
+                for item in declared
+            ):
+                # Conservative capabilities; advanced settings can opt in.
+                declared.append({"model": candidate["model"]})
 
 
 def apply_panel_overrides(
@@ -387,6 +411,24 @@ def apply_panel_overrides(
     if not panel:
         return result
     panel = normalize_panel_values(panel)
+    endpoints = panel.get("llm_endpoints") or []
+    endpoints_configured = bool(endpoints or panel.get("_endpoints_configured"))
+    endpoint_model = str(
+        (endpoints[0].get("model") if endpoints and isinstance(endpoints[0], Mapping)
+         else "" if endpoints_configured else panel.get("llm_endpoint_model")) or ""
+    ).strip()
+    if not panel.get("llm_models") and endpoint_model:
+        panel["llm_models"] = [{
+            "name": str(
+                (endpoints[0].get("name") if endpoints and isinstance(endpoints[0], Mapping) else "")
+                or panel.get("llm_endpoint_name")
+                or panel.get("llm_endpoint_selector") or ""
+            ).strip(),
+            "model": endpoint_model,
+        }]
+    if endpoints_configured:
+        panel = {key: value for key, value in panel.items()
+                 if key not in set(LEGACY_ENDPOINT_FIELDS.values()) | {"llm_endpoint_selector"}}
     if not _has_panel_changes(panel):
         return result
 
@@ -404,7 +446,10 @@ def apply_panel_overrides(
 
     if isinstance(result.get("llm"), dict):
         _normalize_model_aliases(result["llm"], LLMGlobalConfig)
+    if endpoints:
+        _apply_panel_endpoints(result, endpoints)
     _apply_global_llm_patch(result, patch)
+    _apply_candidate_model_settings(result, panel)
 
     target = _target_profile(result, panel)
     profile_patch = patch.profile

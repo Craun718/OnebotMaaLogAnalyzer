@@ -1,6 +1,8 @@
 """Configuration loading, validation, and effective runtime resolution."""
 from __future__ import annotations
 
+import copy
+import shutil
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -9,7 +11,7 @@ from ..core.llm_pool import detect_legacy_llm, validate_llm_config
 from .constants import ONEBOT_MODES
 from .defaults import write_default_config
 from .logging_setup import logger
-from .migration import load_and_migrate_config
+from .migration import _write_json_atomic, load_and_migrate_config
 from .panel import apply_panel_overrides
 from .panel_schema import panel_changed, panel_value
 
@@ -126,6 +128,8 @@ def load_effective_config(
     errors = validate_common_config(effective)
     if errors:
         raise ValueError("\n".join(errors))
+    if panel.get("_persist_llm_migration") or panel.get("_persist_endpoint_migration"):
+        _persist_migrated_llm(config_path, raw, effective, panel, created=created)
     data_dir = resolve_data_dir(
         effective,
         base_dir=plugin_dir,
@@ -138,3 +142,44 @@ def load_effective_config(
     if created:
         logger.info("已生成 AstrBot 插件默认配置：%s", config_path)
     return effective, config_path, data_dir
+
+
+def _persist_migrated_llm(
+    path: Path, raw: dict, effective: dict, panel: Mapping[str, Any], *, created: bool,
+) -> None:
+    """Persist only the migrated profile candidates and referenced endpoints."""
+    migrate_models = bool(panel.get("_persist_llm_migration"))
+    migrate_endpoints = bool(panel.get("_persist_endpoint_migration"))
+    if migrate_models and not panel.get("llm_models"):
+        raise ValueError("迁移尚未完成，请先在面板填写候选模型。")
+    if migrate_endpoints and not panel.get("llm_endpoints"):
+        raise ValueError("迁移尚未完成，请先在面板填写端点。")
+    updated = copy.deepcopy(raw)
+    effective_configs = effective["bot"]["configs"]
+    target = str(panel.get("default_config") or "").strip() or next(iter(effective_configs))
+    models = effective_configs[target]["llm"]["models"]
+    names = {item["name"] for item in models} if migrate_models else set()
+    if migrate_models:
+        updated_configs = updated.setdefault("bot", {}).setdefault("configs", {})
+        updated_configs.setdefault(target, {}).setdefault("llm", {})["models"] = copy.deepcopy(models)
+    if migrate_endpoints:
+        for endpoint in panel["llm_endpoints"]:
+            name = str(endpoint.get("name") or "").strip()
+            names.add(name or effective["llm"]["providers"][0]["name"])
+    providers = updated.setdefault("llm", {}).setdefault("providers", [])
+    for provider in effective["llm"]["providers"]:
+        if provider.get("name") not in names:
+            continue
+        index = next((i for i, old in enumerate(providers)
+                      if isinstance(old, dict) and old.get("name") == provider["name"]), None)
+        if index is None:
+            providers.append(copy.deepcopy(provider))
+        else:
+            providers[index] = copy.deepcopy(provider)
+    if updated == raw:
+        return
+    backup = path.with_name(f"{path.name}.panel-migration.bak")
+    if not created and not backup.exists():
+        shutil.copy2(path, backup)
+    _write_json_atomic(path, updated)
+    logger.info("[配置] 已将迁移后的模型候选写入：%s", path)
