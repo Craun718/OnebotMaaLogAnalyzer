@@ -95,18 +95,25 @@ def _unlimited_int(value: Any) -> Any:
     return value
 
 
-def _parse_fallback_models(value: Any) -> list[dict[str, str]]:
-    candidates: list[dict[str, str]] = []
+def _parse_model_refs(value: Any) -> list[ModelRef]:
+    candidates: list[ModelRef] = []
     for raw in value or []:
-        text = str(raw).strip()
-        if not text:
-            continue
-        provider, separator, model = text.partition(":")
-        provider = provider.strip()
-        model = model.strip()
-        if not separator or not provider or not model:
-            raise ValueError("每项格式必须是 端点名:模型名。")
-        candidates.append({"name": provider, "model": model})
+        if isinstance(raw, Mapping):
+            model = str(raw.get("model") or "").strip()
+            name = str(raw.get("name") or "").strip()
+        else:
+            text = str(raw).strip()
+            if not text:
+                continue
+            name, separator, model = text.partition(":")
+            name = name.strip()
+            model = model.strip()
+            if not separator:
+                model = name
+                name = ""
+        if not model:
+            raise ValueError("每项必须包含模型名。")
+        candidates.append(ModelRef(name=name, model=model))
     return candidates
 
 
@@ -455,26 +462,20 @@ class ProjectConfigPatch(PanelPatchModel):
 class ConfigLLMPatch(PanelPatchModel):
     """Sparse patch for the profile-level model candidates."""
 
-    provider: str | None = Field(
-        default=None, validation_alias="llm_provider"
-    )
-    model: str | None = Field(
-        default=None, validation_alias="llm_model"
-    )
-    fallback_models: list[ModelRef] | None = Field(
+    models: list[ModelRef] | None = Field(
         default=None,
-        validation_alias="llm_fallback_models",
+        validation_alias="llm_models",
         exclude=True,
-        json_schema_extra={"panel_kind": "list"},
+        json_schema_extra={"panel_kind": "template_list"},
     )
     max_tokens: UnlimitedInt | None = Field(
         default=None, validation_alias="llm_profile_max_tokens"
     )
 
-    @field_validator("fallback_models", mode="before")
+    @field_validator("models", mode="before")
     @classmethod
-    def _parse_fallbacks(cls, value: Any) -> Any:
-        return _parse_fallback_models(value)
+    def _parse_models(cls, value: Any) -> Any:
+        return _parse_model_refs(value)
 
 
 def _vision_alias(name: str) -> str:

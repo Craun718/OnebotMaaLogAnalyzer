@@ -119,15 +119,7 @@ def _profile_llm_changed(llm_patch: Any) -> bool:
     if llm_patch is None:
         return False
     fields = llm_patch.model_fields_set
-    return bool(
-        fields
-        & {
-            "provider",
-            "model",
-            "max_tokens",
-            "fallback_models",
-        }
-    )
+    return bool(fields & {"models", "max_tokens"})
 
 
 def _profile_changed(profile: ProfilePatch) -> bool:
@@ -145,18 +137,12 @@ def _profile_changed(profile: ProfilePatch) -> bool:
     return _profile_llm_changed(profile.llm)
 
 
-def _panel_primary_candidate(
-    cfg: dict,
-    patch: PanelPatch,
-) -> tuple[str, str]:
-    """Resolve the panel's explicit automatic endpoint/model selection."""
+def _panel_default_provider_name(cfg: dict, patch: PanelPatch) -> str:
+    """Resolve the default endpoint used by model refs without a provider."""
     providers = (cfg.get("llm") or {}).get("providers") or []
-    profile_llm = patch.profile.llm if patch.profile else None
     endpoint = patch.llm.endpoint if patch.llm else None
-    model_patch = patch.llm.model if patch.llm else None
     name = str(
-        (profile_llm.provider if profile_llm else "")
-        or (endpoint.name if endpoint else "")
+        (endpoint.name if endpoint else "")
         or (endpoint.selector if endpoint else "")
         or ""
     ).strip()
@@ -169,19 +155,7 @@ def _panel_primary_candidate(
         ),
         {},
     )
-    models = provider.get("models") or []
-    selected_model = model_patch.selected_model if model_patch else ""
-    model = selected_model or str(
-        next(
-            (
-                item.get("model", "")
-                for item in models
-                if isinstance(item, dict)
-            ),
-            "",
-        )
-    )
-    return str(provider.get("name") or name), model
+    return str(provider.get("name") or name)
 
 
 def _apply_endpoint_patch(
@@ -266,7 +240,7 @@ def _apply_endpoint_patch(
     if not isinstance(models, list):
         models = []
         provider["models"] = models
-    selected_name = model_patch.selected_model
+    selected_name = model_patch.selected_model if model_patch else ""
     model = next(
         (
             item
@@ -289,6 +263,8 @@ def _apply_endpoint_patch(
         model = {"model": selected_name}
         models.append(model)
 
+    if model_patch is None:
+        return
     supports = model.get("supports")
     if not isinstance(supports, dict):
         supports = {}
@@ -345,31 +321,19 @@ def _apply_profile_llm_candidates(
     models = llm.get("models")
     if not isinstance(models, list):
         models = []
-    selection_fields = llm_patch.model_fields_set & {"provider", "model"}
-    if selection_fields:
-        if not models:
-            models.append({})
-        first = models[0]
-        if not isinstance(first, dict):
-            first = {}
-            models[0] = first
-        primary_name, primary_model = _panel_primary_candidate(result, patch)
-        if "provider" in selection_fields:
-            first["name"] = primary_name
-        if "model" in selection_fields:
-            first["model"] = primary_model
-    if "fallback_models" in llm_patch.model_fields_set:
-        first = (
-            models[0]
-            if models and isinstance(models[0], dict)
-            else None
-        )
-        fallbacks = [
-            candidate.model_dump()
-            for candidate in (llm_patch.fallback_models or [])
+    if (
+        "models" in llm_patch.model_fields_set
+        and llm_patch.models
+    ):
+        default_provider = _panel_default_provider_name(result, patch)
+        models = [
+            {
+                "name": candidate.name or default_provider,
+                "model": candidate.model,
+            }
+            for candidate in llm_patch.models
         ]
-        models = ([first] if first is not None else []) + fallbacks
-    llm["models"] = models
+        llm["models"] = models
 
 
 def apply_panel_overrides(

@@ -71,9 +71,7 @@ class LLMPanel(PanelSection):
 
     panel_title: ClassVar[str] = "LLM 端点、模型与熔断"
 
-    llm_provider: str = ""
-    llm_model: str = ""
-    llm_fallback_models: list[str] = Field(default_factory=list)
+    llm_models: list[dict[str, str]] = Field(default_factory=list)
     llm_profile_max_tokens: int = -1
     llm_endpoint_selector: str = ""
     llm_endpoint_name: str = ""
@@ -367,6 +365,7 @@ PANEL_AUTO_SELECT_FIELDS = {
     "llm_endpoint_selector",
     "llm_endpoint_name",
     "llm_endpoint_model",
+    "llm_models",
 }
 
 _PANEL_MISSING = object()
@@ -411,8 +410,13 @@ def panel_value(panel: Mapping[str, Any], key: str) -> Any:
 
 def panel_changed(panel: Mapping[str, Any], key: str) -> bool:
     """Return whether a panel field carries an explicit, non-placeholder value."""
-    return key in panel and not (
-        key in PANEL_AUTO_SELECT_FIELDS and not str(panel_value(panel, key) or "").strip()
+    if key not in panel:
+        return False
+    value = panel_value(panel, key)
+    if key in PANEL_AUTO_SELECT_FIELDS and isinstance(value, (list, dict)):
+        return bool(value)
+    return not (
+        key in PANEL_AUTO_SELECT_FIELDS and not str(value or "").strip()
     )
 
 

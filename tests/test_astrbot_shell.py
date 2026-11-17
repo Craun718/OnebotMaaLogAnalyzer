@@ -150,17 +150,19 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
             save_config = MagicMock()
 
         config = SavedConfig(history_mode="inherit", history_period_hours=-1,
-                             repo_mode="disabled", llm_model="custom-model")
+                             repo_mode="disabled",
+                             llm_models=[{"name": "default", "model": "custom-model"}])
         plugin = self.shell.Main(object(), config)
         self.assertEqual(config["history"]["history_mode"], "enabled")
         self.assertEqual(config["history"]["history_period_hours"], 24)
         self.assertEqual(config["repo_mode"], "disabled")
-        self.assertEqual(config["llm"]["llm_model"], "custom-model")
+        self.assertEqual(config["llm"]["llm_models"],
+                         [{"name": "default", "model": "custom-model"}])
         self.assertNotIn("history_mode", config)
-        self.assertNotIn("llm_model", config)
         self.assertEqual(plugin.config["history_mode"], "enabled")
         self.assertEqual(plugin.config["history_period_hours"], 24)
-        self.assertEqual(plugin.config["llm_model"], "custom-model")
+        self.assertEqual(plugin.config["llm_models"],
+                         [{"name": "default", "model": "custom-model"}])
         self.assertNotEqual(plugin.config, config)
         config.save_config.assert_called_once_with()
 
@@ -175,14 +177,15 @@ class AstrBotPluginShellTests(unittest.IsolatedAsyncioTestCase):
                 "advanced_note": "keep",
             },
             "vision": {"vision_mode": "disabled"},
-            "llm": {"llm_model": "custom-model"},
+            "llm": {"llm_models": [{"name": "default", "model": "custom-model"}]},
         })
         plugin = self.shell.Main(object(), config)
 
         self.assertEqual(plugin.config["listen_groups"], ["123"])
         self.assertEqual(plugin.config["notify_group"], "456")
         self.assertEqual(plugin.config["vision_mode"], "disabled")
-        self.assertEqual(plugin.config["llm_model"], "custom-model")
+        self.assertEqual(plugin.config["llm_models"],
+                         [{"name": "default", "model": "custom-model"}])
         self.assertEqual(config["basic"]["advanced_note"], "keep")
         self.assertEqual(config["basic"]["listen_groups"], ["123"])
         self.assertIn("report", config)

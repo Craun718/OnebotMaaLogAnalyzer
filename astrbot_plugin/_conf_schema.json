@@ -153,22 +153,27 @@
     "description": "LLM 端点、模型与熔断",
     "type": "object",
     "items": {
-      "llm_provider": {
-        "description": "首选 LLM 端点名；留空自动使用面板选中的全局端点",
-        "type": "string",
-        "default": ""
-      },
-      "llm_model": {
-        "description": "首选 LLM 模型名；留空自动使用首选端点中面板选中的模型或第一个模型",
-        "type": "string",
-        "default": ""
-      },
-      "llm_fallback_models": {
-        "description": "备用候选，格式 端点名:模型名；空列表清空备用候选",
-        "type": "list",
+      "llm_models": {
+        "description": "候选模型，按数组顺序回退；留空保留 JSON 中的候选或自动选择",
+        "type": "template_list",
         "default": [],
-        "items": {
-          "type": "string"
+        "templates": {
+          "model": {
+            "name": "模型候选",
+            "display_item": "model",
+            "items": {
+              "name": {
+                "description": "端点名；留空使用默认端点",
+                "type": "string",
+                "default": ""
+              },
+              "model": {
+                "description": "模型名",
+                "type": "string",
+                "default": ""
+              }
+            }
+          }
         }
       },
       "llm_profile_max_tokens": {
