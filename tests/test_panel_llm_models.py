@@ -16,6 +16,58 @@ class PanelLLMModelsTests(unittest.TestCase):
     def _default_config(self):
         return default_config()
 
+    def test_multiple_panel_endpoints_and_ordered_candidates_load(self):
+        panel = {
+            "llm_endpoints": [
+                {"name": "primary", "kind": "openai", "base_url": "https://one.test/v1",
+                 "api_key": "key-one", "model": "first", "support_vision_mode": "enabled"},
+                {"name": "backup", "kind": "anthropic", "base_url": "https://two.test",
+                 "api_key": "key-two", "model": "second", "support_json_mode_mode": "enabled"},
+            ],
+            "llm_models": [{"name": "primary", "model": "first"},
+                           {"name": "backup", "model": "second"}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg, _, _ = load_effective_config(panel, plugin_data_dir=tmp)
+        providers = {p["name"]: p for p in cfg["llm"]["providers"]}
+        self.assertEqual(providers["primary"]["api_key"], "key-one")
+        self.assertEqual(providers["backup"]["kind"], "anthropic")
+        self.assertTrue(providers["primary"]["models"][0]["supports"]["vision"])
+        self.assertTrue(providers["backup"]["models"][0]["supports"]["json_mode"])
+        self.assertEqual(cfg["bot"]["configs"]["默认"]["llm"]["models"], panel["llm_models"])
+        self.assertIn("default", providers)
+
+    def test_duplicate_panel_endpoint_names_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "端点名重复"):
+            apply_panel_overrides(default_config(), {"llm_endpoints": [
+                {"name": "same", "base_url": "https://one.test"},
+                {"name": "same", "base_url": "https://two.test"},
+            ]})
+
+    def test_old_endpoint_migrates_to_both_files_without_resurrection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text(json.dumps(default_config()), encoding="utf-8")
+            old = {"llm": {"llm_endpoint_base_url": "https://example.test/v1",
+                           "llm_endpoint_api_key": "secret", "llm_endpoint_model": "old-model",
+                           "llm_model_support_vision_mode": "enabled"}}
+            runtime, changed = synchronize_panel_config(old)
+            self.assertTrue(changed)
+            endpoint = old["llm"]["llm_endpoints"][0]
+            self.assertEqual(endpoint["base_url"], "https://example.test/v1")
+            self.assertEqual(endpoint["api_key"], "secret")
+            self.assertTrue(old["llm"]["llm_endpoints_migration_pending"])
+            effective, _, _ = load_effective_config(runtime, plugin_data_dir=tmp)
+            persisted = json.loads(path.read_text())
+            self.assertEqual(persisted["llm"]["providers"][0]["base_url"], "https://example.test/v1")
+            self.assertEqual(persisted["llm"]["providers"][0], effective["llm"]["providers"][0])
+            self.assertTrue((Path(tmp) / "config.json.panel-migration.bak").exists())
+            old["llm"]["llm_endpoints_migration_pending"] = False
+            old["llm"]["llm_endpoints"] = []
+            after, _ = synchronize_panel_config(old)
+            self.assertEqual(after["llm_endpoints"], [])
+            self.assertNotIn("_persist_endpoint_migration", after)
+
     def test_llm_models_use_array_order_for_fallback(self):
         result = apply_panel_overrides(self._default_config(), {
             "default_config": "默认",
@@ -132,6 +184,35 @@ class PanelLLMModelsTests(unittest.TestCase):
 
 
 class PanelLLMFallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fallback_switches_between_panel_endpoints(self):
+        panel = {
+            "llm_endpoints": [
+                {"name": "first", "base_url": "https://first.test", "max_retries": 0},
+                {"name": "second", "base_url": "https://second.test", "max_retries": 0},
+            ],
+            "llm_models": [{"name": "first", "model": "model-a"},
+                           {"name": "second", "model": "model-b"}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg, _, _ = load_effective_config(panel, plugin_data_dir=tmp)
+        pool = LLMPool(cfg["llm"])
+        profile = ConfigLLM.model_validate(cfg["bot"]["configs"]["默认"]["llm"])
+        attempted = []
+
+        async def first(*args, **kwargs):
+            attempted.append(("first", kwargs["model"]))
+            raise LLMError("failed", kind="other")
+
+        async def second(*args, **kwargs):
+            attempted.append(("second", kwargs["model"]))
+            return ChatMessage(content="ok")
+
+        with patch.object(pool.clients["first"], "chat_messages", side_effect=first), \
+             patch.object(pool.clients["second"], "chat_messages", side_effect=second):
+            reply = await pool.chat(profile, [], use_breaker=False)
+        self.assertEqual(reply.content, "ok")
+        self.assertEqual(attempted, [("first", "model-a"), ("second", "model-b")])
+
     async def test_migrated_candidates_are_attempted_in_order(self):
         panel, _ = synchronize_panel_config({"llm": {
             "llm_model": "first", "llm_fallback_models": ["default:second"],

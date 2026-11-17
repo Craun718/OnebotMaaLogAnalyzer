@@ -71,6 +71,7 @@ class LLMPanel(PanelSection):
 
     panel_title: ClassVar[str] = "LLM 端点、模型与熔断"
 
+    llm_endpoints: list[dict[str, Any]] = Field(default_factory=list)
     llm_models: list[dict[str, str]] = Field(default_factory=list)
     llm_profile_max_tokens: int = -1
     llm_endpoint_selector: str = ""
@@ -365,6 +366,7 @@ PANEL_AUTO_SELECT_FIELDS = {
     "llm_endpoint_selector",
     "llm_endpoint_name",
     "llm_endpoint_model",
+    "llm_endpoints",
     "llm_models",
 }
 
@@ -373,6 +375,19 @@ _PANEL_MISSING = object()
 # Kept in the AstrBot schema until old installations have been migrated.
 LEGACY_LLM_DEFAULTS: dict[str, Any] = {
     "llm_provider": "", "llm_model": "", "llm_fallback_models": [],
+}
+
+LEGACY_ENDPOINT_FIELDS = {
+    "name": "llm_endpoint_name", "kind": "llm_endpoint_kind",
+    "base_url": "llm_endpoint_base_url", "api_key": "llm_endpoint_api_key",
+    "max_concurrency": "llm_endpoint_max_concurrency",
+    "timeout_seconds": "llm_endpoint_timeout_seconds",
+    "connect_timeout_seconds": "llm_endpoint_connect_timeout_seconds",
+    "max_retries": "llm_endpoint_max_retries", "model": "llm_endpoint_model",
+    "support_vision_mode": "llm_model_support_vision_mode",
+    "support_json_mode_mode": "llm_model_support_json_mode_mode",
+    "model_max_tokens": "llm_model_max_tokens",
+    "model_max_context_tokens": "llm_model_max_context_tokens",
 }
 
 
@@ -451,6 +466,17 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
     flat = normalize_panel_values(flatten_panel_config(config))
     section = config.get("llm")
     section = section if isinstance(section, Mapping) else {}
+    migrate_endpoint = (
+        section.get("llm_endpoints_migrated") is not True
+        and not flat.get("llm_endpoints")
+        and any(key in section or key in config for key in LEGACY_ENDPOINT_FIELDS.values())
+    )
+    if migrate_endpoint:
+        endpoint = {name: copy.deepcopy(flat.get(key, PANEL_DEFAULTS[key]))
+                    for name, key in LEGACY_ENDPOINT_FIELDS.items()}
+        endpoint["name"] = endpoint["name"] or flat.get("llm_endpoint_selector") or ""
+        endpoint["__template_key"] = "endpoint"
+        flat["llm_endpoints"] = [endpoint]
     legacy = {}
     for key, default in LEGACY_LLM_DEFAULTS.items():
         # AstrBot inserts empty root defaults on upgrades from grouped config.
@@ -485,6 +511,10 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
     changed = False
     if migrated_llm or section.get("llm_migration_pending") is True:
         flat["_persist_llm_migration"] = True
+    if migrate_endpoint or section.get("llm_endpoints_migration_pending") is True:
+        flat["_persist_endpoint_migration"] = True
+    if migrate_endpoint or section.get("llm_endpoints_migrated") is True or flat.get("llm_endpoints"):
+        flat["_endpoints_configured"] = True
     # Reset only after producing the new array; do not resurrect old values
     # when the user later edits or clears the array.
     for key, default in LEGACY_LLM_DEFAULTS.items():
@@ -514,6 +544,13 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
         if group == "llm" and migrated_llm and section.get("llm_migration_pending") is not True:
             section["llm_migration_pending"] = True
             changed = True
+        if group == "llm":
+            if section.get("llm_endpoints_migrated") is not True:
+                section["llm_endpoints_migrated"] = True
+                changed = True
+            if migrate_endpoint and section.get("llm_endpoints_migration_pending") is not True:
+                section["llm_endpoints_migration_pending"] = True
+                changed = True
         for key in spec.fields:
             value = copy.deepcopy(flat[key])
             if section.get(key) != value:

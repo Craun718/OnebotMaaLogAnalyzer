@@ -24,11 +24,36 @@ from .panel_overrides import (
     validate_panel_patch,
 )
 from .panel_schema import (
+    LEGACY_ENDPOINT_FIELDS,
     PANEL_DEFAULTS,
     normalize_panel_values,
     panel_changed,
     panel_value,
 )
+
+
+def _apply_panel_endpoints(result: dict, endpoints: list) -> None:
+    """Apply each panel endpoint by name without dropping advanced endpoints."""
+    llm_cfg = _ensure_dict(result, "llm")
+    seen: set[str] = set()
+    for entry in endpoints:
+        if not isinstance(entry, Mapping):
+            raise ValueError("llm_endpoints 每项必须是端点对象。")
+        name = str(entry.get("name") or "").strip()
+        if name in seen:
+            raise ValueError(f"llm_endpoints 端点名重复：{name or '默认端点'}")
+        seen.add(name)
+        values = {legacy: entry[key] for key, legacy in LEGACY_ENDPOINT_FIELDS.items()
+                  if key in entry}
+        values["llm_endpoint_selector"] = name
+        endpoint = LLMEndpointPatch.from_panel(values)
+        model = LLMModelPatch.from_panel(values)
+        providers = llm_cfg.get("providers") or []
+        existing = next((p for p in providers if isinstance(p, dict)
+                         and (not name or p.get("name") == name)), None)
+        if not model.selected_model and not (existing and existing.get("models")):
+            model = None
+        _apply_endpoint_patch(llm_cfg, result, endpoint, model)
 
 
 def _target_profile(cfg: dict, panel: Mapping[str, Any]) -> str:
@@ -367,15 +392,24 @@ def apply_panel_overrides(
     if not panel:
         return result
     panel = normalize_panel_values(panel)
-    endpoint_model = str(panel.get("llm_endpoint_model") or "").strip()
+    endpoints = panel.get("llm_endpoints") or []
+    endpoints_configured = bool(endpoints or panel.get("_endpoints_configured"))
+    endpoint_model = str(
+        (endpoints[0].get("model") if endpoints and isinstance(endpoints[0], Mapping)
+         else "" if endpoints_configured else panel.get("llm_endpoint_model")) or ""
+    ).strip()
     if not panel.get("llm_models") and endpoint_model:
         panel["llm_models"] = [{
             "name": str(
-                panel.get("llm_endpoint_name")
+                (endpoints[0].get("name") if endpoints and isinstance(endpoints[0], Mapping) else "")
+                or panel.get("llm_endpoint_name")
                 or panel.get("llm_endpoint_selector") or ""
             ).strip(),
             "model": endpoint_model,
         }]
+    if endpoints_configured:
+        panel = {key: value for key, value in panel.items()
+                 if key not in set(LEGACY_ENDPOINT_FIELDS.values()) | {"llm_endpoint_selector"}}
     if not _has_panel_changes(panel):
         return result
 
@@ -393,6 +427,8 @@ def apply_panel_overrides(
 
     if isinstance(result.get("llm"), dict):
         _normalize_model_aliases(result["llm"], LLMGlobalConfig)
+    if endpoints:
+        _apply_panel_endpoints(result, endpoints)
     _apply_global_llm_patch(result, patch)
 
     target = _target_profile(result, panel)

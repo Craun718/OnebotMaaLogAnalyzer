@@ -149,17 +149,161 @@
       }
     }
   },
-  "llm_provider": {"description": "旧配置迁移", "type": "string", "default": "", "invisible": true},
-  "llm_model": {"description": "旧配置迁移", "type": "string", "default": "", "invisible": true},
-  "llm_fallback_models": {"description": "旧配置迁移", "type": "list", "default": [], "items": {"type": "string"}, "invisible": true},
+  "llm_provider": {
+    "description": "旧配置迁移",
+    "type": "string",
+    "default": "",
+    "invisible": true
+  },
+  "llm_model": {
+    "description": "旧配置迁移",
+    "type": "string",
+    "default": "",
+    "invisible": true
+  },
+  "llm_fallback_models": {
+    "description": "旧配置迁移",
+    "type": "list",
+    "default": [],
+    "items": {
+      "type": "string"
+    },
+    "invisible": true
+  },
   "llm": {
     "description": "LLM 端点、模型与熔断",
     "type": "object",
     "items": {
-      "llm_migration_pending": {"description": "旧配置迁移状态", "type": "bool", "default": false, "invisible": true},
-      "llm_provider": {"description": "旧配置迁移", "type": "string", "default": "", "invisible": true},
-      "llm_model": {"description": "旧配置迁移", "type": "string", "default": "", "invisible": true},
-      "llm_fallback_models": {"description": "旧配置迁移", "type": "list", "default": [], "items": {"type": "string"}, "invisible": true},
+      "llm_migration_pending": {
+        "description": "旧配置迁移状态",
+        "type": "bool",
+        "default": false,
+        "invisible": true
+      },
+      "llm_provider": {
+        "description": "旧配置迁移",
+        "type": "string",
+        "default": "",
+        "invisible": true
+      },
+      "llm_model": {
+        "description": "旧配置迁移",
+        "type": "string",
+        "default": "",
+        "invisible": true
+      },
+      "llm_fallback_models": {
+        "description": "旧配置迁移",
+        "type": "list",
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "invisible": true
+      },
+      "llm_endpoints_migrated": {
+        "description": "端点配置迁移状态",
+        "type": "bool",
+        "default": false,
+        "invisible": true
+      },
+      "llm_endpoints_migration_pending": {
+        "description": "端点配置迁移待写入",
+        "type": "bool",
+        "default": false,
+        "invisible": true
+      },
+      "llm_endpoints": {
+        "description": "LLM 端点列表；候选模型按端点名称引用",
+        "type": "template_list",
+        "default": [],
+        "templates": {
+          "endpoint": {
+            "name": "LLM 端点",
+            "display_item": "name",
+            "items": {
+              "name": {
+                "description": "端点名称；留空表示使用 JSON 中的第一个端点",
+                "type": "string",
+                "default": ""
+              },
+              "kind": {
+                "description": "端点协议",
+                "type": "string",
+                "default": "openai",
+                "options": [
+                  "openai",
+                  "anthropic"
+                ]
+              },
+              "base_url": {
+                "description": "端点根地址",
+                "type": "string",
+                "default": "https://api.openai.com/v1"
+              },
+              "api_key": {
+                "description": "端点 API Key",
+                "type": "string",
+                "default": "",
+                "secret": true
+              },
+              "max_concurrency": {
+                "description": "并发上限",
+                "type": "int",
+                "default": 2
+              },
+              "timeout_seconds": {
+                "description": "请求超时秒数",
+                "type": "int",
+                "default": 180
+              },
+              "connect_timeout_seconds": {
+                "description": "连接超时秒数",
+                "type": "int",
+                "default": 10
+              },
+              "max_retries": {
+                "description": "重试次数",
+                "type": "int",
+                "default": 2
+              },
+              "model": {
+                "description": "要配置能力的模型名；留空使用已有的第一个模型",
+                "type": "string",
+                "default": ""
+              },
+              "support_vision_mode": {
+                "description": "模型支持看图",
+                "type": "string",
+                "default": "disabled",
+                "options": [
+                  "enabled",
+                  "disabled"
+                ]
+              },
+              "support_json_mode_mode": {
+                "description": "模型支持 JSON 模式",
+                "type": "string",
+                "default": "disabled",
+                "options": [
+                  "enabled",
+                  "disabled"
+                ]
+              },
+              "model_max_tokens": {
+                "description": "模型最大输出 token；0 使用全局设置",
+                "type": "int",
+                "default": 0
+              },
+              "model_max_context_tokens": {
+                "description": "模型上下文窗口；0 使用全局设置",
+                "type": "int",
+                "default": 0
+              }
+            }
+          }
+        }
+      },
       "llm_models": {
         "description": "候选模型，按数组顺序回退；留空时使用所选端点模型，未选择则保留 JSON 候选",
         "type": "template_list",
@@ -191,12 +335,14 @@
       "llm_endpoint_selector": {
         "description": "要编辑的全局端点名；留空选择第一个",
         "type": "string",
-        "default": ""
+        "default": "",
+        "invisible": true
       },
       "llm_endpoint_name": {
         "description": "端点显示名/引用名；留空保留所选端点名称",
         "type": "string",
-        "default": ""
+        "default": "",
+        "invisible": true
       },
       "llm_endpoint_kind": {
         "description": "端点协议",
@@ -206,42 +352,51 @@
           "",
           "openai",
           "anthropic"
-        ]
+        ],
+        "invisible": true
       },
       "llm_endpoint_base_url": {
         "description": "端点根地址；留空恢复默认 https://api.openai.com/v1",
         "type": "string",
-        "default": "https://api.openai.com/v1"
+        "default": "https://api.openai.com/v1",
+        "invisible": true
       },
       "llm_endpoint_api_key": {
         "description": "端点 API Key；留空清空所选端点密钥",
         "type": "string",
-        "default": ""
+        "default": "",
+        "invisible": true,
+        "secret": true
       },
       "llm_endpoint_max_concurrency": {
         "description": "端点并发上限",
         "type": "int",
-        "default": 2
+        "default": 2,
+        "invisible": true
       },
       "llm_endpoint_timeout_seconds": {
         "description": "端点请求超时秒数",
         "type": "int",
-        "default": 180
+        "default": 180,
+        "invisible": true
       },
       "llm_endpoint_connect_timeout_seconds": {
         "description": "端点连接超时秒数",
         "type": "int",
-        "default": 10
+        "default": 10,
+        "invisible": true
       },
       "llm_endpoint_max_retries": {
         "description": "端点重试次数",
         "type": "int",
-        "default": 2
+        "default": 2,
+        "invisible": true
       },
       "llm_endpoint_model": {
         "description": "要编辑的端点模型名；留空选择第一个",
         "type": "string",
-        "default": ""
+        "default": "",
+        "invisible": true
       },
       "llm_model_support_vision_mode": {
         "description": "模型支持看图",
@@ -250,7 +405,8 @@
         "options": [
           "enabled",
           "disabled"
-        ]
+        ],
+        "invisible": true
       },
       "llm_model_support_json_mode_mode": {
         "description": "模型声明 JSON 模式",
@@ -259,17 +415,20 @@
         "options": [
           "enabled",
           "disabled"
-        ]
+        ],
+        "invisible": true
       },
       "llm_model_max_tokens": {
         "description": "模型最大输出 token",
         "type": "int",
-        "default": 0
+        "default": 0,
+        "invisible": true
       },
       "llm_model_max_context_tokens": {
         "description": "模型上下文窗口 token",
         "type": "int",
-        "default": 0
+        "default": 0,
+        "invisible": true
       },
       "llm_defaults_max_tokens": {
         "description": "全局兜底最大输出 token",

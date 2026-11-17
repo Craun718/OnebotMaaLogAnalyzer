@@ -128,7 +128,7 @@ def load_effective_config(
     errors = validate_common_config(effective)
     if errors:
         raise ValueError("\n".join(errors))
-    if panel.get("_persist_llm_migration"):
+    if panel.get("_persist_llm_migration") or panel.get("_persist_endpoint_migration"):
         _persist_migrated_llm(config_path, raw, effective, panel, created=created)
     data_dir = resolve_data_dir(
         effective,
@@ -148,15 +148,24 @@ def _persist_migrated_llm(
     path: Path, raw: dict, effective: dict, panel: Mapping[str, Any], *, created: bool,
 ) -> None:
     """Persist only the migrated profile candidates and referenced endpoints."""
-    if not panel.get("llm_models"):
+    migrate_models = bool(panel.get("_persist_llm_migration"))
+    migrate_endpoints = bool(panel.get("_persist_endpoint_migration"))
+    if migrate_models and not panel.get("llm_models"):
         raise ValueError("迁移尚未完成，请先在面板填写候选模型。")
+    if migrate_endpoints and not panel.get("llm_endpoints"):
+        raise ValueError("迁移尚未完成，请先在面板填写端点。")
     updated = copy.deepcopy(raw)
     effective_configs = effective["bot"]["configs"]
     target = str(panel.get("default_config") or "").strip() or next(iter(effective_configs))
     models = effective_configs[target]["llm"]["models"]
-    updated_configs = updated.setdefault("bot", {}).setdefault("configs", {})
-    updated_configs.setdefault(target, {}).setdefault("llm", {})["models"] = copy.deepcopy(models)
-    names = {item["name"] for item in models}
+    names = {item["name"] for item in models} if migrate_models else set()
+    if migrate_models:
+        updated_configs = updated.setdefault("bot", {}).setdefault("configs", {})
+        updated_configs.setdefault(target, {}).setdefault("llm", {})["models"] = copy.deepcopy(models)
+    if migrate_endpoints:
+        for endpoint in panel["llm_endpoints"]:
+            name = str(endpoint.get("name") or "").strip()
+            names.add(name or effective["llm"]["providers"][0]["name"])
     providers = updated.setdefault("llm", {}).setdefault("providers", [])
     for provider in effective["llm"]["providers"]:
         if provider.get("name") not in names:
