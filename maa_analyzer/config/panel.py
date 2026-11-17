@@ -47,11 +47,12 @@ def _apply_panel_endpoints(result: dict, endpoints: list) -> None:
                   if key in entry}
         values["llm_endpoint_selector"] = name
         endpoint = LLMEndpointPatch.from_panel(values)
-        model = LLMModelPatch.from_panel(values)
+        model_patch = LLMModelPatch.from_panel(values)
         providers = llm_cfg.get("providers") or []
         existing = next((p for p in providers if isinstance(p, dict)
                          and (not name or p.get("name") == name)), None)
-        if not model.selected_model and not (existing and existing.get("models")):
+        model: LLMModelPatch | None = model_patch
+        if not model_patch.selected_model and not (existing and existing.get("models")):
             model = None
         _apply_endpoint_patch(llm_cfg, result, endpoint, model)
 
