@@ -72,6 +72,7 @@ class LLMPanel(PanelSection):
     panel_title: ClassVar[str] = "LLM 端点、模型与熔断"
 
     llm_endpoints: list[dict[str, Any]] = Field(default_factory=list)
+    llm_model_settings: list[dict[str, Any]] = Field(default_factory=list)
     llm_models: list[dict[str, str]] = Field(default_factory=list)
     llm_profile_max_tokens: int = -1
     llm_endpoint_selector: str = ""
@@ -367,6 +368,7 @@ PANEL_AUTO_SELECT_FIELDS = {
     "llm_endpoint_name",
     "llm_endpoint_model",
     "llm_endpoints",
+    "llm_model_settings",
     "llm_models",
 }
 
@@ -389,6 +391,10 @@ LEGACY_ENDPOINT_FIELDS = {
     "model_max_tokens": "llm_model_max_tokens",
     "model_max_context_tokens": "llm_model_max_context_tokens",
 }
+LEGACY_MODEL_FIELDS = (
+    "model", "support_vision_mode", "support_json_mode_mode",
+    "model_max_tokens", "model_max_context_tokens",
+)
 
 
 def _mapping_value(value: Mapping[str, Any], key: str) -> Any:
@@ -477,6 +483,23 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
         endpoint["name"] = endpoint["name"] or flat.get("llm_endpoint_selector") or ""
         endpoint["__template_key"] = "endpoint"
         flat["llm_endpoints"] = [endpoint]
+    migrated_model_settings = False
+    settings = copy.deepcopy(flat.get("llm_model_settings") or [])
+    for endpoint in flat.get("llm_endpoints") or []:
+        if not isinstance(endpoint, dict) or not any(k in endpoint for k in LEGACY_MODEL_FIELDS):
+            continue
+        name = str(endpoint.get("name") or "").strip()
+        model = str(endpoint.get("model") or "").strip()
+        if not any(isinstance(s, dict) and str(s.get("name") or "").strip() == name
+                   and str(s.get("model") or "").strip() == model for s in settings):
+            entry = {"__template_key": "model", "name": name}
+            entry.update({key: endpoint[key] for key in LEGACY_MODEL_FIELDS if key in endpoint})
+            settings.append(entry)
+        for key in LEGACY_MODEL_FIELDS:
+            endpoint.pop(key, None)
+        migrated_model_settings = True
+    if migrated_model_settings:
+        flat["llm_model_settings"] = settings
     legacy = {}
     for key, default in LEGACY_LLM_DEFAULTS.items():
         # AstrBot inserts empty root defaults on upgrades from grouped config.
@@ -513,6 +536,8 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
         flat["_persist_llm_migration"] = True
     if migrate_endpoint or section.get("llm_endpoints_migration_pending") is True:
         flat["_persist_endpoint_migration"] = True
+    if migrated_model_settings or section.get("llm_model_settings_migration_pending") is True:
+        flat["_persist_model_settings_migration"] = True
     if migrate_endpoint or section.get("llm_endpoints_migrated") is True or flat.get("llm_endpoints"):
         flat["_endpoints_configured"] = True
     # Reset only after producing the new array; do not resurrect old values
@@ -545,6 +570,9 @@ def synchronize_panel_config(config: dict[str, Any]) -> tuple[dict[str, Any], bo
             section["llm_migration_pending"] = True
             changed = True
         if group == "llm":
+            if migrated_model_settings and section.get("llm_model_settings_migration_pending") is not True:
+                section["llm_model_settings_migration_pending"] = True
+                changed = True
             if section.get("llm_endpoints_migrated") is not True:
                 section["llm_endpoints_migrated"] = True
                 changed = True

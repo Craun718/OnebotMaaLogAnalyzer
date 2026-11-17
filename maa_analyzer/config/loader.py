@@ -128,7 +128,8 @@ def load_effective_config(
     errors = validate_common_config(effective)
     if errors:
         raise ValueError("\n".join(errors))
-    if panel.get("_persist_llm_migration") or panel.get("_persist_endpoint_migration"):
+    if (panel.get("_persist_llm_migration") or panel.get("_persist_endpoint_migration")
+            or panel.get("_persist_model_settings_migration")):
         _persist_migrated_llm(config_path, raw, effective, panel, created=created)
     data_dir = resolve_data_dir(
         effective,
@@ -150,6 +151,7 @@ def _persist_migrated_llm(
     """Persist only the migrated profile candidates and referenced endpoints."""
     migrate_models = bool(panel.get("_persist_llm_migration"))
     migrate_endpoints = bool(panel.get("_persist_endpoint_migration"))
+    migrate_settings = bool(panel.get("_persist_model_settings_migration"))
     if migrate_models and not panel.get("llm_models"):
         raise ValueError("迁移尚未完成，请先在面板填写候选模型。")
     if migrate_endpoints and not panel.get("llm_endpoints"):
@@ -165,6 +167,10 @@ def _persist_migrated_llm(
     if migrate_endpoints:
         for endpoint in panel["llm_endpoints"]:
             name = str(endpoint.get("name") or "").strip()
+            names.add(name or effective["llm"]["providers"][0]["name"])
+    if migrate_settings:
+        for setting in panel.get("llm_model_settings") or []:
+            name = str(setting.get("name") or "").strip()
             names.add(name or effective["llm"]["providers"][0]["name"])
     providers = updated.setdefault("llm", {}).setdefault("providers", [])
     for provider in effective["llm"]["providers"]:
