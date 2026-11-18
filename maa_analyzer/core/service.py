@@ -765,6 +765,9 @@ class MaaService:
         if payload.get("message_type") != "group":
             return False
 
+        if self._mentions_only_others(payload):
+            return False
+
         consumed = False
         file_segments = self._extract_file_segments(payload)
         if file_segments:
@@ -832,6 +835,27 @@ class MaaService:
     # ════════════════════════════════════════════════════════════
     # 共享工具
     # ════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _mentions_only_others(event: dict) -> bool:
+        """忽略只 @ 其他人的消息；@ 自己或 @ 全体时仍走正常分发。"""
+        targets: set[str] = set()
+        message = event.get("message")
+        if isinstance(message, list):
+            for segment in message:
+                if not isinstance(segment, Mapping) or segment.get("type") != "at":
+                    continue
+                data = segment.get("data")
+                if isinstance(data, Mapping):
+                    target = str(data.get("qq") or data.get("user_id") or "").strip()
+                    if target:
+                        targets.add(target)
+        # 兼容仅提供 CQ 字符串的事件，不解析普通文本中的 @昵称。
+        raw = message if isinstance(message, str) else event.get("raw_message")
+        if isinstance(raw, str):
+            targets.update(re.findall(r"\[CQ:at,(?:[^\]]*,)?qq=([^,\]]+)", raw))
+        self_id = str(event.get("self_id") or "").strip()
+        return bool(targets) and "all" not in targets and self_id not in targets
 
     @staticmethod
     def _extract_reply_id(event: dict) -> str:

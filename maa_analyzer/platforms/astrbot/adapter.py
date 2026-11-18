@@ -540,6 +540,9 @@ class AstrBotPlatformAdapter:
             text = _text(message_str)
         role = await self._resolve_role(event, raw, group_id, user_id)
         return GroupMessageEvent(
+            self_id=_text(
+                _get(raw, "self_id") or _get(message_obj, "self_id")
+            ),
             group_id=group_id,
             user_id=user_id,
             message_id=_text(

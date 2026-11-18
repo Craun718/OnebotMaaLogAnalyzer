@@ -225,6 +225,7 @@ class OneBotPlatformAdapter:
         sender_data = sender_data if isinstance(sender_data, Mapping) else {}
         user_id = str(event.get("user_id") or sender_data.get("user_id") or "")
         return GroupMessageEvent(
+            self_id=str(event.get("self_id") or ""),
             group_id=str(event.get("group_id") or ""),
             user_id=user_id,
             message_id=str(event.get("message_id") or ""),

@@ -60,11 +60,13 @@ class GroupMessageEvent:
     reply_id: str = ""
     file_segments: list[GroupFileMetadata] = field(default_factory=list)
     raw_event: Any = None
+    self_id: str = ""
 
     def to_service_payload(self) -> dict[str, Any]:
         """Build the compatibility payload consumed by the shared features."""
         result: dict[str, Any] = {
             "post_type": "message",
+            "self_id": self.self_id,
             "message_type": "group",
             "group_id": self.group_id,
             "user_id": self.user_id,
